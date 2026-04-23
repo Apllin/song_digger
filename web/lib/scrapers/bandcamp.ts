@@ -1,0 +1,122 @@
+import * as cheerio from "cheerio";
+import type { TrackMeta } from "@/lib/python-client";
+
+const TECHNO_TAGS = [
+  "techno",
+  "dark-techno",
+  "dub-techno",
+  "industrial-techno",
+  "ambient-techno",
+  "minimal-techno",
+];
+
+async function fetchHtml(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      Accept: "text/html,application/xhtml+xml",
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!res.ok) throw new Error(`Bandcamp fetch failed: ${res.status}`);
+  return res.text();
+}
+
+/**
+ * Bandcamp search result URLs contain `search_item_id=TRACK_ID`.
+ * This ID is used directly in the embed player URL — no extra page fetch needed.
+ */
+function buildEmbedUrl(trackUrl: string): string | undefined {
+  const match = trackUrl.match(/search_item_id=(\d+)/);
+  if (!match) return undefined;
+  return `https://bandcamp.com/EmbeddedPlayer/track=${match[1]}/size=small/bgcol=000000/linkcol=4ec5ec/transparent=true/`;
+}
+
+export async function searchBandcampSimilar(
+  query: string
+): Promise<TrackMeta[]> {
+  const encoded = encodeURIComponent(query);
+  const url = `https://bandcamp.com/search?q=${encoded}&item_type=t`;
+
+  try {
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
+    const tracks: TrackMeta[] = [];
+
+    $("li.searchresult").each((_, el) => {
+      const itemType = $(el).find(".itemtype").text().trim().toLowerCase();
+      if (itemType !== "track") return;
+
+      // href contains search_item_id — use it for embed + as canonical URL
+      const href = $(el).find(".heading a").attr("href") ?? "";
+      const sourceUrl = $(el).find(".itemurl").text().trim();
+      const title = $(el).find(".heading a").text().trim();
+      const artist = $(el)
+        .find(".subhead")
+        .text()
+        .replace(/^by\s+/i, "")
+        .trim();
+      const coverUrl = $(el).find(".art img").attr("src");
+      const label = $(el).find(".subhead").last().text().trim();
+
+      if (!title || !sourceUrl) return;
+
+      tracks.push({
+        title,
+        artist: artist || "Unknown",
+        source: "bandcamp",
+        sourceUrl,
+        coverUrl,
+        embedUrl: buildEmbedUrl(href),
+        label,
+      });
+    });
+
+    return tracks.slice(0, 30);
+  } catch (err) {
+    console.error("[Bandcamp] search error:", err);
+    return [];
+  }
+}
+
+export async function getRandomTechnoTrack(): Promise<TrackMeta | null> {
+  const tag = TECHNO_TAGS[Math.floor(Math.random() * TECHNO_TAGS.length)];
+  const url = `https://bandcamp.com/tag/${tag}?sort_field=date`;
+
+  try {
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
+    const items: TrackMeta[] = [];
+
+    $("li.item").each((_, el) => {
+      const anchor = $(el).find("a.itemurl");
+      const sourceUrl = anchor.attr("href");
+      if (!sourceUrl) return;
+
+      const title = $(el).find(".itemtext").text().trim();
+      const artist = $(el).find(".itemsubtext").text().trim();
+      const coverUrl = $(el).find("img").attr("src");
+      const href = anchor.attr("href") ?? "";
+
+      if (title && artist) {
+        items.push({
+          title,
+          artist,
+          source: "bandcamp",
+          sourceUrl,
+          coverUrl,
+          embedUrl: buildEmbedUrl(href),
+          genre: tag,
+        });
+      }
+    });
+
+    if (items.length === 0) return null;
+    return items[Math.floor(Math.random() * items.length)];
+  } catch (err) {
+    console.error("[Bandcamp] random track error:", err);
+    return null;
+  }
+}

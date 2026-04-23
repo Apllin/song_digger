@@ -1,0 +1,75 @@
+const PYTHON_SERVICE_URL =
+  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+
+export interface TrackMeta {
+  title: string;
+  artist: string;
+  source: string;
+  sourceUrl: string;
+  coverUrl?: string;
+  embedUrl?: string;
+  bpm?: number;
+  key?: string;
+  energy?: number;
+  genre?: string;
+  label?: string;
+  score?: number;
+}
+
+export interface SimilarRequest {
+  input: string;          // raw query string
+  artist: string;         // parsed artist
+  track?: string | null;  // parsed track (null = artist-only mode)
+  sources: string[];
+  limit_per_source: number;
+}
+
+export interface SimilarResponse {
+  tracks: TrackMeta[];
+  source_artist: string | null;
+  source_bpm: number | null;
+  source_key: string | null;
+  source_energy: number | null;
+}
+
+export async function fetchSimilarTracks(
+  req: SimilarRequest
+): Promise<SimilarResponse> {
+  const res = await fetch(`${PYTHON_SERVICE_URL}/similar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal: AbortSignal.timeout(90_000),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Python service error: ${res.status} ${await res.text()}`
+    );
+  }
+
+  return res.json();
+}
+
+export async function fetchRandomTrack(): Promise<TrackMeta> {
+  const res = await fetch(`${PYTHON_SERVICE_URL}/random`);
+
+  if (!res.ok) {
+    throw new Error(
+      `Python service error: ${res.status} ${await res.text()}`
+    );
+  }
+
+  return res.json();
+}
+
+export async function healthCheck(): Promise<boolean> {
+  try {
+    const res = await fetch(`${PYTHON_SERVICE_URL}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Track {
+  id             String          @id @default(cuid())
+  title          String
+  artist         String
+  source         String
+  sourceUrl      String          @unique
+  coverUrl       String?
+  embedUrl       String?
+  bpm            Float?
+  key            String?
+  energy         Float?
+  genre          String?
+  label          String?
+  createdAt      DateTime        @default(now())
+  favorites      Favorite?
+  playlistTracks PlaylistTrack[]
+  searchResults  SearchResult[]
+
+  @@index([source])
+  @@index([bpm])
+}
+
+model SearchQuery {
+  id        String         @id @default(cuid())
+  input     String
+  status    String         @default("pending")
+  filters   Json?
+  createdAt DateTime       @default(now())
+  sourceBpm Float?
+  sourceKey String?
+  results   SearchResult[]
+}
+
+model SearchResult {
+  id            String      @id @default(cuid())
+  searchQueryId String
+  trackId       String
+  score         Float?
+  searchQuery   SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
+  track         Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([searchQueryId, trackId])
+  @@index([searchQueryId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  trackId   String   @unique
+  createdAt DateTime @default(now())
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+model DislikedTrack {
+  id        String   @id @default(cuid())
+  sourceUrl String   @unique
+  title     String
+  artist    String
+  createdAt DateTime @default(now())
+}
+
+model Playlist {
+  id        String          @id @default(cuid())
+  name      String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  tracks    PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  playlistId String
+  trackId    String
+  order      Int
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+  @@index([playlistId, order])
+}

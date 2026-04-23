@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-songdigger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-songdigger}
+      POSTGRES_DB: ${POSTGRES_DB:-songdigger}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  python-service:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - COSINE_CLUB_API_KEY=${COSINE_CLUB_API_KEY}
+    volumes:
+      - ./python-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-songdigger}:${POSTGRES_PASSWORD:-songdigger}@postgres:5432/${POSTGRES_DB:-songdigger}
+      - PYTHON_SERVICE_URL=http://python-service:8000
+    depends_on:
+      - postgres
+      - python-service
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:

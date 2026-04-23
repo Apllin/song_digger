@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(ls ~/.nvm/versions/node/*/bin/node)",
+      "Bash(export PATH=\"$HOME/.nvm/versions/node/v24.14.1/bin:$PATH\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(python3 -c \"from app.api.routes.similar import router; print\\('OK'\\)\")",
+      "Bash(python3 -c ':*)",
+      "Bash(curl -s -X POST http://localhost:3000/api/search -H 'Content-Type: application/json' -d '{\"input\":\"H.Mess - Aventis\"}')",
+      "Bash(curl -s http://localhost:3000/api/search/cmnwabn4r00md03xxzuv5klax)",
+      "Bash(curl -s -X POST http://localhost:3000/api/search -H \"Content-Type: application/json\" -d '{\"input\":\"H.Mess - Aventis\"}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('status:', d['status'], '| tracks:', len\\(d.get\\('tracks', []\\)\\)\\)\")",
+      "Bash(curl -s \"http://localhost:3000/api/search/cmnwadhiv00p203xxvygcckcm\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/search -H \"Content-Type: application/json\" -d '{\"input\":\"Surgeon - Flatliner\"}')",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python3 -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/test_refactored.py tests/test_similar.py -v)",
+      "Bash(python3 -m pytest tests/test_refactored.py tests/test_similar.py -v)",
+      "Bash(curl -sv http://localhost:8000/health)"
+    ]
+  }
+}
