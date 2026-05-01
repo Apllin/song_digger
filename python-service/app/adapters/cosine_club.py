@@ -6,14 +6,20 @@ from app.config import settings
 
 class CosineClubAdapter(AbstractAdapter):
     """
-    Cosine.club API — returns tracks similar by audio embedding.
-    Provides BPM, key, energy for most techno tracks in its 1.15M catalog.
+    Cosine.club API — vector-similarity search over a music catalog.
 
-    API docs: https://registry.scalar.com/@cosine/apis/cosineclub-api/
-    Auth: JWT (EdDSA) — set COSINE_CLUB_API_KEY in .env
+    API docs: https://cosine.club/api/v1/docs (OpenAPI spec)
+    Auth: Bearer token — set COSINE_CLUB_API_KEY in .env
+
+    The public Track schema exposes only: id, artist, track, name,
+    video_id, video_uri, external_link, source, score. There are NO
+    BPM/key/energy/label/genre/cover_url fields — those are derived
+    elsewhere (Beatport enrichment for BPM/key, YouTube thumbnail for cover).
+
+    There is also no /random endpoint, so random_techno_track() is a no-op.
     """
 
-    BASE_URL = "https://api.cosine.club"
+    BASE_URL = "https://cosine.club/api"
 
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(
@@ -23,14 +29,22 @@ class CosineClubAdapter(AbstractAdapter):
         )
 
     async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:
+        """
+        Two-step: search for the query, then fetch similar by track id.
+        Returns [] if the search has no hits or any step fails.
+        """
         try:
+            seed_id = await self._search_first_id(query)
+            if not seed_id:
+                return []
             resp = await self._client.get(
-                "/v1/similar",
-                params={"q": query, "limit": limit},
+                f"/v1/tracks/{seed_id}/similar",
+                params={"limit": limit},
             )
             resp.raise_for_status()
-            data = resp.json()
-            return [self._parse(t) for t in data.get("tracks", [])]
+            payload = resp.json()
+            similar = (payload.get("data") or {}).get("similar_tracks") or []
+            return [self._parse(t) for t in similar]
         except httpx.HTTPError as e:
             print(f"[CosineClub] find_similar error: {e}")
             return []
@@ -39,15 +53,15 @@ class CosineClubAdapter(AbstractAdapter):
         """Return 'Artist - Title' strings for autocomplete."""
         try:
             resp = await self._client.get(
-                "/v1/similar",
+                "/v1/search",
                 params={"q": query, "limit": limit},
             )
             resp.raise_for_status()
-            data = resp.json()
+            data = resp.json().get("data") or []
             results = []
-            for t in data.get("tracks", []):
+            for t in data:
                 artist = t.get("artist", "")
-                title = t.get("title", "")
+                title = t.get("track") or t.get("name") or ""
                 if artist and title:
                     results.append(f"{artist} - {title}")
                 elif title:
@@ -58,41 +72,29 @@ class CosineClubAdapter(AbstractAdapter):
             return []
 
     async def random_techno_track(self) -> TrackMeta | None:
-        try:
-            resp = await self._client.get(
-                "/v1/random",
-                params={"genre": "techno"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            # Normalise: API may return a list, a wrapped dict, or a flat dict
-            if isinstance(data, list):
-                data = data[0] if data else None
-            elif isinstance(data, dict):
-                if "tracks" in data:
-                    tracks = data["tracks"]
-                    data = tracks[0] if tracks else None
-                elif "track" in data:
-                    data = data["track"]
-            if not data or not isinstance(data, dict):
-                return None
-            return self._parse(data)
-        except Exception as e:
-            print(f"[CosineClub] random_techno_track error: {e}")
+        # The new Cosine.club public API has no /random endpoint. Random tracks
+        # come from other adapters (Beatport / YTM / Yandex).
+        return None
+
+    async def _search_first_id(self, query: str) -> str | None:
+        resp = await self._client.get(
+            "/v1/search",
+            params={"q": query, "limit": 1},
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data") or []
+        if not data:
             return None
+        return data[0].get("id")
 
     def _parse(self, data: dict) -> TrackMeta:
+        video_id = data.get("video_id")
         return TrackMeta(
-            title=data.get("title", "Unknown"),
-            artist=data.get("artist", "Unknown"),
+            title=data.get("track") or data.get("name") or "Unknown",
+            artist=data.get("artist") or "Unknown",
             source="cosine_club",
-            sourceUrl=data.get("url", ""),
-            coverUrl=data.get("cover_url"),
-            bpm=data.get("bpm"),
-            key=data.get("key"),        # expect Camelot notation from API
-            energy=data.get("energy"),
-            genre=data.get("genre"),
-            label=data.get("label"),
+            sourceUrl=data.get("video_uri") or data.get("external_link") or "",
+            coverUrl=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else None,
             score=data.get("score"),
         )
 

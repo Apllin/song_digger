@@ -104,6 +104,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+// Prisma's default $transaction timeout is 5s. A full 50-row Track upsert chunk
+// (rich techno metadata, fresh DB rows) overshoots that on a cold cache, killing
+// the whole search. 30s leaves headroom for slow-DB days without masking real hangs.
+const DB_TXN_TIMEOUT_MS = 30_000;
+
 async function saveTracks(searchId: string, tracks: TrackMeta[]): Promise<void> {
   if (!tracks.length) return;
 
@@ -140,7 +145,8 @@ async function saveTracks(searchId: string, tracks: TrackMeta[]): Promise<void> 
             },
             select: { id: true, sourceUrl: true },
           })
-        )
+        ),
+        { timeout: DB_TXN_TIMEOUT_MS }
       )
     )
   );
@@ -165,7 +171,8 @@ async function saveTracks(searchId: string, tracks: TrackMeta[]): Promise<void> 
             },
             update: { score: t.score ?? null },
           });
-        })
+        }),
+        { timeout: DB_TXN_TIMEOUT_MS }
       )
     )
   );

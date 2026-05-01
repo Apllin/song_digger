@@ -249,9 +249,16 @@ async def main() -> int:
 
     _print_table(results)
 
-    out_path = Path(args.out) if args.out else (
-        RUNS_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
-    )
+    if args.out:
+        out_path = Path(args.out)
+        # Anchor relative paths to EVAL_DIR so `--out runs/foo.json` lands in
+        # eval/runs/ regardless of cwd — matches the gitignore convention
+        # (`!python-service/eval/runs/baseline-*.json`) and the default branch.
+        if not out_path.is_absolute():
+            out_path = EVAL_DIR / out_path
+    else:
+        out_path = RUNS_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps({
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "web_url": args.web_url,
