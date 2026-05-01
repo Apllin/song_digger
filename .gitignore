@@ -38,3 +38,7 @@ BACKLOG.md
 # Eval runs — only named baselines are committed, the rest accumulate per-PR
 python-service/eval/runs/*
 !python-service/eval/runs/baseline-*.json
+
+# Local diff/notes dumps (per-developer working files)
+*.diff
+web/Track Search Improvement.md
