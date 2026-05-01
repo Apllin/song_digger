@@ -12,6 +12,29 @@ _ytm = YTMusic()
 def _yt_embed_url(video_id: str) -> str:
     return f"https://www.youtube.com/embed/{video_id}?autoplay=1&origin={settings.frontend_origin}"
 
+
+def _parse_ytm_track(t: dict) -> TrackMeta | None:
+    """Parse a track from get_watch_playlist results (uses singular `thumbnail`).
+
+    Not for `search()` results — those have a different shape (`thumbnails` plural).
+    """
+    vid = t.get("videoId")
+    if not vid:
+        return None
+    artists = t.get("artists") or []
+    artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
+    thumbnails = t.get("thumbnail") or []
+    cover_url = thumbnails[-1].get("url") if thumbnails else None
+    return TrackMeta(
+        title=t.get("title", "Unknown"),
+        artist=artist,
+        source="youtube_music",
+        sourceUrl=f"https://music.youtube.com/watch?v={vid}",
+        embedUrl=_yt_embed_url(vid),
+        coverUrl=cover_url,
+    )
+
+
 TECHNO_QUERIES = [
     "techno mix",
     "dark techno",
@@ -54,29 +77,8 @@ class YouTubeMusicAdapter(AbstractAdapter):
         watch = _ytm.get_watch_playlist(videoId=video_id, playlistId=radio_playlist_id, limit=limit + 1)
         tracks_raw = watch.get("tracks", [])
 
-        parsed = []
-        for t in tracks_raw[1:limit + 1]:  # skip the first (it's the source track)
-            vid = t.get("videoId")
-            if not vid:
-                continue
-
-            title = t.get("title", "Unknown")
-            artists = t.get("artists") or []
-            artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
-            thumbnails = t.get("thumbnail") or []
-            cover_url = thumbnails[-1].get("url") if thumbnails else None
-
-            parsed.append(
-                TrackMeta(
-                    title=title,
-                    artist=artist,
-                    source="youtube_music",
-                    sourceUrl=f"https://music.youtube.com/watch?v={vid}",
-                    embedUrl=_yt_embed_url(vid),
-                    coverUrl=cover_url,
-                )
-            )
-
+        # Skip the first — it's the source track itself
+        parsed = [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
         return parsed
 
     async def find_similar_by_video_id(self, video_id: str, limit: int = 50) -> list[TrackMeta]:
@@ -91,24 +93,7 @@ class YouTubeMusicAdapter(AbstractAdapter):
         radio_playlist_id = f"RDAMVM{video_id}"
         watch = _ytm.get_watch_playlist(videoId=video_id, playlistId=radio_playlist_id, limit=limit + 1)
         tracks_raw = watch.get("tracks", [])
-        parsed = []
-        for t in tracks_raw[1:limit + 1]:
-            vid = t.get("videoId")
-            if not vid:
-                continue
-            artists = t.get("artists") or []
-            artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
-            thumbnails = t.get("thumbnail") or []
-            cover_url = thumbnails[-1].get("url") if thumbnails else None
-            parsed.append(TrackMeta(
-                title=t.get("title", "Unknown"),
-                artist=artist,
-                source="youtube_music",
-                sourceUrl=f"https://music.youtube.com/watch?v={vid}",
-                embedUrl=_yt_embed_url(vid),
-                coverUrl=cover_url,
-            ))
-        return parsed
+        return [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
 
     async def find_similar_by_artist(self, artist: str, limit: int = 20) -> list[TrackMeta]:
         """
@@ -146,24 +131,7 @@ class YouTubeMusicAdapter(AbstractAdapter):
         watch = _ytm.get_watch_playlist(videoId=seed_vid, limit=limit + 5)
         tracks_raw = watch.get("tracks", [])
 
-        parsed = []
-        for t in tracks_raw:
-            vid = t.get("videoId")
-            if not vid:
-                continue
-            artists_list = t.get("artists") or []
-            t_artist = ", ".join(a.get("name", "") for a in artists_list) or "Unknown"
-            thumbnails = t.get("thumbnail") or []
-            cover_url = thumbnails[-1].get("url") if thumbnails else None
-            parsed.append(TrackMeta(
-                title=t.get("title", "Unknown"),
-                artist=t_artist,
-                source="youtube_music",
-                sourceUrl=f"https://music.youtube.com/watch?v={vid}",
-                embedUrl=_yt_embed_url(vid),
-                coverUrl=cover_url,
-            ))
-
+        parsed = [m for t in tracks_raw if (m := _parse_ytm_track(t))]
         return parsed[:limit]
 
     async def search_songs(self, query: str, limit: int = 3) -> list[dict]:

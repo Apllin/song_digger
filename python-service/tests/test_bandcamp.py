@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock
 from app.adapters.bandcamp import _unescape, BandcampAdapter
+from app.core.models import TrackMeta
 
 
 # ── _unescape ─────────────────────────────────────────────────────────────────
@@ -92,3 +93,73 @@ async def test_get_recommendations_returns_empty_when_no_recs_block():
         "https://oscarmulero.bandcamp.com/track/collapse", limit=7
     )
     assert result == []
+
+
+# ── BandcampAdapter._resolve_item: ID-from-JSON fast path ─────────────────────
+
+@pytest.mark.asyncio
+async def test_bandcamp_resolve_uses_id_from_json_when_available():
+    """When tralbum_id is in the rec item, no page fetch happens."""
+    adapter = BandcampAdapter()
+    item = {
+        "url": "https://artist.bandcamp.com/track/something",
+        "title": "Something",
+        "artist": "Artist",
+        "art_url": "https://f4.bcbits.com/img/a123_10.jpg",
+        "tralbum_id": 1234567,
+    }
+    mock_get = AsyncMock()
+    adapter._client.get = mock_get
+
+    result = await adapter._resolve_item(item)
+
+    assert isinstance(result, TrackMeta)
+    assert "1234567" in (result.embedUrl or "")
+    assert "track=" in (result.embedUrl or "")
+    mock_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bandcamp_resolve_album_uses_album_id_from_json():
+    """For album URLs, build an album=… embed URL from album_id without fetching."""
+    adapter = BandcampAdapter()
+    item = {
+        "url": "https://artist.bandcamp.com/album/some-album",
+        "title": "Some Album",
+        "artist": "Artist",
+        "album_id": 9876543,
+    }
+    mock_get = AsyncMock()
+    adapter._client.get = mock_get
+
+    result = await adapter._resolve_item(item)
+
+    assert isinstance(result, TrackMeta)
+    assert "album=9876543" in (result.embedUrl or "")
+    mock_get.assert_not_called()
+
+
+ITEM_PAGE_HTML = """
+<html><body>
+<script data-tralbum="{&quot;id&quot;: 4242, &quot;artist&quot;: &quot;Artist&quot;, &quot;art_id&quot;: 99}"></script>
+</body></html>
+"""
+
+
+@pytest.mark.asyncio
+async def test_bandcamp_resolve_falls_back_to_page_when_id_missing():
+    """When no ID in JSON, fall back to fetch + parse the item page."""
+    adapter = BandcampAdapter()
+    item = {
+        "url": "https://artist.bandcamp.com/track/something",
+        "title": "Something",
+        "artist": "Artist",
+    }
+    mock_get = AsyncMock(return_value=_make_mock_resp(ITEM_PAGE_HTML))
+    adapter._client.get = mock_get
+
+    result = await adapter._resolve_item(item)
+
+    assert isinstance(result, TrackMeta)
+    assert "track=4242" in (result.embedUrl or "")
+    mock_get.assert_called_once()

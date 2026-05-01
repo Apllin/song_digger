@@ -1,0 +1,103 @@
+{
+  "_comment": "Template for the song_digger eval set. Replace placeholder text with real tracks. Aim for 20-30 seeds total before relying on the metric. Distribution suggestions in 'extend-eval-set' skill.",
+  "_format_version": 1,
+  "_metric": "nDCG@10 with grades: relevant=2, false_friend=0, unmarked=1",
+
+  "seeds": [
+    {
+      "id": "mulero-classic",
+      "query": "Oscar Mulero - Black Propaganda",
+      "style_notes": "Classic Pole Group hypnotic techno, ~134 BPM, dark, minor key, long-form structure",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Reeko - <track>", "reason": "Pole Group label, similar production aesthetic" },
+        { "query": "Exium - <track>", "reason": "Pole Group label-mate" },
+        { "query": "Ancient Methods - <track>", "reason": "Frequent collaborator, similar dark/industrial leaning" },
+        { "query": "Lewis Fautzi - <track>", "reason": "Pole Group, similar tempo/character" },
+        { "query": "Henning Baer - <track>", "reason": "Mord label, hypnotic-leaning techno" },
+        { "query": "Ascion - <track>", "reason": "Italian hypnotic techno scene, frequent label co-release" },
+        { "query": "Tensal - <track>", "reason": "Pole Group affiliate" },
+        { "query": "Christian Wünsch - <track>", "reason": "Pole Group founder/co-runner" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte - <track>", "reason": "peak-time techno, not hypnotic" },
+        { "query": "I Hate Models - <track>", "reason": "hard techno / trance, totally different character" },
+        { "query": "Boris Brejcha - <track>", "reason": "minimal/high-tech-minimal, melodic, not the right mood" },
+        { "query": "Adam Beyer - <track>", "reason": "Drumcode peak-time, mainstream" },
+        { "query": "Tale of Us - <track>", "reason": "melodic techno, totally different aesthetic" }
+      ]
+    },
+
+    {
+      "id": "surgeon-industrial",
+      "query": "Surgeon - Krautrock",
+      "style_notes": "Birmingham industrial techno, ~138 BPM, mechanical, sparse, repetitive",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Regis - <track>", "reason": "Birmingham scene, Downwards label" },
+        { "query": "Female (artist) - <track>", "reason": "Surgeon's alias / scene peer" },
+        { "query": "British Murder Boys - <track>", "reason": "Surgeon + Regis project" },
+        { "query": "Ancient Methods - <track>", "reason": "Industrial techno bridge to hypnotic" },
+        { "query": "Perc - <track>", "reason": "British industrial techno" },
+        { "query": "Truss - <track>", "reason": "Perc Trax / industrial leaning" },
+        { "query": "AnD - <track>", "reason": "Inner Surface, industrial" },
+        { "query": "Headless Horseman - <track>", "reason": "Industrial techno" }
+      ],
+      "false_friends": [
+        { "query": "Reinier Zonneveld - <track>", "reason": "live techno but melodic/peak-time" },
+        { "query": "Dax J - <track>", "reason": "harder peak-time, different character" },
+        { "query": "Fideles - <track>", "reason": "melodic techno, completely off" }
+      ]
+    },
+
+    {
+      "id": "deepchord-dub",
+      "query": "Deepchord - Atmospherica",
+      "style_notes": "Dub techno, ~125 BPM, deep, ambient-leaning, long reverbs, sparse beat. Boundary case — should NOT recommend hypnotic techno just because of the 'techno' tag.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Echospace - <track>", "reason": "Same artist's other project" },
+        { "query": "Rod Modell - <track>", "reason": "Deepchord member, solo work" },
+        { "query": "Convextion - <track>", "reason": "Texas dub techno, related" },
+        { "query": "Fluxion - <track>", "reason": "Dub techno classic" },
+        { "query": "Yagya - <track>", "reason": "Icelandic dub/ambient techno" },
+        { "query": "Pop Ambient series - <track>", "reason": "Kompakt ambient lineage" }
+      ],
+      "false_friends": [
+        { "query": "Oscar Mulero - <track>", "reason": "peak-time hypnotic, despite 'techno' tag, very different mood" },
+        { "query": "Ben Klock - <track>", "reason": "Berghain peak-time techno" },
+        { "query": "Marcel Dettmann - <track>", "reason": "Berghain peak-time" }
+      ]
+    },
+
+    {
+      "id": "_PLACEHOLDER_seed_4",
+      "query": "<Artist> - <Track>",
+      "style_notes": "<describe the sonic character: subgenre, BPM, mood, label scene if relevant>",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "<Artist> - <Track>", "reason": "<why is this a good match>" }
+      ],
+      "false_friends": [
+        { "query": "<Artist> - <Track>", "reason": "<why this looks similar but isn't>" }
+      ]
+    }
+  ],
+
+  "_seed_distribution_targets": {
+    "_note": "Aim for this distribution. Use the extend-eval-set skill to add deliberately.",
+    "classic_hypnotic": "6-8 seeds (Mulero, Reeko, Exium, Ancient Methods, etc)",
+    "industrial_techno": "4-5 seeds (Surgeon, Perc, Ansome, Headless Horseman)",
+    "dub_techno": "4-5 seeds (Deepchord, Echospace, Rod Modell, Yagya) — boundary cases",
+    "peak_time_as_false_friend_control": "3-4 seeds (Charlotte de Witte, I Hate Models, Adam Beyer) — system should NOT recommend these on hypnotic queries",
+    "underground_low_popularity": "2-3 seeds (Ascion, Lewis Fautzi, Henning Baer, lesser-known)",
+    "russian_or_cyrillic": "2-3 seeds — encoding edge case + scene coverage"
+  },
+
+  "_filling_guide": {
+    "relevant_count_target": "8-10 per seed. Less than 6 hurts metric stability.",
+    "false_friend_count_target": "4-6 per seed. These are the most informative — they catch failure modes.",
+    "track_format": "'Artist - Track' string. Use the form most likely to appear in production output.",
+    "case_sensitivity": "Match logic is case-insensitive, but keep your originals consistent for readability."
+  }
+}

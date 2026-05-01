@@ -4,7 +4,7 @@ from app.core.models import TrackMeta
 
 class AbstractAdapter(ABC):
     """
-    Each source (YouTube Music, Cosine.club, future: Spotify, Beatport)
+    Each source (YouTube Music, Cosine.club, future: Beatport)
     implements this interface. The service layer calls them uniformly.
     """
 

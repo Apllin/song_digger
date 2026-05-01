@@ -1,15 +1,13 @@
 """
 Regression tests for bugs found during debugging.
 
-Bug 1: _spotify_enabled was not defined → NameError on every /similar request.
-Bug 2: CosineClub DNS failure was not handled gracefully — confirmed it is caught
-       via asyncio.gather(return_exceptions=True), and results from other sources
-       (YTM, Bandcamp) must still be returned.
+Bug: CosineClub DNS failure was not handled gracefully — confirmed it is caught
+     via asyncio.gather(return_exceptions=True), and results from other sources
+     (YTM, Bandcamp) must still be returned.
 """
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.api.routes.similar import (
-    _spotify_enabled,
     _find_by_artist_and_track,
     _find_by_artist_only,
 )
@@ -26,19 +24,8 @@ def make_track(**kwargs) -> TrackMeta:
     return TrackMeta(**(defaults | kwargs))
 
 
-# ── Bug 1: _spotify_enabled ───────────────────────────────────────────────────
+# ── CosineClub DNS failure handled gracefully ────────────────────────────────
 
-def test_spotify_enabled_is_defined():
-    """_spotify_enabled must exist and be callable — was missing, caused NameError."""
-    assert callable(_spotify_enabled)
-
-
-def test_spotify_enabled_returns_bool():
-    result = _spotify_enabled()
-    assert isinstance(result, bool)
-
-
-# ── Bug 2: CosineClub DNS failure handled gracefully ─────────────────────────
 
 @pytest.mark.asyncio
 async def test_find_by_artist_and_track_survives_cosine_dns_error():
@@ -59,13 +46,12 @@ async def test_find_by_artist_and_track_survives_cosine_dns_error():
               return_value=[]),
         patch("app.api.routes.similar._beatport.find_similar", new_callable=AsyncMock,
               return_value=[]),
-        patch("app.api.routes.similar._spotify_enabled", return_value=False),
     ):
-        tracks, source_artist, bpm, key = await _find_by_artist_and_track(
+        source_lists, _source_artist, _bpm, _key, _energy, _label, _genre = await _find_by_artist_and_track(
             "Surgeon", "Flatliner", limit=5
         )
 
-    assert isinstance(tracks, list), "Must return a list even when CosineClub fails"
+    assert isinstance(source_lists, list), "Must return a list even when CosineClub fails"
 
 
 @pytest.mark.asyncio
@@ -80,11 +66,12 @@ async def test_find_by_artist_only_survives_cosine_dns_error():
               return_value=[ytm_track]),
         patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
               return_value=[]),
-        patch("app.api.routes.similar._spotify_enabled", return_value=False),
     ):
-        tracks, source_artist, bpm, key = await _find_by_artist_only("Oscar Mulero", limit=5)
+        source_lists, _source_artist, _bpm, _key, _energy, _label, _genre = await _find_by_artist_only(
+            "Oscar Mulero", limit=5
+        )
 
-    assert isinstance(tracks, list), "Must return a list even when CosineClub fails"
+    assert isinstance(source_lists, list), "Must return a list even when CosineClub fails"
 
 
 @pytest.mark.asyncio
@@ -112,9 +99,9 @@ async def test_find_by_artist_and_track_returns_ytm_when_cosine_fails():
               return_value=[]),
         patch("app.api.routes.similar._beatport.find_similar", new_callable=AsyncMock,
               return_value=[]),
-        patch("app.api.routes.similar._spotify_enabled", return_value=False),
     ):
-        tracks, _, _, _ = await _find_by_artist_and_track("Surgeon", "Flatliner", limit=5)
+        source_lists, *_ = await _find_by_artist_and_track("Surgeon", "Flatliner", limit=5)
 
-    assert any(t.source == "youtube_music" for t in tracks), \
+    ytm_list = next((sl for sl in source_lists if sl.source == "youtube_music"), None)
+    assert ytm_list is not None and ytm_list.tracks, \
         "YTM tracks from other artists must be returned when CosineClub fails"

@@ -109,11 +109,16 @@ class BeatportAdapter(AbstractAdapter):
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def enrich_one(track: TrackMeta) -> tuple[str, TrackMeta]:
+            if track.bpm is not None and track.key is not None:
+                return track.sourceUrl, track
             async with semaphore:
                 result = await self._fetch_bpm_key(track.title, track.artist)
                 if result:
                     bpm, key = result
-                    return track.sourceUrl, track.model_copy(update={"bpm": bpm, "key": key})
+                    return track.sourceUrl, track.model_copy(update={
+                        "bpm": track.bpm if track.bpm is not None else bpm,
+                        "key": track.key if track.key is not None else key,
+                    })
                 return track.sourceUrl, track
 
         pairs = await asyncio.gather(*[enrich_one(t) for t in tracks])

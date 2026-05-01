@@ -24,9 +24,16 @@ class SimilarRequest(BaseModel):
     limit_per_source: int = 20
 
 
-class SimilarResponse(BaseModel):
+class SourceList(BaseModel):
+    source: str
     tracks: list[TrackMeta]
-    source_artist: str | None = None   # extracted from first Cosine/YTM result
-    source_bpm: float | None = None    # median BPM of top Cosine results
-    source_key: str | None = None      # most common key of top Cosine results
-    source_energy: float | None = None # median energy of top Cosine results
+
+
+class SimilarResponse(BaseModel):
+    source_lists: list[SourceList]
+    source_artist: str | None = None
+    source_bpm: float | None = None
+    source_key: str | None = None
+    source_energy: float | None = None
+    source_label: str | None = None
+    source_genre: str | None = None

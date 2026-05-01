@@ -1,6 +1,9 @@
 """Tests for Beatport adapter: Camelot mapping and track parsing."""
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from app.adapters.beatport import _to_camelot, _parse_track
+from app.adapters.beatport import BeatportAdapter, _parse_track, _to_camelot
+from app.core.models import TrackMeta
 
 
 # ── _to_camelot ───────────────────────────────────────────────────────────────
@@ -99,3 +102,59 @@ def test_parse_track_source_url_format():
     assert result is not None
     assert "beatport.com/track" in result.sourceUrl
     assert "12345678" in result.sourceUrl
+
+
+# ── enrich_tracks: gap-fill semantics ─────────────────────────────────────────
+
+async def test_enrich_does_not_overwrite_existing_bpm():
+    """Beatport enrichment must preserve cosine-derived BPM."""
+    adapter = BeatportAdapter()
+    track = TrackMeta(
+        title="Test", artist="Test", source="cosine_club",
+        sourceUrl="https://x/1",
+        bpm=137.5,
+        key=None,
+    )
+    with patch.object(adapter, "_fetch_bpm_key",
+                      new_callable=AsyncMock,
+                      return_value=(140.0, "8A")):
+        result = await adapter.enrich_tracks([track])
+    enriched = result["https://x/1"]
+    assert enriched.bpm == 137.5
+    assert enriched.key == "8A"
+
+
+async def test_enrich_skips_already_complete_tracks():
+    """If a track has both bpm and key, no Beatport call is made."""
+    adapter = BeatportAdapter()
+    track = TrackMeta(
+        title="Test", artist="Test", source="cosine_club",
+        sourceUrl="https://x/3",
+        bpm=140.0,
+        key="8A",
+    )
+    fetch_mock = AsyncMock(return_value=(150.0, "9A"))
+    with patch.object(adapter, "_fetch_bpm_key", new=fetch_mock):
+        result = await adapter.enrich_tracks([track])
+    fetch_mock.assert_not_called()
+    enriched = result["https://x/3"]
+    assert enriched.bpm == 140.0
+    assert enriched.key == "8A"
+
+
+async def test_enrich_does_not_overwrite_existing_key():
+    """Symmetric: existing key is preserved, BPM gap filled."""
+    adapter = BeatportAdapter()
+    track = TrackMeta(
+        title="Test", artist="Test", source="cosine_club",
+        sourceUrl="https://x/2",
+        bpm=None,
+        key="9A",
+    )
+    with patch.object(adapter, "_fetch_bpm_key",
+                      new_callable=AsyncMock,
+                      return_value=(140.0, "8A")):
+        result = await adapter.enrich_tracks([track])
+    enriched = result["https://x/2"]
+    assert enriched.bpm == 140.0
+    assert enriched.key == "9A"

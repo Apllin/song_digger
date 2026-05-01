@@ -37,11 +37,9 @@ class BandcampAdapter(AbstractAdapter):
     Flow:
       1. Search Bandcamp for the query → get the first matching track URL
       2. Fetch that track page → parse the "recommended" data attribute
-      3. For each recommendation, fetch its page to get the numeric ID for embedding
-      4. Build Bandcamp EmbeddedPlayer URLs from those IDs
-
-    Uses a persistent httpx client so the 7 concurrent _resolve_item calls
-    reuse connections instead of each creating a new TCP socket.
+      3. For each recommendation, build a Bandcamp EmbeddedPlayer URL from
+         the numeric ID carried in the rec JSON. If the ID is missing,
+         fall back to fetching the item page to extract it.
     """
 
     def __init__(self) -> None:
@@ -115,10 +113,6 @@ class BandcampAdapter(AbstractAdapter):
         return [r for r in results if isinstance(r, TrackMeta)]
 
     async def _resolve_item(self, item: dict) -> TrackMeta | None:
-        """
-        Given a recommendation item dict from Bandcamp, fetch its page and
-        build a TrackMeta with an EmbeddedPlayer URL.
-        """
         item_url = item.get("url", "")
         if not item_url:
             return None
@@ -135,6 +129,30 @@ class BandcampAdapter(AbstractAdapter):
 
         is_track = "/track/" in item_url
 
+        item_id = (
+            item.get("tralbum_id")
+            or item.get("item_id")
+            or (item.get("track_id") if is_track else None)
+            or (item.get("album_id") if not is_track else None)
+            or item.get("id")
+        )
+
+        if item_id:
+            return _build_track_meta(item_url, title, artist, cover_url, item_id, is_track)
+
+        # Bandcamp omitted the ID from the rec JSON — fall back to fetching the
+        # item page. Logged so a structural change to the rec payload is visible.
+        print(f"[Bandcamp] no ID in rec JSON, falling back to page fetch: {item_url}")
+        return await self._resolve_via_page_fetch(item_url, title, artist, cover_url, is_track)
+
+    async def _resolve_via_page_fetch(
+        self,
+        item_url: str,
+        title: str,
+        artist: str,
+        cover_url: str | None,
+        is_track: bool,
+    ) -> TrackMeta | None:
         try:
             resp = await self._client.get(item_url)
             resp.raise_for_status()
@@ -164,22 +182,27 @@ class BandcampAdapter(AbstractAdapter):
             if art:
                 cover_url = f"https://f4.bcbits.com/img/a{art}_10.jpg"
 
-        if is_track:
-            embed_url = (
-                f"https://bandcamp.com/EmbeddedPlayer/track={item_id}"
-                f"/size=small/bgcol=1a1a1a/linkcol=4ec5ec/transparent=true/"
-            )
-        else:
-            embed_url = (
-                f"https://bandcamp.com/EmbeddedPlayer/album={item_id}"
-                f"/size=small/bgcol=1a1a1a/linkcol=4ec5ec/transparent=true/"
-            )
+        return _build_track_meta(item_url, title, artist, cover_url, item_id, is_track)
 
-        return TrackMeta(
-            title=title,
-            artist=artist,
-            source="bandcamp",
-            sourceUrl=item_url,
-            embedUrl=embed_url,
-            coverUrl=cover_url,
-        )
+
+def _build_track_meta(
+    item_url: str,
+    title: str,
+    artist: str,
+    cover_url: str | None,
+    item_id: int | str,
+    is_track: bool,
+) -> TrackMeta:
+    kind = "track" if is_track else "album"
+    embed_url = (
+        f"https://bandcamp.com/EmbeddedPlayer/{kind}={item_id}"
+        f"/size=small/bgcol=1a1a1a/linkcol=4ec5ec/transparent=true/"
+    )
+    return TrackMeta(
+        title=title,
+        artist=artist,
+        source="bandcamp",
+        sourceUrl=item_url,
+        embedUrl=embed_url,
+        coverUrl=cover_url,
+    )

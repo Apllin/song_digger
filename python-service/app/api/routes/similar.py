@@ -2,11 +2,12 @@ import re
 import asyncio
 from collections import Counter
 from fastapi import APIRouter
-from app.core.models import SimilarRequest, SimilarResponse, TrackMeta
+from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.beatport import BeatportAdapter
 from app.adapters.bandcamp import BandcampAdapter
+from app.adapters.yandex_music import YandexMusicAdapter
 
 router = APIRouter()
 
@@ -14,6 +15,7 @@ _ytm = YouTubeMusicAdapter()
 _cosine = CosineClubAdapter()
 _beatport = BeatportAdapter()
 _bandcamp = BandcampAdapter()
+_yandex = YandexMusicAdapter()
 
 BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
 
@@ -30,8 +32,9 @@ async def _bandcamp_safe(query: str) -> list[TrackMeta]:
         return []
 
 MAX_TRACKS = 500
-# Beatport enrichment: keep low — each track is one HTTP request to Beatport.
-ENRICH_LIMIT = 4
+# Beatport inline enrichment: top results visible on first paint. The rest are
+# enriched in the background via /enrich (see web/lib/enrichment-queue.ts).
+INLINE_BUDGET = 6
 ENRICH_CONCURRENCY = 8
 
 
@@ -66,12 +69,53 @@ def _same_artist(a: str, b: str) -> bool:
     return shorter.issubset(longer)
 
 
+# ── Title-suffix whitelist ────────────────────────────────────────────────────
+# Suffixes describing the SAME recording — safe to drop when deduping titles.
+# Why a whitelist: a catch-all `\[.*?\]` collapsed "(Remix)" / "[Dub]" / "[Live]"
+# into the original, so different recordings appeared as one row. Anything not
+# listed below (Remix, Dub, Live, VIP, Acoustic, Instrumental, Edit, …)
+# identifies a distinct recording and must survive normalization.
+# Each pattern matches case-insensitively in both (...) and [...] forms.
+
+
+def _both_brackets(inner: str) -> str:
+    """Wrap an inner pattern so it matches either ( ... ) or [ ... ]."""
+    return rf"\s*(?:\({inner}\)|\[{inner}\])"
+
+
+STRIP_ORIGINAL_MIX = _both_brackets(r"original mix")
+STRIP_EXTENDED = _both_brackets(r"extended(?:\s+mix)?")
+STRIP_RADIO = _both_brackets(r"radio\s+(?:edit|mix)")
+# (Remaster), (Remastered), (Remastered YYYY), (YYYY Remaster) — and bracket forms.
+STRIP_REMASTER = _both_brackets(r"(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)")
+# (feat. X) / (ft. X) / (featuring X). Inner stops at the first closing bracket
+# so a sibling group like "(feat. X) (Remix)" leaves "(Remix)" alone.
+STRIP_FEAT = _both_brackets(r"(?:feat\.|ft\.|featuring)\s+[^\)\]]*")
+STRIP_PROD = _both_brackets(r"(?:prod\.|produced\s+by)\s+[^\)\]]*")
+STRIP_CLEAN_EXPLICIT = _both_brackets(r"(?:clean|explicit)")
+STRIP_BONUS = _both_brackets(r"bonus\s+track")
+
+_STRIP_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        STRIP_ORIGINAL_MIX,
+        STRIP_EXTENDED,
+        STRIP_RADIO,
+        STRIP_REMASTER,
+        STRIP_FEAT,
+        STRIP_PROD,
+        STRIP_CLEAN_EXPLICIT,
+        STRIP_BONUS,
+    )
+)
+
+
 def _normalize_title(s: str) -> str:
-    """Strip common suffixes like '(Original Mix)', '(feat. X)' for comparison."""
+    """Lower-case and strip whitelisted recording-equivalence suffixes for dedup.
+    Preserves version markers like (Remix), (Dub), (Live), (VIP), (Instrumental)."""
     s = s.lower().strip()
-    s = re.sub(r"\s*\(original mix\)", "", s)
-    s = re.sub(r"\s*\(feat\..*?\)", "", s)
-    s = re.sub(r"\s*\[.*?\]", "", s)
+    for pat in _STRIP_PATTERNS:
+        s = pat.sub("", s)
     return s.strip()
 
 
@@ -143,23 +187,48 @@ def _extract_source_meta(
     return source_bpm, source_key, source_energy, confident
 
 
+def _extract_source_label_genre(
+    cosine_tracks: list[TrackMeta],
+) -> tuple[str | None, str | None]:
+    """Most-common label/genre across the top 5 Cosine results, parallel to _extract_source_meta."""
+    top = cosine_tracks[:5]
+    labels = [t.label for t in top if t.label]
+    genres = [t.genre for t in top if t.genre]
+    label = Counter(labels).most_common(1)[0][0] if labels else None
+    genre = Counter(genres).most_common(1)[0][0] if genres else None
+    return label, genre
+
+
 async def _empty_list() -> list:
     return []
 
 
+def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
+    """Drop duplicate sourceUrls within a single source's ranked list, preserving order."""
+    seen: set[str] = set()
+    out: list[TrackMeta] = []
+    for t in tracks:
+        if t.sourceUrl in seen:
+            continue
+        seen.add(t.sourceUrl)
+        out.append(t)
+    return out
+
+
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
-) -> tuple[list[TrackMeta], str | None, float | None, str | None, float | None]:
+) -> tuple[list[SourceList], str | None, float | None, str | None, float | None, str | None, str | None]:
     full_query = f"{artist} - {track}"
     # Users sometimes type queries as "Track - Artist" instead of "Artist - Track".
     # Try both orderings for Cosine so we hit its catalog regardless of input order.
     reversed_query = f"{track} - {artist}"
 
     # Phase 1: all external sources in parallel.
-    cosine_tracks, ytm_tracks, bandcamp_tracks, ytm_source_search = await asyncio.gather(
+    cosine_tracks, ytm_tracks, bandcamp_tracks, yandex_tracks, ytm_source_search = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
         _bandcamp_safe(full_query),
+        _yandex.find_similar(full_query, limit),
         _ytm.search_songs(full_query, limit=1),
         return_exceptions=True,
     )
@@ -167,6 +236,7 @@ async def _find_by_artist_and_track(
     cosine_tracks = cosine_tracks if isinstance(cosine_tracks, list) else []
     ytm_tracks = ytm_tracks if isinstance(ytm_tracks, list) else []
     bandcamp_tracks = bandcamp_tracks if isinstance(bandcamp_tracks, list) else []
+    yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -256,29 +326,45 @@ async def _find_by_artist_and_track(
         or (ytm_tracks[0].artist if ytm_tracks else None)
     )
 
-    all_tracks = cosine_tracks + ytm_tracks + bandcamp_tracks
-    if source_artist:
-        all_tracks = [t for t in all_tracks if not _same_artist(t.artist, source_artist)]
+    # Per-source ranked lists. Each list preserves its adapter's ordering — RRF
+    # in the web aggregator fuses across sources using these ranks.
+    def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
+        if not source_artist:
+            return ts
+        return [t for t in ts if not _same_artist(t.artist, source_artist)]
 
-    return all_tracks, source_artist, source_bpm, source_key, source_energy
+    source_lists = [
+        SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
+        SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
+        SourceList(source="bandcamp", tracks=_dedup_within_source(_filter_artist(bandcamp_tracks))),
+        SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
+    ]
+
+    # Derive label/genre from whichever cosine_tracks list we ended up using
+    # (after the reversed-query swap and the artist-fallback append).
+    source_label, source_genre = _extract_source_label_genre(cosine_tracks)
+
+    return source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre
 
 
 async def _find_by_artist_only(
     artist: str, limit: int
-) -> tuple[list[TrackMeta], str | None, float | None, str | None, float | None]:
+) -> tuple[list[SourceList], str | None, float | None, str | None, float | None, str | None, str | None]:
     """
-    Artist-only mode: Cosine + YTM artist playlist, all in parallel.
+    Artist-only mode: Cosine + YTM artist playlist + Yandex similar, all in parallel.
     If Cosine returns few results, seeds a second query with the artist's top track.
     """
-    cosine_artist, ytm_artist, top_songs = await asyncio.gather(
+    cosine_artist, ytm_artist, yandex_artist, top_songs = await asyncio.gather(
         _cosine.find_similar(artist, limit),
         _ytm.find_similar_by_artist(artist, limit),
+        _yandex.find_similar(artist, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
 
     cosine_tracks: list[TrackMeta] = cosine_artist if isinstance(cosine_artist, list) else []
     ytm_tracks: list[TrackMeta] = ytm_artist if isinstance(ytm_artist, list) else []
+    yandex_tracks: list[TrackMeta] = yandex_artist if isinstance(yandex_artist, list) else []
 
     # If the artist-only Cosine query returned few results, seed with a specific track
     if isinstance(top_songs, list) and top_songs and len(cosine_tracks) < 8:
@@ -289,37 +375,59 @@ async def _find_by_artist_only(
                 cosine_tracks = seeded
 
     source_bpm, source_key, source_energy, _ = _extract_source_meta(cosine_tracks)
+    source_label, source_genre = _extract_source_label_genre(cosine_tracks)
 
-    all_tracks = cosine_tracks + ytm_tracks
-    all_tracks = [t for t in all_tracks if not _same_artist(t.artist, artist)]
+    def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
+        return [t for t in ts if not _same_artist(t.artist, artist)]
 
-    return all_tracks, artist, source_bpm, source_key, source_energy
+    source_lists = [
+        SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
+        SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
+        SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
+    ]
+
+    return source_lists, artist, source_bpm, source_key, source_energy, source_label, source_genre
 
 
 @router.post("/similar", response_model=SimilarResponse)
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
-        all_tracks, source_artist, source_bpm, source_key, source_energy = await _find_by_artist_and_track(
+        source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre = await _find_by_artist_and_track(
             req.artist, req.track, req.limit_per_source
         )
     else:
-        all_tracks, source_artist, source_bpm, source_key, source_energy = await _find_by_artist_only(
+        source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre = await _find_by_artist_only(
             req.artist, req.limit_per_source
         )
 
-    all_tracks = _deduplicate(all_tracks)[:MAX_TRACKS]
+    # Inline enrichment: pick the first INLINE_BUDGET unique tracks lacking
+    # BPM/key across all sources, then write the enriched values back into
+    # whichever source-list rows reference the same sourceUrl.
+    seen_urls: set[str] = set()
+    to_enrich: list[TrackMeta] = []
+    for sl in source_lists:
+        for t in sl.tracks:
+            if t.sourceUrl in seen_urls:
+                continue
+            seen_urls.add(t.sourceUrl)
+            if t.bpm is None or t.key is None:
+                to_enrich.append(t)
+                if len(to_enrich) >= INLINE_BUDGET:
+                    break
+        if len(to_enrich) >= INLINE_BUDGET:
+            break
 
-    # Enrich only the first ENRICH_LIMIT tracks that lack BPM/key.
-    # Prioritise Cosine tracks (they already have BPM/key, so this mostly hits YTM).
-    to_enrich = [t for t in all_tracks if t.bpm is None or t.key is None][:ENRICH_LIMIT]
     if to_enrich:
         enriched_map = await _beatport.enrich_tracks(to_enrich, max_concurrent=ENRICH_CONCURRENCY)
-        all_tracks = [enriched_map.get(t.sourceUrl, t) for t in all_tracks]
+        for sl in source_lists:
+            sl.tracks = [enriched_map.get(t.sourceUrl, t) for t in sl.tracks]
 
     return SimilarResponse(
-        tracks=all_tracks,
+        source_lists=source_lists,
         source_artist=source_artist,
         source_bpm=source_bpm,
         source_key=source_key,
         source_energy=source_energy,
+        source_label=source_label,
+        source_genre=source_genre,
     )

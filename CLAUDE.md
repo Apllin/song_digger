@@ -43,7 +43,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 ### Python service (`python-service/app`)
 
 - `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `random`, `suggestions`, `discogs`, `ytm_playlist`).
-- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `spotify`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
+- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
 - `core/models.py` defines the shared `TrackMeta` Pydantic model returned to web.
 - `config.py` uses `pydantic-settings` reading `.env`; includes API keys for Cosine.club, Discogs.
 

@@ -6,6 +6,7 @@ from app.api.routes.similar import (
     _same_artist,
     _deduplicate,
     _extract_source_meta,
+    _extract_source_label_genre,
 )
 from app.core.models import TrackMeta
 
@@ -54,6 +55,77 @@ def test_normalize_title_preserves_regular_parens():
 def test_normalize_title_combined():
     result = _normalize_title("GRID (Original Mix) [2024 Remaster]")
     assert result == "grid"
+
+
+def test_normalize_title_preserves_remix_marker():
+    """(Remix) identifies a different recording — never strip it."""
+    assert _normalize_title("Insomnia (Remix)") == "insomnia (remix)"
+    assert _normalize_title("Insomnia (Faithless Remix)") == "insomnia (faithless remix)"
+    assert _normalize_title("Insomnia [Remix]") == "insomnia [remix]"
+
+
+def test_normalize_title_preserves_dub_version():
+    assert _normalize_title("Strings of Life (Dub)") == "strings of life (dub)"
+    assert _normalize_title("Strings of Life (Dub Mix)") == "strings of life (dub mix)"
+    assert _normalize_title("Strings of Life (Dub Version)") == "strings of life (dub version)"
+
+
+def test_normalize_title_preserves_live_version():
+    assert _normalize_title("Smalltown Boy (Live)") == "smalltown boy (live)"
+    assert (
+        _normalize_title("Smalltown Boy (Live at Wembley)")
+        == "smalltown boy (live at wembley)"
+    )
+
+
+def test_normalize_title_strips_remaster_year_variants():
+    assert _normalize_title("Heroes (Remastered 2017)") == "heroes"
+    assert _normalize_title("Heroes [Remastered]") == "heroes"
+    assert _normalize_title("Heroes (2017 Remaster)") == "heroes"
+
+
+def test_normalize_title_handles_both_paren_and_bracket_forms():
+    assert _normalize_title("Track (Original Mix)") == "track"
+    assert _normalize_title("Track [Original Mix]") == "track"
+    assert _normalize_title("Track (feat. Guest)") == "track"
+    assert _normalize_title("Track [feat. Guest]") == "track"
+    assert _normalize_title("Track (Extended Mix)") == "track"
+    assert _normalize_title("Track [Extended Mix]") == "track"
+
+
+def test_normalize_title_strips_feat_variants():
+    base = _normalize_title("Track")
+    assert _normalize_title("Track (feat. X)") == base
+    assert _normalize_title("Track (ft. X)") == base
+    assert _normalize_title("Track (featuring X)") == base
+
+
+def test_normalize_title_strips_prod_variants():
+    base = _normalize_title("Track")
+    assert _normalize_title("Track (prod. X)") == base
+    assert _normalize_title("Track (produced by X)") == base
+    assert _normalize_title("Track [prod. X]") == base
+
+
+def test_normalize_title_strips_bonus_track():
+    base = _normalize_title("Track")
+    assert _normalize_title("Track (Bonus Track)") == base
+    assert _normalize_title("Track [Bonus Track]") == base
+
+
+def test_normalize_title_preserves_vip_and_instrumental():
+    """VIP, Instrumental, Acoustic, Demo identify distinct recordings."""
+    assert _normalize_title("Track (VIP)") != _normalize_title("Track")
+    assert _normalize_title("Track (VIP Mix)") != _normalize_title("Track")
+    assert _normalize_title("Track (Instrumental)") != _normalize_title("Track")
+    assert _normalize_title("Track (Acoustic)") != _normalize_title("Track")
+    assert _normalize_title("Track (Demo)") != _normalize_title("Track")
+
+
+def test_normalize_title_preserves_edit_when_not_radio():
+    """Bare (Edit) is a distinct version; only 'Radio Edit' is noise."""
+    assert _normalize_title("Track (Edit)") != _normalize_title("Track")
+    assert _normalize_title("Track (Radio Edit)") == _normalize_title("Track")
 
 
 # ── _same_artist ──────────────────────────────────────────────────────────────
@@ -152,6 +224,27 @@ def test_deduplicate_empty_list():
     assert _deduplicate([]) == []
 
 
+def test_deduplicate_keeps_original_and_remix_separate():
+    """A track and its remix are different recordings — must NOT collapse."""
+    original = make_track(
+        title="Strings of Life",
+        artist="Derrick May",
+        sourceUrl="https://music.youtube.com/watch?v=aaa",
+    )
+    remix = make_track(
+        title="Strings of Life (Carl Craig Remix)",
+        artist="Derrick May",
+        sourceUrl="https://music.youtube.com/watch?v=bbb",
+    )
+    bracket_remix = make_track(
+        title="Strings of Life [Remix]",
+        artist="Derrick May",
+        sourceUrl="https://music.youtube.com/watch?v=ccc",
+    )
+    result = _deduplicate([original, remix, bracket_remix])
+    assert len(result) == 3
+
+
 # ── _extract_source_meta ──────────────────────────────────────────────────────
 
 def test_extract_source_meta_returns_median_bpm():
@@ -199,3 +292,43 @@ def test_extract_source_meta_empty():
     assert key is None
     assert energy is None
     assert confident is False
+
+
+# ── _extract_source_label_genre ───────────────────────────────────────────────
+
+def test_extract_source_label_genre_returns_most_common():
+    tracks = [
+        make_track(label="Pole Group", genre="Techno"),
+        make_track(label="Pole Group", genre="Techno"),
+        make_track(label="Tresor", genre="Hard Techno"),
+    ]
+    label, genre = _extract_source_label_genre(tracks)
+    assert label == "Pole Group"
+    assert genre == "Techno"
+
+
+def test_extract_source_label_genre_ignores_missing():
+    tracks = [
+        make_track(label=None, genre=None),
+        make_track(label="Pole Group", genre=None),
+    ]
+    label, genre = _extract_source_label_genre(tracks)
+    assert label == "Pole Group"
+    assert genre is None
+
+
+def test_extract_source_label_genre_uses_top_5_only():
+    # 6th track shouldn't outvote the first 5.
+    tracks = [make_track(label="Pole Group") for _ in range(5)] + [
+        make_track(label="Tresor"),
+        make_track(label="Tresor"),
+        make_track(label="Tresor"),
+    ]
+    label, _ = _extract_source_label_genre(tracks)
+    assert label == "Pole Group"
+
+
+def test_extract_source_label_genre_empty():
+    label, genre = _extract_source_label_genre([])
+    assert label is None
+    assert genre is None

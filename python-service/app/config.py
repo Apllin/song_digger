@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     cosine_club_api_key: str = "cosine_6rxVmKV8_ztVO6i3UyqanGuJSlVEsblk2kNpAwkqV"
     discogs_token: str = "eOgJIsfofGaBPEdbNNeNBnWOSyJXTxijlwqzKEFc"
+    # Empty by default — adapter no-ops when missing.
+    yandex_music_token: str = ""
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 
