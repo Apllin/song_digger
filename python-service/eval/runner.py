@@ -210,6 +210,18 @@ async def main() -> int:
     parser.add_argument("--filter", help="substring match against seed id")
     parser.add_argument("--baseline", help="path to a previous run JSON for diff")
     parser.add_argument("--out", help="output path for this run (default: timestamped)")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help=(
+            "max seeds in flight at once. Default 1 (serial) — upstream "
+            "adapters (YTM, Cosine) rate-limit aggressively, and parallel "
+            "fan-out causes spurious status=error on a fraction of seeds. "
+            "Bump only when you trust the seed list to fit inside upstream "
+            "quotas."
+        ),
+    )
     args = parser.parse_args()
 
     if not GOLDEN_SET_PATH.exists():
@@ -224,11 +236,16 @@ async def main() -> int:
         print("No seeds matched filter (or all seeds are placeholders)", file=sys.stderr)
         return 1
 
-    print(f"Running {len(seeds)} seeds against {args.web_url}")
+    print(f"Running {len(seeds)} seeds against {args.web_url} (concurrency={args.concurrency})")
 
     async with httpx.AsyncClient() as client:
-        tasks = [_run_seed(client, args.web_url, s) for s in seeds]
-        results = await asyncio.gather(*tasks)
+        sem = asyncio.Semaphore(args.concurrency)
+
+        async def _gated(seed: dict) -> dict:
+            async with sem:
+                return await _run_seed(client, args.web_url, seed)
+
+        results = await asyncio.gather(*(_gated(s) for s in seeds))
 
     _print_table(results)
 
