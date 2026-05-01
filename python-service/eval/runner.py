@@ -1,11 +1,17 @@
 """
 Eval harness runner — measures search quality against a labeled golden set.
 
+The runner drives the user-facing search path: POST /api/search on the web
+service, then polls GET /api/search/{id} until status="done", then reads the
+ranked `tracks` (which have already been through RRF fusion + post-RRF nudges
++ artist diversification in the web aggregator). The Python /similar endpoint
+returns per-source lists only; it is not the place to measure final ranking.
+
 Usage:
     .venv/bin/python -m eval.runner
     .venv/bin/python -m eval.runner --filter mulero
     .venv/bin/python -m eval.runner --baseline eval/runs/2025-01-15.json
-    .venv/bin/python -m eval.runner --service-url http://localhost:8000
+    .venv/bin/python -m eval.runner --web-url http://localhost:3000
 
 Output:
     - Per-seed nDCG@10 table on stdout
@@ -41,15 +47,26 @@ RUNS_DIR.mkdir(exist_ok=True)
 
 def _matches(result_artist: str, result_title: str,
              label_query: str) -> bool:
-    """A result matches a label entry if artist is the same and title overlaps."""
-    if " - " not in label_query:
-        return False
-    label_artist, label_title = [s.strip() for s in label_query.split(" - ", 1)]
-    if not _same_artist(result_artist, label_artist):
-        return False
-    a = _normalize_title(result_title).lower()
-    b = _normalize_title(label_title).lower()
-    return a == b or a in b or b in a
+    """A result matches a label entry by artist (and optionally by title).
+
+    Two label-query shapes are supported, per the golden-set convention:
+
+    1. Artist-only: ``"Reeko"`` — matches any track by that artist. This is the
+       default form because label-mate / DJ-support relationships are about the
+       artist, not a specific catalogue number.
+    2. Artist + track: ``"Reeko - Faceless"`` — matches only that specific
+       recording. Use when a single track has unusual significance and other
+       releases by the same artist would not count.
+    """
+    if " - " in label_query:
+        label_artist, label_title = [s.strip() for s in label_query.split(" - ", 1)]
+        if not _same_artist(result_artist, label_artist):
+            return False
+        a = _normalize_title(result_title).lower()
+        b = _normalize_title(label_title).lower()
+        return a == b or a in b or b in a
+
+    return _same_artist(result_artist, label_query.strip())
 
 
 def _classify(result: dict, seed: dict) -> GradeLabel:
@@ -68,25 +85,55 @@ def _classify(result: dict, seed: dict) -> GradeLabel:
 
 # ── Search invocation ──────────────────────────────────────────────────────────
 
-async def _run_seed(client: httpx.AsyncClient, service_url: str, seed: dict) -> dict:
-    """Hit the production /similar endpoint with this seed's query, classify results."""
-    query = seed["query"]
-    if " - " not in query:
-        artist, track = query, None
-    else:
-        artist, track = [s.strip() for s in query.split(" - ", 1)]
+# Web → Python timeout is 90s; allow margin for cache hydration, persistence,
+# and the Bandcamp 4s adapter timeout. Per-seed worst case stays under 2 min.
+_POLL_INTERVAL_S = 0.5
+_POLL_TIMEOUT_S = 120
 
-    body = {
-        "input": query,
-        "artist": artist,
-        "track": track,
-        "limit_per_source": 40,
-    }
+
+async def _run_seed(client: httpx.AsyncClient, web_url: str, seed: dict) -> dict:
+    """Drive a search through the web API and classify the ranked results.
+
+    POST /api/search returns immediately with a search id; the actual fan-out
+    runs as a background task. We poll GET /api/search/{id} until status flips
+    to "done" (or "error"), then read `tracks` — already RRF-fused, nudged,
+    and diversified by the web aggregator.
+    """
+    query = seed["query"]
 
     try:
-        resp = await client.post(f"{service_url}/similar", json=body, timeout=120)
-        resp.raise_for_status()
-        data = resp.json()
+        post_resp = await client.post(
+            f"{web_url}/api/search", json={"input": query}, timeout=10
+        )
+        post_resp.raise_for_status()
+        search_id = post_resp.json()["id"]
+
+        deadline = asyncio.get_event_loop().time() + _POLL_TIMEOUT_S
+        data: dict | None = None
+        while asyncio.get_event_loop().time() < deadline:
+            poll = await client.get(f"{web_url}/api/search/{search_id}", timeout=10)
+            poll.raise_for_status()
+            data = poll.json()
+            if data.get("status") in ("done", "error"):
+                break
+            await asyncio.sleep(_POLL_INTERVAL_S)
+        else:
+            return {
+                "id": seed["id"],
+                "query": query,
+                "error": f"timed out after {_POLL_TIMEOUT_S}s waiting for search to complete",
+                "ndcg": 0.0,
+                "grades": [],
+            }
+
+        if data is None or data.get("status") == "error":
+            return {
+                "id": seed["id"],
+                "query": query,
+                "error": "search ended in status=error",
+                "ndcg": 0.0,
+                "grades": [],
+            }
     except Exception as e:
         return {
             "id": seed["id"],
@@ -108,29 +155,26 @@ async def _run_seed(client: httpx.AsyncClient, service_url: str, seed: dict) -> 
              "source": t.get("source"), "grade": grades[i] if i < len(grades) else None}
             for i, t in enumerate(tracks)
         ],
-        "tier": data.get("tier"),
-        "tier_label": data.get("tier_label"),
     }
 
 
 # ── Output ─────────────────────────────────────────────────────────────────────
 
 def _print_table(results: list[dict]) -> None:
-    print(f"{'seed':<30} {'tier':>6} {'nDCG@10':>10}  notes")
+    print(f"{'seed':<30} {'nDCG@10':>10}  notes")
     print("-" * 80)
     for r in results:
         if "error" in r:
-            print(f"{r['id'][:30]:<30} {'-':>6} {'ERROR':>10}  {r['error'][:40]}")
+            print(f"{r['id'][:30]:<30} {'ERROR':>10}  {r['error'][:60]}")
             continue
         relevant_count = sum(1 for g in r['grades'] if g == 'relevant')
         false_count = sum(1 for g in r['grades'] if g == 'false_friend')
         notes = f"rel={relevant_count} fp={false_count}"
-        tier = r.get('tier', '-')
-        print(f"{r['id'][:30]:<30} {tier:>6} {r['ndcg']:>10.4f}  {notes}")
+        print(f"{r['id'][:30]:<30} {r['ndcg']:>10.4f}  {notes}")
     print("-" * 80)
     valid = [r['ndcg'] for r in results if 'error' not in r]
     avg = sum(valid) / len(valid) if valid else 0.0
-    print(f"{'AVERAGE':<30} {'':>6} {avg:>10.4f}  ({len(valid)} seeds)")
+    print(f"{'AVERAGE':<30} {avg:>10.4f}  ({len(valid)} seeds)")
 
 
 def _print_diff(current: list[dict], baseline: list[dict]) -> None:
@@ -162,7 +206,7 @@ def _print_diff(current: list[dict], baseline: list[dict]) -> None:
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--service-url", default="http://localhost:8000")
+    parser.add_argument("--web-url", default="http://localhost:3000")
     parser.add_argument("--filter", help="substring match against seed id")
     parser.add_argument("--baseline", help="path to a previous run JSON for diff")
     parser.add_argument("--out", help="output path for this run (default: timestamped)")
@@ -180,10 +224,10 @@ async def main() -> int:
         print("No seeds matched filter (or all seeds are placeholders)", file=sys.stderr)
         return 1
 
-    print(f"Running {len(seeds)} seeds against {args.service_url}")
+    print(f"Running {len(seeds)} seeds against {args.web_url}")
 
     async with httpx.AsyncClient() as client:
-        tasks = [_run_seed(client, args.service_url, s) for s in seeds]
+        tasks = [_run_seed(client, args.web_url, s) for s in seeds]
         results = await asyncio.gather(*tasks)
 
     _print_table(results)
@@ -193,7 +237,7 @@ async def main() -> int:
     )
     out_path.write_text(json.dumps({
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service_url": args.service_url,
+        "web_url": args.web_url,
         "seed_count": len(results),
         "results": results,
     }, indent=2))
