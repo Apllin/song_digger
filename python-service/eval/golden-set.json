@@ -1,103 +1,133 @@
 {
-  "_comment": "Template for the song_digger eval set. Replace placeholder text with real tracks. Aim for 20-30 seeds total before relying on the metric. Distribution suggestions in 'extend-eval-set' skill.",
+  "_comment": "Golden set built from Discogs / Bandcamp / DeathTechno verification. For relevant/false_friend entries the convention is artist-only matching: the runner's _same_artist token comparison matches any track by that artist in the production output. Specific track titles are only used in seed queries (where a real seed track is required to drive /similar).",
   "_format_version": 1,
   "_metric": "nDCG@10 with grades: relevant=2, false_friend=0, unmarked=1",
+  "_validation_notes": [
+    "Seed tracks were verified to exist on Discogs/Bandcamp (April 2026 search).",
+    "Relevant artist lists are based on label-mate relationships and explicit DJ-support data (e.g. 'Linear System supported by Luke Slater, Ben Sims, Mulero, Rødhåd, Shifted, Sigha, Ben Klock, Marcel Dettmann' — DeathTechno artist page).",
+    "False_friends are deliberately picked as peak-time / festival-techno artists who would superficially share the 'techno' tag but represent a clearly different stylistic register.",
+    "Charlotte de Witte appears as a control seed: when she's the seed, peak-time peers SHOULD surface; when other seeds are queried, she should NOT surface."
+  ],
 
   "seeds": [
     {
-      "id": "mulero-classic",
-      "query": "Oscar Mulero - Black Propaganda",
-      "style_notes": "Classic Pole Group hypnotic techno, ~134 BPM, dark, minor key, long-form structure",
+      "id": "mulero-horses",
+      "query": "Oscar Mulero - Horses",
+      "style_notes": "Pole Group classic, hypnotic techno, ~134 BPM. Title track from the 2011 EP on Pole Group. Defining example of the Spanish hypnotic school — long-form, dark, deep.",
       "expected_tier": 1,
       "relevant": [
-        { "query": "Reeko - <track>", "reason": "Pole Group label, similar production aesthetic" },
-        { "query": "Exium - <track>", "reason": "Pole Group label-mate" },
-        { "query": "Ancient Methods - <track>", "reason": "Frequent collaborator, similar dark/industrial leaning" },
-        { "query": "Lewis Fautzi - <track>", "reason": "Pole Group, similar tempo/character" },
-        { "query": "Henning Baer - <track>", "reason": "Mord label, hypnotic-leaning techno" },
-        { "query": "Ascion - <track>", "reason": "Italian hypnotic techno scene, frequent label co-release" },
-        { "query": "Tensal - <track>", "reason": "Pole Group affiliate" },
-        { "query": "Christian Wünsch - <track>", "reason": "Pole Group founder/co-runner" }
+        { "query": "Reeko", "reason": "Pole Group co-founder, similar production aesthetic, frequent collaborator with Mulero" },
+        { "query": "Exium", "reason": "Pole Group team (Asturian duo, frontline alongside Mulero)" },
+        { "query": "Christian Wünsch", "reason": "Pole Group co-founder, Mulero's 'Damage Done' collaboration partner" },
+        { "query": "Architectural", "reason": "Pole Group team member" },
+        { "query": "Lewis Fautzi", "reason": "Pole Group regular, similar tempo and mood" },
+        { "query": "Tensal", "reason": "Pole Group affiliate, remixed Mulero's 'Rotar' on PoleGroup" },
+        { "query": "Ancient Methods", "reason": "Industrial-hypnotic bridge, frequent collaborator on Tresor showcases" },
+        { "query": "Developer", "reason": "Modularz, has co-released on Pole Group with Reeko (Pole Group 23, 2014)" },
+        { "query": "Kwartz", "reason": "Pole Group artist (Pole Group 21, 2015)" }
       ],
       "false_friends": [
-        { "query": "Charlotte de Witte - <track>", "reason": "peak-time techno, not hypnotic" },
-        { "query": "I Hate Models - <track>", "reason": "hard techno / trance, totally different character" },
-        { "query": "Boris Brejcha - <track>", "reason": "minimal/high-tech-minimal, melodic, not the right mood" },
-        { "query": "Adam Beyer - <track>", "reason": "Drumcode peak-time, mainstream" },
-        { "query": "Tale of Us - <track>", "reason": "melodic techno, totally different aesthetic" }
+        { "query": "Charlotte de Witte", "reason": "Peak-time techno, KNTXT label — different audience and energy curve" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time, mainstream festival sound" },
+        { "query": "I Hate Models", "reason": "Hard techno / trance hybrid, totally different character" },
+        { "query": "Tale Of Us", "reason": "Melodic techno, completely different aesthetic" },
+        { "query": "Boris Brejcha", "reason": "High-tech minimal, melodic — far from hypnotic" }
       ]
     },
 
     {
-      "id": "surgeon-industrial",
-      "query": "Surgeon - Krautrock",
-      "style_notes": "Birmingham industrial techno, ~138 BPM, mechanical, sparse, repetitive",
+      "id": "rene-wise-pleasure-note",
+      "query": "Rene Wise - Pleasure Note",
+      "style_notes": "UK/Portugal-based, hypnotic techno with rolling grooves and high BPMs (~135-140). Released on Sk_Eleven (2021). Stylistic peers include Mote Evolver / Klockworks school, supported by Rødhåd, DVS1, Blawan.",
       "expected_tier": 1,
       "relevant": [
-        { "query": "Regis - <track>", "reason": "Birmingham scene, Downwards label" },
-        { "query": "Female (artist) - <track>", "reason": "Surgeon's alias / scene peer" },
-        { "query": "British Murder Boys - <track>", "reason": "Surgeon + Regis project" },
-        { "query": "Ancient Methods - <track>", "reason": "Industrial techno bridge to hypnotic" },
-        { "query": "Perc - <track>", "reason": "British industrial techno" },
-        { "query": "Truss - <track>", "reason": "Perc Trax / industrial leaning" },
-        { "query": "AnD - <track>", "reason": "Inner Surface, industrial" },
-        { "query": "Headless Horseman - <track>", "reason": "Industrial techno" }
+        { "query": "Luke Slater", "reason": "Rene Wise's stated musical hero, owner of Mote Evolver where Rene released" },
+        { "query": "DVS1", "reason": "Direct supporter of Rene Wise's music; same hypnotic-rolling-groove school" },
+        { "query": "Rødhåd", "reason": "Direct supporter; also collaborated with Rene Wise (WSNWG007)" },
+        { "query": "Ben Klock", "reason": "Rene Wise's stated influence, Berghain/Klockworks scene peer" },
+        { "query": "Stef Mendesidis", "reason": "Klockworks regular, similar tempo and rolling-groove approach" },
+        { "query": "Etapp Kyle", "reason": "Klockworks artist, similar techno register" },
+        { "query": "Blawan", "reason": "Direct supporter of Rene Wise; UK techno peer" },
+        { "query": "Quelza", "reason": "Same Mord scene (Mord x RYC compilation alongside Rene Wise)" },
+        { "query": "Altinbas", "reason": "Same generation, similar stylistic register, often appears on shared releases" }
       ],
       "false_friends": [
-        { "query": "Reinier Zonneveld - <track>", "reason": "live techno but melodic/peak-time" },
-        { "query": "Dax J - <track>", "reason": "harder peak-time, different character" },
-        { "query": "Fideles - <track>", "reason": "melodic techno, completely off" }
+        { "query": "Charlotte de Witte", "reason": "Peak-time, brand-driven, different scene entirely" },
+        { "query": "Amelie Lens", "reason": "Peak-time techno, festival-oriented" },
+        { "query": "Reinier Zonneveld", "reason": "Live techno but melodic and high-energy peak-time" },
+        { "query": "Tale Of Us", "reason": "Melodic techno, opposite end of spectrum" }
       ]
     },
 
     {
-      "id": "deepchord-dub",
-      "query": "Deepchord - Atmospherica",
-      "style_notes": "Dub techno, ~125 BPM, deep, ambient-leaning, long reverbs, sparse beat. Boundary case — should NOT recommend hypnotic techno just because of the 'techno' tag.",
+      "id": "linear-system-guanine",
+      "query": "Linear System - Guanine",
+      "style_notes": "Spanish project (since 2020), Costa Rica-based. Hypnotic techno with strong basslines, cold atmospheres, shamanic rhythms. Releases on Edit Select, Dynamic Reflection, Planet Rhythm, Symbolism, Modularz, Molecular Recordings. Track from Molecular 028 (2022).",
       "expected_tier": 1,
       "relevant": [
-        { "query": "Echospace - <track>", "reason": "Same artist's other project" },
-        { "query": "Rod Modell - <track>", "reason": "Deepchord member, solo work" },
-        { "query": "Convextion - <track>", "reason": "Texas dub techno, related" },
-        { "query": "Fluxion - <track>", "reason": "Dub techno classic" },
-        { "query": "Yagya - <track>", "reason": "Icelandic dub/ambient techno" },
-        { "query": "Pop Ambient series - <track>", "reason": "Kompakt ambient lineage" }
+        { "query": "Luke Slater", "reason": "Direct supporter of Linear System (per DeathTechno artist page)" },
+        { "query": "Ben Sims", "reason": "Direct supporter of Linear System" },
+        { "query": "Oscar Mulero", "reason": "Direct supporter of Linear System; same hypnotic techno register" },
+        { "query": "Rødhåd", "reason": "Direct supporter of Linear System" },
+        { "query": "Shifted", "reason": "Direct supporter of Linear System; Avian / Mote Evolver scene" },
+        { "query": "Sigha", "reason": "Direct supporter of Linear System; Token / Avian peer" },
+        { "query": "Ben Klock", "reason": "Direct supporter of Linear System" },
+        { "query": "Marcel Dettmann", "reason": "Direct supporter of Linear System; Berghain peer" },
+        { "query": "Developer", "reason": "Modularz boss, defines that label's hypnotic-dub crossover; co-released on Pole Group" }
       ],
       "false_friends": [
-        { "query": "Oscar Mulero - <track>", "reason": "peak-time hypnotic, despite 'techno' tag, very different mood" },
-        { "query": "Ben Klock - <track>", "reason": "Berghain peak-time techno" },
-        { "query": "Marcel Dettmann - <track>", "reason": "Berghain peak-time" }
+        { "query": "Charlotte de Witte", "reason": "Peak-time festival techno, different audience" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Boris Brejcha", "reason": "High-tech minimal, melodic" },
+        { "query": "Tale Of Us", "reason": "Melodic techno, opposite intent" }
       ]
     },
 
     {
-      "id": "_PLACEHOLDER_seed_4",
-      "query": "<Artist> - <Track>",
-      "style_notes": "<describe the sonic character: subgenre, BPM, mood, label scene if relevant>",
+      "id": "ignez-veil",
+      "query": "Ignez - Veil",
+      "style_notes": "Berlin-based DJ/producer, originally Amsterdam; owner of Somov Records. Hypnotic techno with organic textures and 'oceanic' atmospheres. Veil is the opener of SMV001 (2020), the label's first release. Also affiliated with Sk_Eleven (Anahata EP).",
       "expected_tier": 1,
       "relevant": [
-        { "query": "<Artist> - <Track>", "reason": "<why is this a good match>" }
+        { "query": "Rene Wise", "reason": "Direct connection: Rene Wise remixed SMV004 for Somov Records (2021)" },
+        { "query": "Arkan", "reason": "Same era and Sk_Eleven scene, similar deep-hypnotic register" },
+        { "query": "Cravo", "reason": "Same modern hypnotic-techno generation, similar release contexts" },
+        { "query": "Quelza", "reason": "Same generation of hypnotic-industrial techno producers" },
+        { "query": "Stef Mendesidis", "reason": "Klockworks scene, similar register" },
+        { "query": "Hadone", "reason": "Modern hypnotic-industrial, peer in current scene" },
+        { "query": "Hector Oaks", "reason": "Berlin scene, peer-level hypnotic player" },
+        { "query": "Etapp Kyle", "reason": "Klockworks artist, similar techno register" }
       ],
       "false_friends": [
-        { "query": "<Artist> - <Track>", "reason": "<why this looks similar but isn't>" }
+        { "query": "Charlotte de Witte", "reason": "Peak-time, different scene entirely" },
+        { "query": "FJAAK", "reason": "Hard techno / breakbeat — adjacent but different intent" },
+        { "query": "Tale Of Us", "reason": "Melodic techno, opposite end of spectrum" },
+        { "query": "Reinier Zonneveld", "reason": "Live peak-time, festival circuit" }
+      ]
+    },
+
+    {
+      "id": "_control_charlotte_apollo",
+      "query": "Charlotte de Witte - Apollo",
+      "style_notes": "CONTROL SEED — peak-time techno, KNTXT label, ~140-145 BPM. Track from Apollo EP (KNTXT017). Used to verify the system: (a) does NOT recommend hypnotic peers when seed is peak-time, AND (b) DOES recommend peak-time peers when seed IS peak-time. Mirror test of the false_friends used in hypnotic seeds.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Amelie Lens", "reason": "Direct peer, Belgian scene, similar peak-time aesthetic" },
+        { "query": "Adam Beyer", "reason": "Drumcode boss, peak-time techno reference point" },
+        { "query": "Reinier Zonneveld", "reason": "Live peak-time techno, similar audience and energy" },
+        { "query": "I Hate Models", "reason": "Modern peak-time / hard techno crossover" },
+        { "query": "Dax J", "reason": "Peak-time, slightly harder edge" },
+        { "query": "Enrico Sangiuliano", "reason": "Peak-time, Drumcode regular" },
+        { "query": "FJAAK", "reason": "Hard techno crossover, peak-time energy" },
+        { "query": "Pleasurekraft", "reason": "Peak-time techno with melodic elements" }
+      ],
+      "false_friends": [
+        { "query": "Oscar Mulero", "reason": "Hypnotic techno, different audience and approach — control inversion" },
+        { "query": "Donato Dozzy", "reason": "Deep hypnotic, opposite end of techno spectrum" },
+        { "query": "Linear System", "reason": "Hypnotic techno, opposite intent" },
+        { "query": "Reeko", "reason": "Pole Group hypnotic, opposite scene" },
+        { "query": "Rene Wise", "reason": "Hypnotic techno with rolling grooves, different audience" }
       ]
     }
-  ],
-
-  "_seed_distribution_targets": {
-    "_note": "Aim for this distribution. Use the extend-eval-set skill to add deliberately.",
-    "classic_hypnotic": "6-8 seeds (Mulero, Reeko, Exium, Ancient Methods, etc)",
-    "industrial_techno": "4-5 seeds (Surgeon, Perc, Ansome, Headless Horseman)",
-    "dub_techno": "4-5 seeds (Deepchord, Echospace, Rod Modell, Yagya) — boundary cases",
-    "peak_time_as_false_friend_control": "3-4 seeds (Charlotte de Witte, I Hate Models, Adam Beyer) — system should NOT recommend these on hypnotic queries",
-    "underground_low_popularity": "2-3 seeds (Ascion, Lewis Fautzi, Henning Baer, lesser-known)",
-    "russian_or_cyrillic": "2-3 seeds — encoding edge case + scene coverage"
-  },
-
-  "_filling_guide": {
-    "relevant_count_target": "8-10 per seed. Less than 6 hurts metric stability.",
-    "false_friend_count_target": "4-6 per seed. These are the most informative — they catch failure modes.",
-    "track_format": "'Artist - Track' string. Use the form most likely to appear in production output.",
-    "case_sensitivity": "Match logic is case-insensitive, but keep your originals consistent for readability."
-  }
+  ]
 }
