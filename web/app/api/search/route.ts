@@ -46,13 +46,6 @@ async function hydrateFromCache(tracks: TrackMeta[]): Promise<TrackMeta[]> {
   });
 }
 
-const FeedbackTrackSchema = z.object({
-  bpm: z.number().nullable().optional(),
-  key: z.string().nullable().optional(),
-  energy: z.number().nullable().optional(),
-  artist: z.string(),
-});
-
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
   filters: z
@@ -65,7 +58,6 @@ const SearchRequestSchema = z.object({
     .optional(),
   feedback: z
     .object({
-      liked: z.array(FeedbackTrackSchema),
       disliked: z.array(z.object({ artist: z.string() })),
     })
     .optional(),
@@ -224,16 +216,7 @@ async function runSearch(
     tracks: sl.tracks.map((t) => hydratedByUrl.get(t.sourceUrl) ?? t),
   }));
 
-  const aggregated = aggregateTracks(
-    hydratedLists,
-    filters,
-    sourceBpm,
-    sourceKey,
-    pythonResult.source_energy,
-    feedback,
-    pythonResult.source_label,
-    pythonResult.source_genre,
-  );
+  const aggregated = aggregateTracks(hydratedLists, filters, feedback);
   await saveTracks(searchId, aggregated);
 
   await prisma.searchQuery.update({

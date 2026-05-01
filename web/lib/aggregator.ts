@@ -10,7 +10,6 @@ export interface SearchFilters {
 }
 
 export interface TrackFeedback {
-  liked: Array<{ bpm?: number | null; key?: string | null; energy?: number | null; artist: string }>;
   disliked: Array<{ artist: string }>;
 }
 
@@ -25,12 +24,6 @@ const RRF_K = 60;
 // scale. Tune via eval.
 const DISLIKED_ARTIST_PENALTY = 0.012;
 const EMBED_BONUS = 0.0008;
-
-// Per-liked-track blending weight toward the liked centroid (caps at MAX).
-// Used by computeEffectiveSource to derive an effective BPM/key/energy that
-// downstream filters and post-RRF adjustments compare against.
-const LIKED_WEIGHT_PER_TRACK = 0.12;
-const LIKED_WEIGHT_MAX = 0.65;
 
 export interface FusedCandidate extends TrackMeta {
   rrfScore: number;
@@ -66,48 +59,6 @@ export function normalizeArtist(artist: string): string {
 
 function identityKey(t: TrackMeta): string {
   return `${normalizeArtist(t.artist)}||${normalizeTitle(t.title)}`;
-}
-
-// ── Effective source metadata (liked-centroid blend) ─────────────────────────
-// Blends source BPM/key/energy with the liked-track centroid so that
-// post-RRF adjustments and BPM filters reflect what the user actually likes.
-function computeEffectiveSource(
-  sourceBpm: number | null | undefined,
-  sourceKey: string | null | undefined,
-  sourceEnergy: number | null | undefined,
-  feedback: TrackFeedback,
-): { bpm: number | null; key: string | null; energy: number | null } {
-  const { liked } = feedback;
-  if (!liked.length) {
-    return { bpm: sourceBpm ?? null, key: sourceKey ?? null, energy: sourceEnergy ?? null };
-  }
-
-  const bpms = liked.filter((t) => t.bpm != null).map((t) => t.bpm!);
-  const energies = liked.filter((t) => t.energy != null).map((t) => t.energy!);
-  const keys = liked.filter((t) => t.key != null).map((t) => t.key!);
-
-  const likedBpm = bpms.length ? bpms.reduce((a, b) => a + b, 0) / bpms.length : null;
-  const likedEnergy = energies.length ? energies.reduce((a, b) => a + b, 0) / energies.length : null;
-
-  const keyCounts = new Map<string, number>();
-  for (const k of keys) keyCounts.set(k, (keyCounts.get(k) ?? 0) + 1);
-  const likedKey = keys.length
-    ? [...keyCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
-    : null;
-
-  const weight = Math.min(LIKED_WEIGHT_MAX, liked.length * LIKED_WEIGHT_PER_TRACK);
-
-  return {
-    bpm:
-      likedBpm != null && sourceBpm != null
-        ? sourceBpm * (1 - weight) + likedBpm * weight
-        : likedBpm ?? sourceBpm ?? null,
-    key: likedKey != null && weight >= 0.5 ? likedKey : (sourceKey ?? null),
-    energy:
-      likedEnergy != null && sourceEnergy != null
-        ? sourceEnergy * (1 - weight) + likedEnergy * weight
-        : likedEnergy ?? sourceEnergy ?? null,
-  };
 }
 
 // ── Metadata merge across sources ────────────────────────────────────────────
@@ -189,27 +140,12 @@ function diversifyArtists(
 export function aggregateTracks(
   sourceLists: SourceList[],
   filters: SearchFilters,
-  sourceBpm?: number | null,
-  sourceKey?: string | null,
-  sourceEnergy?: number | null,
   feedback?: TrackFeedback,
-  // sourceLabel/sourceGenre kept in the signature so callers don't churn,
-  // but RRF doesn't use them — label/genre signal is captured implicitly
-  // when the same track surfaces in multiple sources.
-  _sourceLabel?: string | null,
-  _sourceGenre?: string | null,
 ): TrackMeta[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 
-  // 2. Effective metadata for downstream filters (currently only used by
-  //    BPM range derivation when the filter is unset).
-  const effective = feedback
-    ? computeEffectiveSource(sourceBpm, sourceKey, sourceEnergy, feedback)
-    : { bpm: sourceBpm ?? null, key: sourceKey ?? null, energy: sourceEnergy ?? null };
-  void effective; // reserved for future use
-
-  // 3. Hard BPM range filter — drop tracks outside the user's range. Tracks
+  // 2. Hard BPM range filter — drop tracks outside the user's range. Tracks
   //    with no BPM are kept (metadata gap should not silently exclude).
   const filtered = fused.filter((t) => {
     if (
@@ -222,7 +158,7 @@ export function aggregateTracks(
     return true;
   });
 
-  // 4. Post-RRF nudges: dislike penalty, embed bonus.
+  // 3. Post-RRF nudges: dislike penalty, embed bonus.
   const dislikedArtists = feedback?.disliked.length
     ? new Set(feedback.disliked.map((t) => normalizeArtist(t.artist)))
     : undefined;
@@ -236,13 +172,13 @@ export function aggregateTracks(
     }
   }
 
-  // 5. Re-sort after nudges. Surface the rrfScore on `score` so existing
+  // 4. Re-sort after nudges. Surface the rrfScore on `score` so existing
   //    consumers (DB persistence, UI) keep working.
   filtered.sort((a, b) => b.rrfScore - a.rrfScore);
   for (const t of filtered) {
     t.score = t.rrfScore;
   }
 
-  // 6. Artist diversification — stops 3+ consecutive same-artist tracks.
+  // 5. Artist diversification — stops 3+ consecutive same-artist tracks.
   return diversifyArtists(filtered);
 }

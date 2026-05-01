@@ -191,15 +191,15 @@ describe("aggregateTracks — feedback", () => {
     // Both at rank 1 in their source → tied RRF score. Penalty flips it.
     const a = makeTrack({ sourceUrl: "u1", artist: "Hated" });
     const b = makeTrack({ sourceUrl: "u2", artist: "Loved" });
-    const feedback: TrackFeedback = { liked: [], disliked: [{ artist: "Hated" }] };
+    const feedback: TrackFeedback = { disliked: [{ artist: "Hated" }] };
 
     const without = aggregateTracks(
       [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {}, null, null, null,
+      {},
     );
     const with_ = aggregateTracks(
       [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {}, null, null, null, feedback,
+      {}, feedback,
     );
 
     // Without feedback the order is RRF-tied → first-inserted wins (Hated).
@@ -212,13 +212,12 @@ describe("aggregateTracks — feedback", () => {
     const a = makeTrack({ sourceUrl: "u1", artist: "DJ-Stingray!" });
     const b = makeTrack({ sourceUrl: "u2", artist: "Other" });
     const feedback: TrackFeedback = {
-      liked: [],
       disliked: [{ artist: "dj stingray" }],
     };
 
     const result = aggregateTracks(
       [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {}, null, null, null, feedback,
+      {}, feedback,
     );
     expect(result[0].artist).toBe("Other");
   });
@@ -229,8 +228,8 @@ describe("aggregateTracks — feedback", () => {
       makeTrack({ sourceUrl: "u2", artist: "B", bpm: 142 }),
     ];
     const lists = [listOf("cosine_club", ...tracks)];
-    const a = aggregateTracks(lists, {}, 140, null, null);
-    const b = aggregateTracks(lists, {}, 140, null, null, undefined);
+    const a = aggregateTracks(lists, {});
+    const b = aggregateTracks(lists, {}, undefined);
     expect(a.map((t) => t.sourceUrl)).toEqual(b.map((t) => t.sourceUrl));
     expect(a.map((t) => t.score)).toEqual(b.map((t) => t.score));
   });
