@@ -4,7 +4,47 @@ import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
 import { aggregateTracks, type SearchFilters, type TrackFeedback } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
-import type { TrackMeta } from "@/lib/python-client";
+import { enqueueBackgroundEnrich } from "@/lib/enrichment-queue";
+import type { SourceList, TrackMeta } from "@/lib/python-client";
+
+// Must match python-service INLINE_BUDGET — tracks beyond this index were
+// not enriched inline and become candidates for the background queue.
+const INLINE_BUDGET = 6;
+
+/**
+ * For each Python track, fill BPM/key/energy/genre/label from the Track row
+ * if Python didn't return one. Cache loses to Python on non-null values
+ * (cosine results are fresh; older Postgres rows may be stale).
+ */
+async function hydrateFromCache(tracks: TrackMeta[]): Promise<TrackMeta[]> {
+  if (!tracks.length) return tracks;
+
+  const cached = await prisma.track.findMany({
+    where: { sourceUrl: { in: tracks.map((t) => t.sourceUrl) } },
+    select: {
+      sourceUrl: true,
+      bpm: true,
+      key: true,
+      energy: true,
+      genre: true,
+      label: true,
+    },
+  });
+  const cacheMap = new Map(cached.map((c) => [c.sourceUrl, c]));
+
+  return tracks.map((t) => {
+    const c = cacheMap.get(t.sourceUrl);
+    if (!c) return t;
+    return {
+      ...t,
+      bpm: t.bpm ?? c.bpm ?? undefined,
+      key: t.key ?? c.key ?? undefined,
+      energy: t.energy ?? c.energy ?? undefined,
+      genre: t.genre ?? c.genre ?? undefined,
+      label: t.label ?? c.label ?? undefined,
+    };
+  });
+}
 
 const FeedbackTrackSchema = z.object({
   bpm: z.number().nullable().optional(),
@@ -144,7 +184,8 @@ async function runSearch(
   input: string,
   artist: string,
   track: string | null,
-  filters: SearchFilters
+  filters: SearchFilters,
+  feedback: TrackFeedback | undefined,
 ) {
   // ── Fetch from Python (Cosine.club + YTM + Bandcamp "you may also like") ───
   // Bandcamp runs inside Python with a 4s timeout so it never blocks the response.
@@ -173,12 +214,25 @@ async function runSearch(
   sourceBpm = pythonResult.source_bpm;
   sourceKey = pythonResult.source_key;
 
+  // Hydrate each source list's tracks from cache before fusion so RRF can
+  // merge metadata across sources with the freshest values available.
+  const allTracks = pythonResult.source_lists.flatMap((sl) => sl.tracks);
+  const hydratedFlat = await hydrateFromCache(allTracks);
+  const hydratedByUrl = new Map(hydratedFlat.map((t) => [t.sourceUrl, t]));
+  const hydratedLists: SourceList[] = pythonResult.source_lists.map((sl) => ({
+    source: sl.source,
+    tracks: sl.tracks.map((t) => hydratedByUrl.get(t.sourceUrl) ?? t),
+  }));
+
   const aggregated = aggregateTracks(
-    pythonResult.tracks,
+    hydratedLists,
     filters,
     sourceBpm,
     sourceKey,
     pythonResult.source_energy,
+    feedback,
+    pythonResult.source_label,
+    pythonResult.source_genre,
   );
   await saveTracks(searchId, aggregated);
 
@@ -190,4 +244,16 @@ async function runSearch(
       sourceKey: sourceKey ?? undefined,
     },
   });
+
+  // Background fill: tracks beyond the inline budget that still lack BPM/key.
+  // Persists into Track so the next search hits the cache instead of Beatport.
+  const toEnrich = aggregated
+    .slice(INLINE_BUDGET)
+    .filter((t) => t.bpm == null || t.key == null);
+
+  if (toEnrich.length) {
+    void enqueueBackgroundEnrich(toEnrich).catch((err) => {
+      console.error(`[Search] background enrichment failed for ${searchId}:`, err);
+    });
+  }
 }

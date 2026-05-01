@@ -1,4 +1,6 @@
-import type { TrackMeta } from "@/lib/python-client";
+import type { SourceList, TrackMeta } from "@/lib/python-client";
+
+export type { SourceList } from "@/lib/python-client";
 
 export interface SearchFilters {
   bpmMin?: number;
@@ -12,14 +14,63 @@ export interface TrackFeedback {
   disliked: Array<{ artist: string }>;
 }
 
+// ── RRF constants ────────────────────────────────────────────────────────────
+// Cormack 2009 default. RRF score = Σ 1 / (k + rank). Larger k flattens the
+// curve (rank-1 vs rank-2 contribute more equally); smaller k makes the head
+// sharper.
+const RRF_K = 60;
+
+// Post-RRF nudges. RRF scores are tiny (~0.016 per top-rank appearance), so
+// these constants are calibrated to that scale, not the old [0,1] weighted-sum
+// scale. Tune via eval.
+const DISLIKED_ARTIST_PENALTY = 0.012;
+const EMBED_BONUS = 0.0008;
+
 // Per-liked-track blending weight toward the liked centroid (caps at MAX).
-// E.g. 3 liked tracks → 0.36 weight on centroid, source gets 0.64.
+// Used by computeEffectiveSource to derive an effective BPM/key/energy that
+// downstream filters and post-RRF adjustments compare against.
 const LIKED_WEIGHT_PER_TRACK = 0.12;
 const LIKED_WEIGHT_MAX = 0.65;
 
-// Score penalty applied to any track whose artist was disliked.
-const DISLIKED_ARTIST_PENALTY = 0.12;
+export interface FusedCandidate extends TrackMeta {
+  rrfScore: number;
+  appearances: { source: string; rank: number }[];
+}
 
+// ── Title normalisation ──────────────────────────────────────────────────────
+// Mirrors python-service _normalize_title: lower-cased, with whitelisted
+// recording-equivalence suffixes (Original Mix, Extended, Radio Edit, Remaster,
+// Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped. Anything not in the
+// whitelist (Remix, Dub, Live, VIP, Instrumental, …) survives — those identify
+// distinct recordings.
+const TITLE_STRIP_PATTERNS: RegExp[] = [
+  /\s*[\(\[]original mix[\)\]]/gi,
+  /\s*[\(\[]extended(?:\s+mix)?[\)\]]/gi,
+  /\s*[\(\[]radio\s+(?:edit|mix)[\)\]]/gi,
+  /\s*[\(\[](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[\)\]]/gi,
+  /\s*[\(\[](?:feat\.|ft\.|featuring)\s+[^\)\]]*[\)\]]/gi,
+  /\s*[\(\[](?:prod\.|produced\s+by)\s+[^\)\]]*[\)\]]/gi,
+  /\s*[\(\[](?:clean|explicit)[\)\]]/gi,
+  /\s*[\(\[]bonus\s+track[\)\]]/gi,
+];
+
+export function normalizeTitle(s: string): string {
+  let out = s.toLowerCase().trim();
+  for (const pat of TITLE_STRIP_PATTERNS) out = out.replace(pat, "");
+  return out.trim();
+}
+
+export function normalizeArtist(artist: string): string {
+  return artist.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function identityKey(t: TrackMeta): string {
+  return `${normalizeArtist(t.artist)}||${normalizeTitle(t.title)}`;
+}
+
+// ── Effective source metadata (liked-centroid blend) ─────────────────────────
+// Blends source BPM/key/energy with the liked-track centroid so that
+// post-RRF adjustments and BPM filters reflect what the user actually likes.
 function computeEffectiveSource(
   sourceBpm: number | null | undefined,
   sourceKey: string | null | undefined,
@@ -51,7 +102,6 @@ function computeEffectiveSource(
       likedBpm != null && sourceBpm != null
         ? sourceBpm * (1 - weight) + likedBpm * weight
         : likedBpm ?? sourceBpm ?? null,
-    // Switch to liked majority key only once liked tracks dominate (weight ≥ 0.5)
     key: likedKey != null && weight >= 0.5 ? likedKey : (sourceKey ?? null),
     energy:
       likedEnergy != null && sourceEnergy != null
@@ -60,169 +110,67 @@ function computeEffectiveSource(
   };
 }
 
-// ── Scoring weights — all signals normalized to [0, 1] ───────────────────────
-// Tune these constants to adjust the relative importance of each signal.
-// They do NOT need to sum to 1 — final score is a weighted sum, not a
-// probability distribution.
-const WEIGHTS = {
-  audioSimilarity: 0.40, // cosine embedding similarity — primary signal, must dominate
-  bpm:             0.25, // BPM proximity — critical for DJ mixing
-  key:             0.13, // harmonic compatibility on the Camelot wheel
-  energy:          0.07, // energy level match
-  sourceRank:      0.13, // position in source result list (earlier = more relevant)
-  embed:           0.02, // tiebreaker — has a playable inline embed
-} as const;
-
-// Must match limit_per_source passed to the Python service in the search route.
-const SOURCE_RANK_LIMIT = 40;
-
-// ── BPM scoring ───────────────────────────────────────────────────────────────
-// Gaussian decay around refBpm. Supports tempo doubling/halving so that
-// 70 BPM ↔ 140 BPM counts as a close match — DJs frequently pitch-shift
-// between harmonic subdivisions of the same groove.
-export function calculateBpmScore(
-  trackBpm: number,
-  refBpm: number,
-  sigma = 12,
-): number {
-  const delta = Math.min(
-    Math.abs(trackBpm - refBpm),
-    Math.abs(trackBpm - refBpm * 2),
-    Math.abs(trackBpm - refBpm / 2),
-  );
-  return Math.exp(-(delta * delta) / (2 * sigma * sigma));
+// ── Metadata merge across sources ────────────────────────────────────────────
+// When the same identity appears in multiple sources, prefer the first non-null
+// value already on the candidate; fill remaining nulls from the new track.
+function mergeMetadata(dest: FusedCandidate, src: TrackMeta): void {
+  if (dest.bpm == null && src.bpm != null) dest.bpm = src.bpm;
+  if (dest.key == null && src.key != null) dest.key = src.key;
+  if (dest.energy == null && src.energy != null) dest.energy = src.energy;
+  if (dest.coverUrl == null && src.coverUrl != null) dest.coverUrl = src.coverUrl;
+  if (dest.embedUrl == null && src.embedUrl != null) dest.embedUrl = src.embedUrl;
+  if (dest.label == null && src.label != null) dest.label = src.label;
+  if (dest.genre == null && src.genre != null) dest.genre = src.genre;
 }
 
-// ── Key scoring on the Camelot wheel ─────────────────────────────────────────
-// Distance = circular step distance (0–6) + ring mismatch (0 or 1), max = 7.
-// Score decays linearly from 1.0 (exact) to 0.0 at distance ≥ 7.
-// This replaces the old binary +0.12 / +0.06 / 0 with a smooth gradient.
-export function camelotDistance(a: string, b: string): number {
-  const aNum = parseInt(a, 10);
-  const bNum = parseInt(b, 10);
-  if (isNaN(aNum) || isNaN(bNum)) return 7; // treat unknown keys as maximally distant
-  const step = Math.abs(aNum - bNum);
-  const circDist = Math.min(step, 12 - step);
-  const ringDiff = a.at(-1) === b.at(-1) ? 0 : 1;
-  return circDist + ringDiff;
-}
+// ── Reciprocal Rank Fusion ───────────────────────────────────────────────────
+// Each source produces its own ranked list. A candidate's fused score is
+// Σ 1/(k + rankᵢ) over the sources it appears in. Candidates appearing in
+// multiple sources naturally outrank single-source candidates, even when no
+// single source ranks them at the top.
+export function rrfFuse(sourceLists: SourceList[], k: number = RRF_K): FusedCandidate[] {
+  const byIdentity = new Map<string, FusedCandidate>();
 
-export function calculateKeyDistanceScore(
-  trackKey: string,
-  refKey: string,
-): number {
-  return Math.max(0, 1 - camelotDistance(trackKey, refKey) / 7);
-}
+  for (const list of sourceLists) {
+    list.tracks.forEach((track, index) => {
+      const rank = index + 1; // 1-indexed for the formula
+      const id = identityKey(track);
+      const contribution = 1 / (k + rank);
 
-// ── Energy scoring ────────────────────────────────────────────────────────────
-// Gaussian decay with sigma=0.15 around the source energy (0–1 scale).
-// ±0.15 energy delta → 0.61 score; ±0.30 → 0.14.
-export function calculateEnergyScore(
-  trackEnergy: number,
-  refEnergy: number,
-): number {
-  const delta = Math.abs(trackEnergy - refEnergy);
-  return Math.exp(-(delta * delta) / (2 * 0.15 * 0.15));
-}
-
-// ── Source rank scoring ───────────────────────────────────────────────────────
-// Earlier results from a source are more likely to be relevant.
-// Linear decay: rank 0 → 1.0, rank (limit-1) → near 0.
-export function calculateSourceRankScore(
-  rank: number,
-  limit: number,
-): number {
-  return Math.max(0, 1 - rank / limit);
-}
-
-// ── Per-track weighted scoring ────────────────────────────────────────────────
-function scoreTrack(
-  track: TrackMeta,
-  sourceRank: number,
-  filters: SearchFilters,
-  sourceBpm?: number | null,
-  sourceKey?: string | null,
-  sourceEnergy?: number | null,
-  dislikedArtists?: Set<string>,
-): number {
-  let score = 0;
-
-  // Audio similarity — only Cosine.club provides embedding-based similarity.
-  if (track.source === "cosine_club" && track.score != null) {
-    score += WEIGHTS.audioSimilarity * Math.max(0, Math.min(1, track.score));
+      const existing = byIdentity.get(id);
+      if (existing) {
+        existing.rrfScore += contribution;
+        existing.appearances.push({ source: list.source, rank });
+        mergeMetadata(existing, track);
+      } else {
+        byIdentity.set(id, {
+          ...track,
+          rrfScore: contribution,
+          appearances: [{ source: list.source, rank }],
+        });
+      }
+    });
   }
 
-  // BPM proximity with tempo doubling support.
-  const refBpm =
-    filters.bpmMin !== undefined && filters.bpmMax !== undefined
-      ? (filters.bpmMin + filters.bpmMax) / 2
-      : (sourceBpm ?? null);
-  if (track.bpm && refBpm) {
-    const sigma =
-      filters.bpmMin !== undefined && filters.bpmMax !== undefined
-        ? Math.max(1, (filters.bpmMax - filters.bpmMin) / 4)
-        : 12;
-    score += WEIGHTS.bpm * calculateBpmScore(track.bpm, refBpm, sigma);
-  }
-
-  // Harmonic compatibility — graduated Camelot distance, not binary.
-  const refKey = filters.key ?? sourceKey ?? null;
-  if (track.key && refKey) {
-    score += WEIGHTS.key * calculateKeyDistanceScore(track.key, refKey);
-  }
-
-  // Energy proximity — activates only when the Python service provides source energy.
-  if (track.energy != null && sourceEnergy != null) {
-    score += WEIGHTS.energy * calculateEnergyScore(track.energy, sourceEnergy);
-  }
-
-  // Source rank — earlier results in a source's list are more relevant.
-  score +=
-    WEIGHTS.sourceRank * calculateSourceRankScore(sourceRank, SOURCE_RANK_LIMIT);
-
-  // Embed bonus — prefer tracks the user can actually preview inline.
-  if (track.embedUrl) score += WEIGHTS.embed;
-
-  // Penalize artists the user already disliked in this search session.
-  if (dislikedArtists?.has(normalizeArtist(track.artist))) {
-    score -= DISLIKED_ARTIST_PENALTY;
-  }
-
-  return score;
-}
-
-// ── URL deduplication ─────────────────────────────────────────────────────────
-function deduplicateByUrl(tracks: TrackMeta[]): TrackMeta[] {
-  const seen = new Set<string>();
-  return tracks.filter((t) => {
-    if (seen.has(t.sourceUrl)) return false;
-    seen.add(t.sourceUrl);
-    return true;
-  });
+  return [...byIdentity.values()].sort((a, b) => b.rrfScore - a.rrfScore);
 }
 
 // ── Artist diversity post-processing ─────────────────────────────────────────
 // Prevents any single artist from appearing more than `maxConsecutive` times
-// in a row. Greedy: tries to satisfy the constraint by pulling forward the
-// next highest-scored track from a different artist. Falls back to the next
-// available track if all remaining tracks share the recent artist.
-function normalizeArtist(artist: string): string {
-  return artist.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
+// in a row. Without this, three top RRF-ranked tracks by the same artist would
+// all cluster at the head of the list.
 function diversifyArtists(
-  tracks: TrackMeta[],
+  tracks: FusedCandidate[],
   maxConsecutive = 2,
-): TrackMeta[] {
+): FusedCandidate[] {
   if (tracks.length <= maxConsecutive) return tracks;
 
-  const result: TrackMeta[] = [];
+  const result: FusedCandidate[] = [];
   const pool = [...tracks];
   const recentArtists: string[] = [];
 
   while (pool.length > 0) {
     const window = recentArtists.slice(-maxConsecutive);
-    // Find the first track whose artist isn't saturating the recent window.
     const idx = pool.findIndex((t) => {
       const a = normalizeArtist(t.artist);
       return !(
@@ -237,40 +185,33 @@ function diversifyArtists(
   return result;
 }
 
-// ── Main aggregation ──────────────────────────────────────────────────────────
+// ── Main aggregation ─────────────────────────────────────────────────────────
 export function aggregateTracks(
-  tracks: TrackMeta[],
+  sourceLists: SourceList[],
   filters: SearchFilters,
   sourceBpm?: number | null,
   sourceKey?: string | null,
   sourceEnergy?: number | null,
   feedback?: TrackFeedback,
+  // sourceLabel/sourceGenre kept in the signature so callers don't churn,
+  // but RRF doesn't use them — label/genre signal is captured implicitly
+  // when the same track surfaces in multiple sources.
+  _sourceLabel?: string | null,
+  _sourceGenre?: string | null,
 ): TrackMeta[] {
-  // Blend source metadata with liked-track centroid when feedback is present.
+  // 1. Fuse per-source ranks into a single ranked list.
+  const fused = rrfFuse(sourceLists);
+
+  // 2. Effective metadata for downstream filters (currently only used by
+  //    BPM range derivation when the filter is unset).
   const effective = feedback
     ? computeEffectiveSource(sourceBpm, sourceKey, sourceEnergy, feedback)
     : { bpm: sourceBpm ?? null, key: sourceKey ?? null, energy: sourceEnergy ?? null };
+  void effective; // reserved for future use
 
-  const dislikedArtists = feedback?.disliked.length
-    ? new Set(feedback.disliked.map((t) => normalizeArtist(t.artist)))
-    : undefined;
-
-  // 1. Remove exact URL duplicates (same track, same source).
-  const urlDeduped = deduplicateByUrl(tracks);
-
-  // 2. Assign per-source rank BEFORE scoring so that earlier results in
-  //    each source's list score higher. Rank is 0-indexed per source group.
-  const sourceRankMap = new Map<string, number>();
-  const ranked = urlDeduped.map((t) => {
-    const rank = sourceRankMap.get(t.source) ?? 0;
-    sourceRankMap.set(t.source, rank + 1);
-    return { track: t, rank };
-  });
-
-  // 3. Hard filters — applied after ranking to preserve rank accuracy.
-  //    Note: tracks without BPM/key are kept intentionally so metadata gaps
-  //    don't silently exclude otherwise relevant results.
-  const filtered = ranked.filter(({ track: t }) => {
+  // 3. Hard BPM range filter — drop tracks outside the user's range. Tracks
+  //    with no BPM are kept (metadata gap should not silently exclude).
+  const filtered = fused.filter((t) => {
     if (
       filters.bpmMin !== undefined &&
       filters.bpmMax !== undefined &&
@@ -278,30 +219,30 @@ export function aggregateTracks(
     ) {
       if (t.bpm < filters.bpmMin || t.bpm > filters.bpmMax) return false;
     }
-    if (filters.key && t.key != null) {
-      // Keep exact match + adjacent/parallel keys (Camelot distance ≤ 1).
-      if (camelotDistance(t.key, filters.key) > 1) return false;
-    }
     return true;
   });
 
-  // 4. Score each track using all available signals.
-  const scored = filtered.map(({ track, rank }) => ({
-    ...track,
-    score: scoreTrack(
-      track,
-      rank,
-      filters,
-      effective.bpm,
-      effective.key,
-      effective.energy,
-      dislikedArtists,
-    ),
-  }));
+  // 4. Post-RRF nudges: dislike penalty, embed bonus.
+  const dislikedArtists = feedback?.disliked.length
+    ? new Set(feedback.disliked.map((t) => normalizeArtist(t.artist)))
+    : undefined;
 
-  // 5. Sort by score descending.
-  const sorted = scored.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  for (const t of filtered) {
+    if (dislikedArtists?.has(normalizeArtist(t.artist))) {
+      t.rrfScore -= DISLIKED_ARTIST_PENALTY;
+    }
+    if (t.embedUrl) {
+      t.rrfScore += EMBED_BONUS;
+    }
+  }
 
-  // 6. Gentle diversity pass — avoid artist clusters in the top results.
-  return diversifyArtists(sorted);
+  // 5. Re-sort after nudges. Surface the rrfScore on `score` so existing
+  //    consumers (DB persistence, UI) keep working.
+  filtered.sort((a, b) => b.rrfScore - a.rrfScore);
+  for (const t of filtered) {
+    t.score = t.rrfScore;
+  }
+
+  // 6. Artist diversification — stops 3+ consecutive same-artist tracks.
+  return diversifyArtists(filtered);
 }

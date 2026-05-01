@@ -251,17 +251,19 @@ function HomeContent() {
   // Load favorites + dislikes on mount
   useEffect(() => {
     fetch("/api/favorites")
-      .then((r) => r.json())
-      .then((data: { id: string }[]) =>
-        setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }))
-      )
+      .then((r) => (r.ok ? (r.json() as Promise<{ id: string }[]>) : null))
+      .then((data) => {
+        if (!data) return;
+        setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }));
+      })
       .catch(console.error);
 
     fetch("/api/dislikes")
-      .then((r) => r.json())
-      .then((urls: string[]) =>
-        setFav((prev) => ({ ...prev, dislikedUrls: new Set(urls) }))
-      )
+      .then((r) => (r.ok ? (r.json() as Promise<string[]>) : null))
+      .then((urls) => {
+        if (!urls) return;
+        setFav((prev) => ({ ...prev, dislikedUrls: new Set(urls) }));
+      })
       .catch(console.error);
   }, [setFav]);
 

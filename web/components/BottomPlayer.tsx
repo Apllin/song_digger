@@ -2,48 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePlayer } from "@/lib/atoms/player";
-
-// ─── YouTube IFrame API loader (singleton, same as EmbedPlayer) ───────────────
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady?: () => void;
-    YT?: {
-      Player: new (
-        el: HTMLElement,
-        opts: object
-      ) => YTPlayer;
-    };
-  }
-}
-
-interface YTPlayer {
-  playVideo(): void;
-  pauseVideo(): void;
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  getCurrentTime(): number;
-  getDuration(): number;
-  setVolume(volume: number): void;
-  destroy(): void;
-  loadVideoById(videoId: string): void;
-}
-
-let _ytReady = false;
-const _ytQueue: Array<() => void> = [];
-
-function loadYTApi(): Promise<void> {
-  return new Promise((resolve) => {
-    if (_ytReady) return resolve();
-    _ytQueue.push(resolve);
-    if (_ytQueue.length > 1) return;
-    window.onYouTubeIframeAPIReady = () => {
-      _ytReady = true;
-      _ytQueue.splice(0).forEach((fn) => fn());
-    };
-    const s = document.createElement("script");
-    s.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(s);
-  });
-}
+import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";
@@ -57,7 +16,6 @@ const SOURCE_LABELS: Record<string, string> = {
   bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
   beatport: "Beatport",
-  spotify: "Spotify",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────

@@ -75,8 +75,6 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
     }
   }
 
-  const coverUrl = embedResult?.coverUrl ?? track.albumCover ?? null;
-
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 group transition-colors">
@@ -133,7 +131,6 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
           <EmbedPlayer
             source={embedResult.source}
             embedUrl={embedResult.embedUrl}
-            coverUrl={coverUrl}
             title={track.title}
             artist={artist}
             sourceUrl={embedResult.sourceUrl ?? `https://music.youtube.com/search?q=${encodeURIComponent(artist + " " + track.title)}`}

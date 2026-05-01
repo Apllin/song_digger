@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchHistory } from "@/lib/use-search-history";
 import { useDebounce } from "@/lib/use-debounce";
 
@@ -120,26 +120,6 @@ export function SearchBar({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
-
-  const pickItem = useCallback(
-    (text: string, isHistoryItem: boolean) => {
-      onChange(text);
-      setShowSuggestions(false);
-      setShowHistory(false);
-      setActiveIndex(-1);
-      inputRef.current?.focus();
-      // If picking from history, trigger search immediately
-      if (isHistoryItem) {
-        // We defer to let onChange propagate, then trigger submit via a small trick:
-        // The parent controls value, so we just fill it in and let the user press Enter,
-        // OR we can call onSubmit after a tick. Using requestAnimationFrame:
-        requestAnimationFrame(() => {
-          inputRef.current?.form?.requestSubmit?.();
-        });
-      }
-    },
-    [onChange]
-  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!dropdownVisible) {

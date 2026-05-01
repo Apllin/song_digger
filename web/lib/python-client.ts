@@ -24,12 +24,19 @@ export interface SimilarRequest {
   limit_per_source: number;
 }
 
-export interface SimilarResponse {
+export interface SourceList {
+  source: string;
   tracks: TrackMeta[];
+}
+
+export interface SimilarResponse {
+  source_lists: SourceList[];
   source_artist: string | null;
   source_bpm: number | null;
   source_key: string | null;
   source_energy: number | null;
+  source_label: string | null;
+  source_genre: string | null;
 }
 
 export async function fetchSimilarTracks(
@@ -45,6 +52,23 @@ export async function fetchSimilarTracks(
   if (!res.ok) {
     throw new Error(
       `Python service error: ${res.status} ${await res.text()}`
+    );
+  }
+
+  return res.json();
+}
+
+export async function enrichTracks(tracks: TrackMeta[]): Promise<TrackMeta[]> {
+  const res = await fetch(`${PYTHON_SERVICE_URL}/enrich`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tracks),
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Python /enrich error: ${res.status} ${await res.text()}`
     );
   }
 

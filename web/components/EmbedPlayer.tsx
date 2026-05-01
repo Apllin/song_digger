@@ -1,36 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-// ─── YouTube IFrame API loader (singleton) ────────────────────────────────────
-let _ytReady = false;
-const _ytQueue: Array<() => void> = [];
-
-function loadYTApi(): Promise<void> {
-  return new Promise((resolve) => {
-    if (_ytReady) return resolve();
-    _ytQueue.push(resolve);
-    if (_ytQueue.length > 1) return;
-    (window as unknown as { onYouTubeIframeAPIReady: () => void }).onYouTubeIframeAPIReady =
-      () => {
-        _ytReady = true;
-        _ytQueue.splice(0).forEach((fn) => fn());
-      };
-    const s = document.createElement("script");
-    s.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(s);
-  });
-}
-
-interface YTPlayerInstance {
-  playVideo(): void;
-  pauseVideo(): void;
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  getCurrentTime(): number;
-  getDuration(): number;
-  setVolume(volume: number): void;
-  destroy(): void;
-}
+import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";
@@ -43,7 +14,6 @@ function formatTime(s: number): string {
 export interface EmbedPlayerProps {
   source: string;
   embedUrl: string;
-  coverUrl?: string | null;
   title: string;
   artist: string;
   sourceUrl: string;
@@ -253,9 +223,9 @@ function YouTubePlayer({
   sourceUrl,
   onPrev,
   onNext,
-}: Omit<EmbedPlayerProps, "source" | "coverUrl">) {
+}: Omit<EmbedPlayerProps, "source">) {
   const holderRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YTPlayerInstance | null>(null);
+  const playerRef = useRef<YTPlayer | null>(null);
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -268,16 +238,14 @@ function YouTubePlayer({
     if (!videoId) return;
     let destroyed = false;
     loadYTApi().then(() => {
-      if (destroyed || !holderRef.current) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const yt = (window as any).YT;
-      playerRef.current = new yt.Player(holderRef.current, {
+      if (destroyed || !holderRef.current || !window.YT) return;
+      playerRef.current = new window.YT.Player(holderRef.current, {
         videoId,
         width: 1,
         height: 1,
         playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1 },
         events: {
-          onReady: (e: { target: YTPlayerInstance }) => {
+          onReady: (e: { target: YTPlayer }) => {
             if (destroyed) return;
             setReady(true);
             setDuration(e.target.getDuration());
@@ -367,7 +335,7 @@ function BandcampPlayer({
   sourceUrl,
   onPrev,
   onNext,
-}: Omit<EmbedPlayerProps, "source" | "coverUrl">) {
+}: Omit<EmbedPlayerProps, "source">) {
   const [active, setActive] = useState(true);
   const [volume, setVolume] = useState(80);
   const iframeRef = useRef<HTMLIFrameElement>(null);
