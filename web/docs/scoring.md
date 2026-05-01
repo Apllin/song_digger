@@ -1,134 +1,229 @@
 # Scoring Architecture
 
-## Goal
+## What this document covers
 
-Rank candidate tracks by audio + stylistic similarity to a seed track,
-combining signals from multiple heterogeneous sources (Cosine.club embeddings,
-YouTube Music radio, Bandcamp recommendations, Last.fm tags, 1001tracklists
-co-play, trackid.net co-play, label graph). Optimised for hypnotic /
-industrial / dub techno discovery.
+How `POST /api/search` ranks candidate tracks today — sources, fusion,
+post-fusion nudges, and hard filters — as actually implemented in
+[web/lib/aggregator.ts](../lib/aggregator.ts) and
+[python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py).
 
-This document describes the **current** scoring approach. It is updated as
-part of any PR that changes scoring. ADRs in `docs/decisions/` capture why
-specific decisions were made.
+For the rationale behind specific decisions, see ADRs in
+[web/docs/decisions/](decisions/). The deeper line-by-line audit that
+produced this document lives at [scoring-current-state.md](scoring-current-state.md)
+and should be treated as historical context rather than a parallel
+description of behavior.
 
-## Signal hierarchy (in order of trust)
+> **Conflict-resolution rule.** Where this document and an ADR disagree,
+> this document describes what runs; the ADR may describe a deferred or
+> abandoned plan. ADR-0005 (key as soft signal) and ADR-0008 (tier-based
+> fallback) are both currently in this state — see "What this document
+> does NOT cover" below.
 
-1. **Audio embedding similarity** (cosine.club) — the only signal that
-   actually "listens" to the track. When confident and present, dominates;
-   when absent, gracefully steps aside (RRF handles this by construction).
-2. **Multi-source agreement** (RRF across all sources) — a candidate
-   appearing high in N independent sources is stronger evidence than any
-   single high score from one source.
-3. **DJ co-occurrence** (1001tracklists, trackid.net) — proxies "selectors
-   hear these as compatible". DJs select by ear, not by tag, so this captures
-   stylistic adjacency that no metadata source does. Strong for established
-   artists, weak for underground.
-4. **Tag overlap** (Last.fm) — community semantic agreement. Noisy but covers
-   long-tail artists where (1) and (3) are silent.
-5. **Label proximity** (label graph) — same/sister label = strong stylistic
-   prior in techno specifically. Useful when audio signal is missing or
-   silent. See `decisions/0010-label-graph.md`.
-6. **BPM proximity** — necessary but not sufficient. Same-BPM tracks span
-   wildly different subgenres. With tempo doubling support (70 ↔ 140) for
-   harmonic subdivision compatibility.
-7. **Camelot key compatibility** — soft signal, never a hard filter. Wide
-   spread inside any subgenre. See `decisions/0005-key-as-soft-signal.md`.
-8. **Source rank** — last-resort proxy when nothing else is available. Mostly
-   subsumed by RRF after instruction 08.
+## Pipeline at a glance
 
-## Hard floors (auto-reject regardless of score)
+A search hits the web app, fans out to the Python service for source
+fetches, comes back to web for cache hydration + fusion + persistence:
 
-- Disliked artist (user feedback in current session) — small score penalty,
-  not a filter, but in the limit it suppresses
-- BPM outside user-set range (when range is set)
-- Source artist match when `filterSourceArtist` is true (the seed's own
-  artist is filtered out by default; see `decisions/0002-source-artist-filter.md`)
+1. `POST /api/search` validates the body, parses `{artist, track}` from
+   the query, creates a `SearchQuery` row with `status="running"`, and
+   returns its id immediately. The actual work runs as a fire-and-forget
+   background task.
+2. Web calls `POST {PYTHON_SERVICE_URL}/similar`. Python branches on
+   whether `track` is set (track-mode vs artist-only) and fans out to
+   adapters in parallel.
+3. **Phase 1** (track-mode): Cosine.club, YouTube Music radio, Bandcamp
+   (4 s timeout), Yandex Music, and a YTM song-lookup all start
+   simultaneously. Source BPM/key/energy/label/genre are inferred from
+   the median of the top-5 Cosine results, and a `cosine_confident`
+   flag is set when the mean top-5 cosine score ≥ 0.5.
+4. **Phase 2** (only when `cosine_confident == False`): reversed-order
+   Cosine query, Beatport top-3 lookup for source BPM/key, Cosine
+   artist-only search, Bandcamp artist-only search. When still not
+   confident, individual Cosine results below the 0.5 score threshold
+   are dropped.
+5. Per-source `SourceList` objects are built, each filtered through
+   `_filter_artist` (remove the seed's own artist by token match) and
+   `_dedup_within_source` (drop duplicate `sourceUrl`).
+6. **Inline Beatport enrichment**: the first 6 unique tracks across all
+   source lists missing BPM or key get fanned out to Beatport (semaphore
+   8) and the results written back into the source lists.
+7. Python returns `SimilarResponse` with the source lists plus seed
+   metadata.
+8. Web hydrates each track from Postgres `Track` rows by `sourceUrl`,
+   filling BPM/key/energy/genre/label only where Python returned null.
+9. `aggregateTracks` runs RRF fusion, post-RRF nudges, and artist
+   diversification (see sections below).
+10. Tracks are persisted (`Track` upserts + `SearchResult` rows), the
+    `SearchQuery` row is marked `status="done"`, and tracks beyond
+    index 6 still missing BPM/key are queued for background Beatport
+    enrichment so the next search hits the cache.
 
-NOT a floor: low Camelot match — variety > harmonic strictness.
+## Sources and what they contribute
 
-## Fusion strategy: RRF
+The aggregator consumes one ranked list per source. Order within a list
+is whatever the adapter returned, after the in-Python `_filter_artist`
+and `_dedup_within_source` passes.
 
-Each source produces a ranked list of candidates. Final score per track is
-`Σ_i 1/(k + rank_i(track))` summed over sources where the track appears, with
-k = 60 (Cormack 2009 default). Tracks not in any source list naturally score 0.
+| Source | Adapter | Ranked-list semantics | Fields populated on `TrackMeta` | Has its own score? |
+|---|---|---|---|---|
+| `cosine_club` | [cosine_club.py](../../python-service/app/adapters/cosine_club.py) | `GET /v1/similar?q={artist - track}` — audio-embedding nearest neighbours, ordered by API. | `title`, `artist`, `sourceUrl`, `coverUrl`, `bpm`, `key` (Camelot), `energy`, `genre`, `label`, `score` | Yes (`score` ∈ [0, 1]) — used as the `cosine_confident` gate (threshold 0.5) and to drop sub-threshold individual results when not confident. **Not** consumed by the web aggregator: `rrfFuse` ignores `score`. |
+| `youtube_music` | [youtube_music.py](../../python-service/app/adapters/youtube_music.py) | YTM Radio (`playlistId="RDAMVM{videoId}"`); seed itself is skipped. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
+| `bandcamp` | [bandcamp.py](../../python-service/app/adapters/bandcamp.py) | Search → fetch matching track page → parse "you may also like" `data-recommended-from-tralbum` JSON. Hard 4 s timeout. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
+| `yandex_music` | [yandex_music.py](../../python-service/app/adapters/yandex_music.py) | `client.search(...)` → `client.tracks_similar(seed.id)`. No-op without `YANDEX_MUSIC_TOKEN`. | `title`, `artist`, `sourceUrl`, `coverUrl` | No |
 
-Why RRF and not weighted-sum: scores from different sources are not on
+Beatport is **not** an RRF input. It contributes only as: (a) a fallback
+source for inferring the seed's BPM/key when Cosine is unconfident, and
+(b) a per-track BPM/key/genre/label enrichment side-channel (inline
+budget + background queue).
+
+## Fusion: RRF
+
+Each source produces a ranked list. A candidate's fused score is
+
+```
+rrfScore = Σ_i  1 / (k + rank_i)
+```
+
+summed over the source lists where the candidate appears, with `k = 60`
+(Cormack 2009 default). Tracks not in any source list get `rrfScore = 0`.
+Identity is `(normalizedArtist, normalizedTitle)` — the same identity
+appearing in multiple sources accumulates score, which is how
+multi-source agreement emerges naturally from the math instead of being
+engineered.
+
+Why RRF and not weighted-sum: scores from different sources aren't on
 comparable scales (cosine similarity ≠ tag Jaccard ≠ co-play frequency).
-Ranks are comparable by construction. Multi-source agreement emerges
-naturally rather than being engineered. See `decisions/0003-rrf-fusion.md`.
+Ranks are. See [decisions/0003-rrf-fusion.md](decisions/0003-rrf-fusion.md).
+
+### Metadata merge across sources
+
+When the same identity appears in multiple lists, `mergeMetadata`
+([aggregator.ts](../lib/aggregator.ts)) keeps existing non-null values
+on the candidate and only fills nulls from the newcomer (first-seen
+wins, field-by-field).
+
+The end-to-end precedence on conflict, highest-wins, for any single
+metadata field reaching `aggregateTracks`:
+
+1. Per-source values from the current Python fetch
+2. Inline Beatport enrichment (only fills nulls; preserves existing values)
+3. Postgres-cache hydrate (only fills where Python returned null)
+4. RRF cross-source merge from a sibling list (only fills nulls)
+
+Background-fill writes don't count here — they only affect *subsequent*
+searches by populating `Track` rows.
 
 ## Post-RRF adjustments
 
-After RRF, the following modifications apply (in this order):
+After fusion and the BPM hard filter, `aggregateTracks` applies exactly
+two `rrfScore` mutations, then re-sorts:
 
-1. **BPM hard filter** (drop if outside user range)
-2. **Disliked-artist penalty** (-0.012 from final RRF score; calibrated to
-   demote ~3 ranks but not bury good matches)
-3. **Embed bonus** (+0.0008; ties broken in favour of inline-playable)
-4. **Liked-centroid blend** on BPM/key references used by any post-RRF
-   adjustments that look at metadata match
-5. **Genre exact-match bonus** (+0.001 when track.genre == source_genre)
-6. **Label graph proximity bonus** (+0.001 × graph_similarity, capped at 0.001)
-7. **Artist diversification** (existing `diversifyArtists`): max 2 consecutive
-   tracks by same artist, regardless of score
+| Constant | Value | Trigger |
+|---|---|---|
+| `DISLIKED_ARTIST_PENALTY` | `0.012` | Candidate's normalized artist matches any artist in `feedback.disliked`. A 4-source rank-1 track has `rrfScore ≈ 0.066`; this is ~18% of that — demotes notably without burying. |
+| `EMBED_BONUS` | `0.0008` | Candidate has a non-null `embedUrl` (true for all YTM and Bandcamp tracks). ~5% of a single-source rank-1 score — effectively a tiebreaker. |
 
-## Tier-based fallback (when source unknown to some sources)
+After re-sort, `diversifyArtists` reorders the list so no artist appears
+more than 2 times consecutively. Diversification rearranges the output
+but does not modify `rrfScore`; the persisted `score` reflects the
+post-nudge fusion order, the displayed list reflects post-diversification.
 
-| Tier | Trigger | Strategy |
-|------|---------|----------|
-| 1 (direct) | Seed found on ≥ 3 sources | Standard RRF on all |
-| 2 (mediated) | Seed on 1-2 sources | Use top-K cosine results as proxy seeds for silent sources, then RRF |
-| 3 (artist) | Seed unknown but artist resolved | Artist-similarity queries on each source, then RRF |
-| 4 (tag-only) | Artist unknown | Cosine candidates → Last.fm tags → tag-search, then RRF |
+## Hard filters
 
-Higher tiers do not mix into lower tiers' results. UI shows tier explicitly.
-Confidence to user is honest, not faked. See `decisions/0008-tier-based-fallback.md`.
+Every place a candidate can be dropped entirely:
 
-## Calibration
+1. **Cosine confidence (per-track)** — when `cosine_confident == False`,
+   Cosine results with `score is None or score < 0.5` are dropped from
+   the Cosine list ([similar.py](../../python-service/app/api/routes/similar.py)).
+   Applies only to the Cosine list.
+2. **Source-artist filter (cross-source)** — `_filter_artist` drops any
+   track whose artist token-matches `source_artist` (the YTM-resolved
+   artist, falling back to first Cosine, then first YTM track). Always
+   on. See [decisions/0002-source-artist-filter.md](decisions/0002-source-artist-filter.md).
+3. **Within-source URL dedup** — `_dedup_within_source` drops repeated
+   `sourceUrl` within a single source list, preserving order.
+4. **BPM range filter** — drops `t.bpm < bpmMin || t.bpm > bpmMax` only
+   when both bounds are set. Tracks with `bpm == null` are kept (a
+   metadata gap is not a reason to exclude).
 
-All weights and thresholds are *current values*, not *correct values*. They
-are baselines for the eval harness. Any change requires running
-`pnpm eval --baseline eval/runs/baseline.json` and attaching the metric diff
-to the PR.
+There is no key filter, genre filter, energy filter, or score-floor
+filter in the web aggregator. Camelot key and genre arrive on candidates
+but never gate or score them today (see "What this document does NOT cover").
 
-| Constant | Current | Source of truth |
-|----------|---------|-----------------|
-| RRF k | 60 | Cormack 2009 default; verified on eval set v1 |
-| Cosine confidence threshold | 0.5 | `decisions/0001-cosine-confidence-threshold.md` |
-| BPM gauss sigma | 12 | Tuned on eval set v1 |
-| Disliked penalty | 0.012 (post-RRF) | Calibrated to demote ~3 ranks |
-| Liked weight per track | 0.12 | Caps at 0.65 (≈ 5+ liked tracks) |
-| Tier 2 mediation top-K | 5 | Empirical; revisit per `decisions/0008` |
-| Last.fm rate semaphore | 5 | Public API recommendation |
-| 1001TL set-page limit | 20 | Per-query budget; cache amortizes |
+## Calibration table
 
-## Known limitations
+Every constant currently affecting ranking, fallback selection, or
+ranked-list composition. Any change to a value here requires running
+`pnpm eval` and attaching the metric diff to the PR.
 
-- Cosine.club is the only embedding source — single point of failure for the
-  strongest signal (RRF mitigates: when it's silent, others carry the load)
-- Beatport BPM/key sometimes disagree with cosine (label-reported vs
-  audio-derived); cosine wins, beatport fills gaps only — see `decisions/0007`
-- Tempo doubling (70 ↔ 140) is on; correct for most techno, occasional
-  false positives on ambient/idm seeds
-- Russian/cyrillic artists undertested on Last.fm signal (eval coverage
-  intentionally includes a few to track this)
-- Label graph requires periodic rebuild; stale graph degrades signal quality
-  silently. Add monitoring per `decisions/0010-label-graph.md`.
+| Constant | File | Current value |
+|---|---|---|
+| `RRF_K` | [web/lib/aggregator.ts](../lib/aggregator.ts) | `60` |
+| `DISLIKED_ARTIST_PENALTY` | [web/lib/aggregator.ts](../lib/aggregator.ts) | `0.012` |
+| `EMBED_BONUS` | [web/lib/aggregator.ts](../lib/aggregator.ts) | `0.0008` |
+| Diversification window | [web/lib/aggregator.ts](../lib/aggregator.ts) | `maxConsecutive = 2` |
+| `BANDCAMP_TIMEOUT` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `4.0` s |
+| `INLINE_BUDGET` (python) | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `6` |
+| `INLINE_BUDGET` (web) | [web/app/api/search/route.ts](../app/api/search/route.ts) | `6` (must match python) |
+| `ENRICH_CONCURRENCY` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `8` |
+| `COSINE_CONFIDENCE_THRESHOLD` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `0.5` |
+| Source-meta top-N (BPM/key/energy/label/genre inference) | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `cosine_tracks[:5]` |
+| Beatport `find_similar` for source-meta fallback | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `limit=3` |
+| Beatport `_fetch_bpm_key` candidate window | [python-service/app/adapters/beatport.py](../../python-service/app/adapters/beatport.py) | `limit=5`; artist prefix `[:6]`, title prefix `[:8]` |
+| Cosine fallback: artist-only seeding cutoff | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `len(cosine_tracks) < 8` triggers seeded second query |
+| `limit_per_source` (web → python) | [web/app/api/search/route.ts](../app/api/search/route.ts) | `40` |
+| `DB_CHUNK_SIZE` (persistence batching, not ranking) | [web/app/api/search/route.ts](../app/api/search/route.ts) | `50` |
 
-## Failure modes the harness catches
+Things that look like knobs but aren't:
 
-- Ranking by tempo alone (false friends with same BPM, different style)
-- Cosine-only collapse when other sources are silent (the big T2 case)
-- Round-robin diversity overpowering audio signal (the bug RRF fixed)
-- Remix vs original conflation in dedup (the normalize_title bug)
-- Subgenre boundary leakage (peak-time techno bleeding into hypnotic queries)
+- **Title-strip whitelist** — correctness rules for dedup, not tunable
+  weights ([aggregator.ts](../lib/aggregator.ts), mirrored in
+  [similar.py](../../python-service/app/api/routes/similar.py)).
+- **`CAMELOT_MAP`** — exhaustive note-name → Camelot mapping, not a
+  tunable ([beatport.py](../../python-service/app/adapters/beatport.py)).
 
-## Out-of-scope
+## What this document does NOT cover
 
-- Personalised long-term recommendations (user history, listening patterns).
-  We optimise for the single-seed similar-tracks query.
-- Recommendation diversity *across* the result set beyond the existing artist
-  diversification.
-- Multi-seed queries (give me tracks similar to BOTH X and Y). Possible
-  future extension via centroid in cosine embedding space.
+These are signals that adapters return, ADRs propose, or comments imply
+— but that **no code path scores or filters on today**. They're listed
+here so a reader doesn't infer behavior from a stray field on a model
+or a sentence in an old ADR.
+
+- **Tier-based fallback** — Phase 2's binary `cosine_confident` /
+  not-confident split is the only fallback. No tier classification, no
+  tier label exposed to the UI, no tag-only tier 4 path. ADR-0008
+  describes the tier scheme but it is not implemented; Stage B will
+  take a simpler path. See [decisions/0008-tier-based-fallback.md](decisions/0008-tier-based-fallback.md).
+- **Label-graph proximity bonus** — deferred indefinitely. ADR-0010 is
+  speculative — no graph exists, no bonus is applied. See
+  [decisions/0010-label-graph.md](decisions/0010-label-graph.md).
+- **Genre exact-match bonus** — `genre` arrives on candidates from
+  Cosine and Beatport, is merged across sources, and is persisted on
+  `Track`, but `aggregateTracks` never reads it. Will likely reappear
+  as a Stage C feature.
+- **Camelot key compatibility scoring** — ADR-0005 frames key as a
+  "soft signal" but nothing in `aggregateTracks` references the field.
+  The `key` column is populated and displayed only. See
+  [decisions/0005-key-as-soft-signal.md](decisions/0005-key-as-soft-signal.md).
+- **BPM proximity scoring** — BPM is a hard filter only. ADR-0003
+  notes the per-track Gaussian BPM decay was removed alongside the
+  weighted-sum scorer and may hybridize back if eval shows regression;
+  for now there is no proximity scoring. See [decisions/0003-rrf-fusion.md](decisions/0003-rrf-fusion.md).
+- **Liked-feedback signal** — the prior hand-rolled liked-centroid
+  blend was removed in cleanup pre-Stage-B (the `effective` BPM/key
+  computed from liked tracks was never read anyway). It will be
+  reintroduced in Stage D as a learned feature inside a logistic
+  regression rather than a hand-tuned blend, which is the right shape
+  for it.
+- **Co-occurrence sources (Last.fm tags, 1001tracklists, trackid.net)**
+  — adapters do not exist yet. Stage B adds them.
+- **Cosine `score` as a ranking signal** — used only as a confidence
+  gate (0.5 threshold) and per-track inclusion filter. `rrfFuse` uses
+  rank position, not the underlying scores.
+- **Year/era proximity** — `Track` has no `releaseYear` / `releaseDate`
+  field, so no signal exists to act on.
+- **Artist co-release / sibling-artist signal** — the Discogs adapter
+  exists ([discogs.py](../../python-service/app/adapters/discogs.py))
+  but is not invoked by `/similar`.
+- **Learned weights** — all constants above are hand-tuned baselines.
+  Stage D introduces a learned ranking layer.
