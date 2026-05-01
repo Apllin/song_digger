@@ -31,3 +31,7 @@ build/
 09-tier-based-fallback.md
 python-service/Song Digger RRF Rollout.md
 python-service/song-digger-stages/
+
+# Eval runs — only named baselines are committed, the rest accumulate per-PR
+python-service/eval/runs/*
+!python-service/eval/runs/baseline-*.json
