@@ -7,11 +7,13 @@
 ## tl;dr
 
 [scoring.md](scoring.md) describes a multi-source RRF pipeline, and the
-code path is wired exactly that way. **Operationally, on 2026-05-01,
-only YouTube Music Radio actually contributes results.** Cosine.club
-is gone from DNS, Beatport is anti-bot-blocked, Bandcamp times out
-often, and Yandex is a no-op without a token. Every adapter call
-except YTM either fails or returns nothing.
+code path is wired exactly that way. **As of 2026-05-01, two sources
+contribute: YouTube Music Radio and Bandcamp.** Bandcamp was rewritten
+on 2026-05-01 to use the public `bcsearch_public_api` JSON endpoint and
+the new `<li class="recommended-album">` footer format, after the old
+`/search` HTML page was put behind an Imperva client-challenge.
+Cosine.club is gone from DNS, Beatport is anti-bot-blocked, and Yandex
+is still a no-op without a token.
 
 This is not a code bug. The aggregator and the adapter wiring are
 correct. It's an external-services bill of health.
@@ -22,7 +24,7 @@ correct. It's an external-services bill of health.
 |---|---|---|---|
 | `cosine_club` | ❌ DNS gone | `[Errno 8] nodename nor servname provided, or not known` on every request. `host api.cosine.club` returns `NXDOMAIN`. | Find replacement domain (api.cosine.app? api.cosine.io?) or replace adapter with another audio-embedding service. The docstring on the adapter still points at `https://registry.scalar.com/@cosine/apis/cosineclub-api/` — verify there first. |
 | `beatport` (enrichment + BPM/key fallback, not RRF) | ❌ 403 Forbidden | `Client error '403 Forbidden'` for every `/search/tracks?q=...` URL. Anti-bot (likely Cloudflare) blocking the unauthenticated scraper. | Switch to Beatport's official API (paid, requires partner agreement) or move BPM/key enrichment to a different source (MusicBrainz/AcousticBrainz, Mixed In Key API). |
-| `bandcamp` | ⚠ Frequently empty | Hard 4 s timeout in [similar.py](../../python-service/app/api/routes/similar.py). Often returns `[]` — the "you may also like" parse silently fails or the page loads slowly. Doesn't surface in logs because the timeout swallows the exception. | Investigate whether the 4 s budget is too tight or whether Bandcamp's HTML structure changed. Add explicit logging on timeout vs parse-failure vs empty-result. |
+| `bandcamp` | ✓ Works (rewritten 2026-05-01) | Returns 7 album recommendations per seed in 1.4–2.0 s (well inside the 4 s budget in [similar.py](../../python-service/app/api/routes/similar.py)). The previous version was silently returning `[]` because Bandcamp put `/search` behind Imperva's client-challenge AND changed the recommendation footer from `data-recommended-from-tralbum` JSON to `<li class="recommended-album">` blocks. The adapter now hits the public `bcsearch_public_api` JSON endpoint for search and parses the new `<li>` format on the track page. | Watch for `[Bandcamp] track page challenged` or `[Bandcamp] no recs in page` log lines — those indicate Imperva expanded the challenge to track pages or the footer markup changed again. |
 | `yandex_music` | ⚠ No-op without token | `YANDEX_MUSIC_TOKEN` env var is unset; adapter early-returns `[]`. Documented behavior, but the env is empty in the dev `.env`. | Set the token if the developer has a Yandex account. Cheapest single improvement to source diversity. |
 | `youtube_music` | ✓ Works | The only adapter consistently producing 10+ results per seed. Drives the entire ranked output today. | — |
 
@@ -56,9 +58,18 @@ Group / Klockworks-style hypnotic techno, YTM Radio surfaces nothing
 the labels cover, every result lands in `unmarked` (rel = 1, neutral),
 and `nDCG = 1.0` falls out of the math.
 
-This is still the right baseline for Stage B — Stage B PRs will be
-measured against this exact state, so the relative deltas are
-informative even if the absolute numbers are.
+After the Bandcamp adapter was rewritten on 2026-05-01, the run was
+repeated and saved as
+[baseline-pre-stage-b-bandcamp-fixed.json](../../python-service/eval/runs/baseline-pre-stage-b-bandcamp-fixed.json):
+average nDCG **0.8812** across the same 5 seeds, with bandcamp now
+contributing 5/10 slots per seed. The lower number is *unsaturating*,
+not regressing — the seeds that dropped (`ignez-veil` 1.0 → 0.82,
+`_control_charlotte_apollo` 1.0 → 0.77) are exactly the ones where
+bandcamp surfaced genuinely on-target tracks (Rene Wise on Skeleven
+for Ignez, Amelie Lens on her own Bandcamp for Charlotte) that hit
+the golden set's `relevant` labels. Stage B should be measured
+against the bandcamp-fixed file; the original is preserved as the
+historical record of the degraded state.
 
 ### For [scoring.md](scoring.md)
 
@@ -127,7 +138,9 @@ scoring.md to actually be operational claims.
 2. **Beatport: API or replace.** The free scraper is dead. Beatport
    has an official API behind a partner agreement. Alternative:
    MusicBrainz's CC0 metadata + AcousticBrainz for audio features.
-3. **Bandcamp: investigate the empty-result rate.** Add metrics on
-   timeout vs parse-failure vs genuinely empty "you may also like".
-   Decide whether to bump the 4 s budget.
+3. ~~**Bandcamp: investigate the empty-result rate.**~~ Done 2026-05-01:
+   adapter rewritten to use the JSON search API and the new
+   `<li class="recommended-album">` footer. Distinct log lines now
+   surface each failure mode (`search empty`, `search api error`,
+   `track page challenged`, `no recs in page`).
 4. **Yandex token.** Easy win if the developer has an account.

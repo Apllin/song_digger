@@ -1,50 +1,58 @@
 import re
-import json
-import asyncio
+import html
 import httpx
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
 
-HEADERS = {
+# Browser-shaped UA so the public site doesn't immediately serve the Imperva
+# client-challenge page. The JSON API and track HTML pages currently respond
+# fine with this; the old /search HTML page does NOT — it's challenge-gated.
+_BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# Bandcamp pages embed track/album data in a <script data-tralbum="..."> attribute
-TRALBUM_RE = re.compile(r'data-tralbum="([^"]+)"')
+_SEARCH_API = "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic"
+_SEARCH_HEADERS = {
+    **_BROWSER_HEADERS,
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Content-Type": "application/json",
+    "Origin": "https://bandcamp.com",
+    "Referer": "https://bandcamp.com/",
+}
 
-# "you may also like" recommendations live in a JSON blob on the page:
-# <div id="recommended-items" data-recommended-from-tralbum="...">
-RECS_RE = re.compile(r'data-recommended-from-tralbum="([^"]+)"')
+# Each "you may also like" item is a single <li> with all the data we need
+# embedded as attributes — no per-item HTTP fetch required (unlike the old
+# data-recommended-from-tralbum JSON blob, which sometimes omitted IDs).
+_REC_LI_RE = re.compile(r'<li class="recommended-album[^"]*"[^>]*>', re.S)
+_ATTR_RES = {
+    "album_id": re.compile(r'data-albumid="(\d+)"'),
+    "title": re.compile(r'data-albumtitle="([^"]*)"'),
+    "artist": re.compile(r'data-artist="([^"]*)"'),
+}
 
-
-def _unescape(s: str) -> str:
-    """Unescape HTML entities that Bandcamp puts in data attributes."""
-    return (
-        s.replace("&quot;", '"')
-         .replace("&amp;", "&")
-         .replace("&#39;", "'")
-         .replace("&lt;", "<")
-         .replace("&gt;", ">")
-    )
+# Sentinel that identifies the Imperva client-challenge interstitial — when
+# Bandcamp serves this, the request was bot-detected and there's no real
+# content to parse.
+_CHALLENGE_MARKERS = ("Client Challenge", "_fs-ch-")
 
 
 class BandcampAdapter(AbstractAdapter):
     """
-    Finds similar tracks via Bandcamp's "you may also like" section.
+    Finds similar albums via Bandcamp's "you may also like" footer section.
 
     Flow:
-      1. Search Bandcamp for the query → get the first matching track URL
-      2. Fetch that track page → parse the "recommended" data attribute
-      3. For each recommendation, build a Bandcamp EmbeddedPlayer URL from
-         the numeric ID carried in the rec JSON. If the ID is missing,
-         fall back to fetching the item page to extract it.
+      1. POST the query to Bandcamp's public search JSON endpoint and pick
+         the first track-type hit.
+      2. GET that track's HTML page and parse the `<li class="recommended-album">`
+         blocks in the page footer; each carries title/artist/album_id as
+         attributes, so a single page load yields all results.
     """
 
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(
-            headers=HEADERS,
+            headers=_BROWSER_HEADERS,
             timeout=10.0,
             follow_redirects=True,
         )
@@ -66,136 +74,99 @@ class BandcampAdapter(AbstractAdapter):
         return None
 
     async def _search_track(self, query: str) -> str | None:
-        """Search Bandcamp for a track and return the URL of the first result."""
-        url = f"https://bandcamp.com/search?q={query.replace(' ', '+')}&item_type=t"
+        """Resolve the first track-type hit for `query` to a canonical track URL."""
+        payload = {
+            "search_text": query,
+            "search_filter": "t",  # tracks only
+            "full_page": False,
+            "fan_id": None,
+        }
         try:
-            resp = await self._client.get(url)
+            resp = await self._client.post(_SEARCH_API, json=payload, headers=_SEARCH_HEADERS)
             resp.raise_for_status()
-            match = re.search(
-                r'class="searchresult track".*?<a\s+href="(https://[^"]+/track/[^"?#]+)',
-                resp.text,
-                re.S,
-            )
-            return match.group(1) if match else None
+            data = resp.json()
         except Exception as e:
-            print(f"[Bandcamp] search error: {e}")
+            print(f"[Bandcamp] search api error: {e}")
             return None
 
+        results = (data.get("auto") or {}).get("results") or []
+        for item in results:
+            if item.get("type") != "t":
+                continue
+            url = item.get("item_url_path") or item.get("tralbum_url") or item.get("url")
+            if url:
+                return url
+        print(f"[Bandcamp] search empty: {query!r}")
+        return None
+
     async def _get_recommendations(self, track_url: str, limit: int) -> list[TrackMeta]:
-        """Fetch a track page and extract the 'you may also like' recommendations."""
+        """Fetch the track page and parse its 'you may also like' footer."""
         try:
             resp = await self._client.get(track_url)
             resp.raise_for_status()
-            html = resp.text
+            page = resp.text
         except Exception as e:
-            print(f"[Bandcamp] fetch track page error: {e}")
+            print(f"[Bandcamp] track page error: {e}")
             return []
 
-        recs_match = RECS_RE.search(html)
-        if not recs_match:
+        if any(marker in page for marker in _CHALLENGE_MARKERS):
+            print(f"[Bandcamp] track page challenged: {track_url}")
             return []
 
-        try:
-            recs_data = json.loads(_unescape(recs_match.group(1)))
-        except json.JSONDecodeError as e:
-            print(f"[Bandcamp] recs JSON parse error: {e}")
-            return []
+        results: list[TrackMeta] = []
+        seen_album_ids: set[str] = set()
 
-        items = recs_data.get("results", [])[:limit]
-        if not items:
-            return []
+        for li_open in _REC_LI_RE.finditer(page):
+            li_attrs = li_open.group(0)
 
-        results = await asyncio.gather(
-            *[self._resolve_item(item) for item in items],
-            return_exceptions=True,
-        )
+            album_id_m = _ATTR_RES["album_id"].search(li_attrs)
+            if not album_id_m:
+                continue
+            album_id = album_id_m.group(1)
+            if album_id in seen_album_ids:
+                continue
+            seen_album_ids.add(album_id)
 
-        return [r for r in results if isinstance(r, TrackMeta)]
+            title_m = _ATTR_RES["title"].search(li_attrs)
+            artist_m = _ATTR_RES["artist"].search(li_attrs)
+            title = html.unescape(title_m.group(1)) if title_m else "Unknown"
+            artist = html.unescape(artist_m.group(1)) if artist_m else "Unknown"
 
-    async def _resolve_item(self, item: dict) -> TrackMeta | None:
-        item_url = item.get("url", "")
-        if not item_url:
-            return None
+            # The <a class="album-link" href="..."> and <img class="album-art" src="...">
+            # live in the body of the same <li>. Slice from this <li>'s opening tag
+            # to the next one (or end of section) and search within that window.
+            li_start = li_open.end()
+            next_li = _REC_LI_RE.search(page, pos=li_start)
+            li_end = next_li.start() if next_li else min(li_start + 4000, len(page))
+            li_body = page[li_start:li_end]
 
-        if item_url.startswith("//"):
-            item_url = "https:" + item_url
+            href_m = re.search(r'<a class="album-link"[^>]*href="([^"]+)"', li_body)
+            source_url = href_m.group(1) if href_m else f"https://bandcamp.com/album/{album_id}"
+            # Strip the tracking ?from=... param so dedup across runs is stable.
+            source_url = source_url.split("?", 1)[0]
 
-        title = item.get("title", "Unknown")
-        artist = item.get("artist", "Unknown")
-        cover_url: str | None = next(
-            (item[k] for k in ("art_url", "thumbnail_url", "image_url") if item.get(k)),
-            None,
-        )
+            cover_m = re.search(r'<img class="album-art"[^>]*src="([^"]+)"', li_body)
+            cover_url = cover_m.group(1) if cover_m else None
 
-        is_track = "/track/" in item_url
+            results.append(_build_album_meta(source_url, title, artist, cover_url, album_id))
+            if len(results) >= limit:
+                break
 
-        item_id = (
-            item.get("tralbum_id")
-            or item.get("item_id")
-            or (item.get("track_id") if is_track else None)
-            or (item.get("album_id") if not is_track else None)
-            or item.get("id")
-        )
+        if not results:
+            print(f"[Bandcamp] no recs in page: {track_url}")
 
-        if item_id:
-            return _build_track_meta(item_url, title, artist, cover_url, item_id, is_track)
-
-        # Bandcamp omitted the ID from the rec JSON — fall back to fetching the
-        # item page. Logged so a structural change to the rec payload is visible.
-        print(f"[Bandcamp] no ID in rec JSON, falling back to page fetch: {item_url}")
-        return await self._resolve_via_page_fetch(item_url, title, artist, cover_url, is_track)
-
-    async def _resolve_via_page_fetch(
-        self,
-        item_url: str,
-        title: str,
-        artist: str,
-        cover_url: str | None,
-        is_track: bool,
-    ) -> TrackMeta | None:
-        try:
-            resp = await self._client.get(item_url)
-            resp.raise_for_status()
-            page_html = resp.text
-        except Exception as e:
-            print(f"[Bandcamp] resolve item error for {item_url}: {e}")
-            return None
-
-        tralbum_match = TRALBUM_RE.search(page_html)
-        if not tralbum_match:
-            return None
-
-        try:
-            tralbum = json.loads(_unescape(tralbum_match.group(1)))
-        except json.JSONDecodeError:
-            return None
-
-        item_id = tralbum.get("id")
-        if not item_id:
-            return None
-
-        if artist == "Unknown":
-            artist = tralbum.get("artist", "Unknown")
-
-        if not cover_url:
-            art = tralbum.get("art_id")
-            if art:
-                cover_url = f"https://f4.bcbits.com/img/a{art}_10.jpg"
-
-        return _build_track_meta(item_url, title, artist, cover_url, item_id, is_track)
+        return results
 
 
-def _build_track_meta(
+def _build_album_meta(
     item_url: str,
     title: str,
     artist: str,
     cover_url: str | None,
-    item_id: int | str,
-    is_track: bool,
+    album_id: str,
 ) -> TrackMeta:
-    kind = "track" if is_track else "album"
     embed_url = (
-        f"https://bandcamp.com/EmbeddedPlayer/{kind}={item_id}"
+        f"https://bandcamp.com/EmbeddedPlayer/album={album_id}"
         f"/size=small/bgcol=1a1a1a/linkcol=4ec5ec/transparent=true/"
     )
     return TrackMeta(
