@@ -185,7 +185,6 @@ async function runSearch(
     input,
     artist,
     track,
-    sources: ["youtube_music", "cosine_club"],
     limit_per_source: 40,
   }).catch((err) => {
     console.error("[Search] Python stage failed:", err);

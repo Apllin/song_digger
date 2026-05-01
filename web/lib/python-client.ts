@@ -20,7 +20,6 @@ export interface SimilarRequest {
   input: string;          // raw query string
   artist: string;         // parsed artist
   track?: string | null;  // parsed track (null = artist-only mode)
-  sources: string[];
   limit_per_source: number;
 }
 

@@ -80,7 +80,6 @@ async def _run_seed(client: httpx.AsyncClient, service_url: str, seed: dict) -> 
         "input": query,
         "artist": artist,
         "track": track,
-        "sources": ["youtube_music", "cosine_club"],
         "limit_per_source": 40,
     }
 

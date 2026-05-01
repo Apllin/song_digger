@@ -20,7 +20,6 @@ class SimilarRequest(BaseModel):
     input: str                  # raw query string (kept for Bandcamp)
     artist: str                 # parsed artist name
     track: str | None = None    # parsed track name (None = artist-only search)
-    sources: list[str] = ["youtube_music", "cosine_club"]
     limit_per_source: int = 20
 
 
