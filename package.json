@@ -8,9 +8,11 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "setup": "turbo run setup"
+    "setup": "turbo run setup",
+    "eval": "pnpm --filter @song-digger/python-service eval"
   },
   "devDependencies": {
+    "dotenv-cli": "^11.0.0",
     "turbo": "^2.9.6"
   },
   "pnpm": {
