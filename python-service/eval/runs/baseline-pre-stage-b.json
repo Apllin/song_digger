@@ -1,0 +1,402 @@
+{
+  "timestamp": "2026-05-01T19:52:21.802044+00:00",
+  "web_url": "http://localhost:3000",
+  "seed_count": 5,
+  "results": [
+    {
+      "id": "mulero-horses",
+      "query": "Oscar Mulero - Horses",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "LNRT",
+          "title": "Players Only",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Setaoc Mass",
+          "title": "Inferno",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sammy Virji, Chris Lake, RoRo",
+          "title": "925",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Drop-E",
+          "title": "A State Of Anarchy",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Altinbas",
+          "title": "Unit 2",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Klaudia Gawlas",
+          "title": "Time Loop (Julian Jeweil Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Chl\u00e4r",
+          "title": "Early Morning Acceleration",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Stef Mendesidis",
+          "title": "Techno",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Oneohtrix Point Never",
+          "title": "For Residue",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Yan Cook",
+          "title": "Eyes Adjust To The Dark",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "rene-wise-pleasure-note",
+      "query": "Rene Wise - Pleasure Note",
+      "ndcg": 0.8471779732814125,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Phil Berg",
+          "title": "Sappho",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "DJ Dextro",
+          "title": "Covil dos Abutres",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "UFO95, R\u00f8dh\u00e5d",
+          "title": "LAVANDE 02 [240107.1]",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Lobster",
+          "title": "Whispers Of The Muse",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Atonism, Vault Records",
+          "title": "At The End Of The Corridor",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Mython",
+          "title": "Copper",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Bailey Ibbs",
+          "title": "Heavyweight",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rill",
+          "title": "Onyx",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Lars Huismann",
+          "title": "Time Machine (Shinichiro Imanari Remix) (Mixed)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Yan Cook",
+          "title": "22-44",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "linear-system-guanine",
+      "query": "Linear System - Guanine",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Phil Berg",
+          "title": "Sappho",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "DJ Dextro",
+          "title": "Covil dos Abutres",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Mython",
+          "title": "Copper",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rill",
+          "title": "Silky Stones",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Yan Cook",
+          "title": "22-44",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Danny Wabbit",
+          "title": "Suave",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "LNRT",
+          "title": "Get Down",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Disguised",
+          "title": "23 Oil Street",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Arthur Robert",
+          "title": "Charisma",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Chl\u00e4r",
+          "title": "Early Morning Acceleration",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "ignez-veil",
+      "query": "Ignez - Veil",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Golden Cosmic Vibes",
+          "title": "\u203b\u3054\u3081\u3093\u306a\u3055\u3044\u6b8b\u5ff5\u306a\u304c\u3089\u624b\u9045\u308c\u306e\u65b9\u306b\u306f\u8868\u793a\u3055\u308c\u307e\u305b\u3093\u3002\u4eca\u591c\u307e\u3067\u306b\u898b\u308b\u4e8b\u304c\u3067\u304d\u305f\u65b9\u306f\u304a\u3081\u3067\u3068\u3046\u3054\u3056\u3044\u307e\u3059\u3010\u9f8d\u795e\u69d8\u306e\u5927\u304d\u306a\u529b\u304c\u3042\u306a\u305f\u3092\u30d4\u30f3\u30c1\u304b\u3089\u6551\u3063\u3066\u5b88\u308a\u629c\u3044\u3066\u304f\u308c\u307e\u3059\u3011\u5e78\u904b\u3092\u5f15\u304d\u5bc4\u305b\u308b\u97f3",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jeff Whitcher",
+          "title": "Sinister Passions of a Twisted Mind",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Michael Vignola",
+          "title": "Halo",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Vazio",
+          "title": "O Despertar do Okut\u00e1 (feat. Tykyra)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Oneohtrix Point Never",
+          "title": "For Residue",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Morphia Productions, Morphia Productions & Relaxing Ambientation",
+          "title": "Getting Dizzy",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Kaeshani",
+          "title": "Wounds",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Kurt Oldman",
+          "title": "Prying Eyes",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Ryan Lott",
+          "title": "Deprecated Systems",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Golden Cosmic Vibes",
+          "title": "\u7d76\u5bfe\u306b\u300e\u4eca\u300f\u3067\u3059\u3002\u666e\u901a\u306e\u904b\u3067\u306f\u8868\u793a\u3055\u308c\u307e\u305b\u3093\u30107\u79d2\u3067\u3082\u898b\u308c\u305f\u3089\u5927\u304d\u306a\u795d\u798f\u3067\u5b88\u3089\u308c\u8d85\u5e78\u904b\u306a\u51fa\u6765\u4e8b\u304c\u3069\u3093\u3069\u3093\u8d77\u3053\u308a\u307e\u3059\u3011\u5927\u5e78\u904b\u3000\u5e78\u904b\u306e\u5b87\u5b99\u6ce2\u52d5\u3000\u91d1\u904b\u304c\u4e0a\u304c\u308b\u97f3\u697d",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "_control_charlotte_apollo",
+      "query": "Charlotte de Witte - Apollo",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Ignez",
+          "title": "Euphoria",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Klangkuenstler",
+          "title": "Dunkle Illusion",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Will Clarke",
+          "title": "Rock With Me",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sara Landry",
+          "title": "Silicon Hex",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Joyhauser",
+          "title": "Tape Space",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Paul Kalkbrenner",
+          "title": "Revolte",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Under Black Helmet",
+          "title": "Mute",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Creeds",
+          "title": "Push Up (Short Version)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "BEAUZ, Kevu",
+          "title": "Ocho (BEAUZ & KEVU VIP) (Extended Mix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "BENNETT",
+          "title": "Vois sur ton chemin (Techno Mix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    }
+  ]
+}
