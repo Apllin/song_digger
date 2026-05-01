@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-01T19:52:21.802044+00:00",
+  "timestamp": "2026-05-01T21:04:45.077665+00:00",
   "web_url": "http://localhost:3000",
   "seed_count": 5,
   "results": [
@@ -21,9 +21,27 @@
       ],
       "results": [
         {
-          "artist": "LNRT",
-          "title": "Players Only",
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue: Volume 2",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Hi-Gate, Shugz, Trance Wax",
+          "title": "Pitchin' (Shugz & Trance Wax Remix)",
           "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "KaZ",
+          "title": "Temptation",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
@@ -33,51 +51,33 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Sammy Virji, Chris Lake, RoRo",
-          "title": "925",
+          "artist": "Luigi Tozzi",
+          "title": "Binary Sunset",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Enrico Sangiuliano",
+          "title": "Interconnection",
           "source": "youtube_music",
           "grade": "unmarked"
         },
         {
-          "artist": "Drop-E",
-          "title": "A State Of Anarchy",
-          "source": "youtube_music",
+          "artist": "Various Artists",
+          "title": "Kompakt 500",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
-          "artist": "Altinbas",
-          "title": "Unit 2",
-          "source": "youtube_music",
+          "artist": "Hardmau",
+          "title": "Castrato (Original Mix)",
+          "source": "cosine_club",
           "grade": "unmarked"
         },
         {
-          "artist": "Klaudia Gawlas",
-          "title": "Time Loop (Julian Jeweil Remix)",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Chl\u00e4r",
-          "title": "Early Morning Acceleration",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Stef Mendesidis",
-          "title": "Techno",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Oneohtrix Point Never",
-          "title": "For Residue",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Yan Cook",
-          "title": "Eyes Adjust To The Dark",
-          "source": "youtube_music",
+          "artist": "Alfred Kopke",
+          "title": "Sixty One",
+          "source": "yandex_music",
           "grade": "unmarked"
         }
       ]
@@ -85,11 +85,11 @@
     {
       "id": "rene-wise-pleasure-note",
       "query": "Rene Wise - Pleasure Note",
-      "ndcg": 0.8471779732814125,
+      "ndcg": 1.0,
       "grades": [
         "unmarked",
         "unmarked",
-        "relevant",
+        "unmarked",
         "unmarked",
         "unmarked",
         "unmarked",
@@ -106,32 +106,32 @@
           "grade": "unmarked"
         },
         {
+          "artist": "Pure Wrath",
+          "title": "Bleak Days Ahead",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "White Heaven",
+          "title": "Next to Nothing",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
           "artist": "DJ Dextro",
           "title": "Covil dos Abutres",
           "source": "youtube_music",
           "grade": "unmarked"
         },
         {
-          "artist": "UFO95, R\u00f8dh\u00e5d",
-          "title": "LAVANDE 02 [240107.1]",
-          "source": "youtube_music",
-          "grade": "relevant"
-        },
-        {
-          "artist": "Lobster",
-          "title": "Whispers Of The Muse",
-          "source": "youtube_music",
+          "artist": "MARBLED EYE",
+          "title": "Forever",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
           "artist": "Atonism, Vault Records",
           "title": "At The End Of The Corridor",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Mython",
-          "title": "Copper",
           "source": "youtube_music",
           "grade": "unmarked"
         },
@@ -142,21 +142,21 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Rill",
-          "title": "Onyx",
-          "source": "youtube_music",
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
-          "artist": "Lars Huismann",
-          "title": "Time Machine (Shinichiro Imanari Remix) (Mixed)",
-          "source": "youtube_music",
+          "artist": "Bo Jackson",
+          "title": "American Joy",
+          "source": "yandex_music",
           "grade": "unmarked"
         },
         {
-          "artist": "Yan Cook",
-          "title": "22-44",
-          "source": "youtube_music",
+          "artist": "Dax J",
+          "title": "Escape The System (Par Grindvik I'm Going In rework)",
+          "source": "cosine_club",
           "grade": "unmarked"
         }
       ]
@@ -179,14 +179,38 @@
       ],
       "results": [
         {
+          "artist": "DJ Dextro",
+          "title": "Covil dos Abutres",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
           "artist": "Phil Berg",
           "title": "Sappho",
           "source": "youtube_music",
           "grade": "unmarked"
         },
         {
-          "artist": "DJ Dextro",
-          "title": "Covil dos Abutres",
+          "artist": "Ignez",
+          "title": "Aventurine EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rene Wise",
+          "title": "Knock Motion E.P",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rill",
+          "title": "Silky Stones",
           "source": "youtube_music",
           "grade": "unmarked"
         },
@@ -197,45 +221,21 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Rill",
-          "title": "Silky Stones",
-          "source": "youtube_music",
+          "artist": "Peverelist",
+          "title": "Pulse Remix EP",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
-          "artist": "Yan Cook",
-          "title": "22-44",
-          "source": "youtube_music",
+          "artist": "Museum",
+          "title": "Raider",
+          "source": "cosine_club",
           "grade": "unmarked"
         },
         {
-          "artist": "Danny Wabbit",
-          "title": "Suave",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "LNRT",
-          "title": "Get Down",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Disguised",
-          "title": "23 Oil Street",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Arthur Robert",
-          "title": "Charisma",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Chl\u00e4r",
-          "title": "Early Morning Acceleration",
-          "source": "youtube_music",
+          "artist": "Snuff The Ablist, Koaste, Orifice Vulgatron",
+          "title": "Maelstrom feat. Koaste & Orifice Vulgatron",
+          "source": "yandex_music",
           "grade": "unmarked"
         }
       ]
@@ -243,10 +243,10 @@
     {
       "id": "ignez-veil",
       "query": "Ignez - Veil",
-      "ndcg": 1.0,
+      "ndcg": 0.8871958738785232,
       "grades": [
         "unmarked",
-        "unmarked",
+        "relevant",
         "unmarked",
         "unmarked",
         "unmarked",
@@ -264,9 +264,21 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Jeff Whitcher",
-          "title": "Sinister Passions of a Twisted Mind",
+          "artist": "Rene Wise",
+          "title": "Pleasure Note [SK11X007]",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "monosleep",
+          "title": "winter fingertips",
           "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Your Mom's Agency",
+          "title": "Soli Tunes",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
@@ -276,44 +288,32 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Vazio",
-          "title": "O Despertar do Okut\u00e1 (feat. Tykyra)",
+          "artist": "caterina barbieri",
+          "title": "Spirit Exit",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Aphex Twin",
+          "title": "#19",
           "source": "youtube_music",
           "grade": "unmarked"
         },
         {
-          "artist": "Oneohtrix Point Never",
-          "title": "For Residue",
-          "source": "youtube_music",
+          "artist": "Your Mom's Agency",
+          "title": "Detroit x Berlin",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
-          "artist": "Morphia Productions, Morphia Productions & Relaxing Ambientation",
-          "title": "Getting Dizzy",
-          "source": "youtube_music",
+          "artist": "Vidna Obmana",
+          "title": "The Spiritual Bonding",
+          "source": "cosine_club",
           "grade": "unmarked"
         },
         {
-          "artist": "Kaeshani",
-          "title": "Wounds",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Kurt Oldman",
-          "title": "Prying Eyes",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Ryan Lott",
-          "title": "Deprecated Systems",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Golden Cosmic Vibes",
-          "title": "\u7d76\u5bfe\u306b\u300e\u4eca\u300f\u3067\u3059\u3002\u666e\u901a\u306e\u904b\u3067\u306f\u8868\u793a\u3055\u308c\u307e\u305b\u3093\u30107\u79d2\u3067\u3082\u898b\u308c\u305f\u3089\u5927\u304d\u306a\u795d\u798f\u3067\u5b88\u3089\u308c\u8d85\u5e78\u904b\u306a\u51fa\u6765\u4e8b\u304c\u3069\u3093\u3069\u3093\u8d77\u3053\u308a\u307e\u3059\u3011\u5927\u5e78\u904b\u3000\u5e78\u904b\u306e\u5b87\u5b99\u6ce2\u52d5\u3000\u91d1\u904b\u304c\u4e0a\u304c\u308b\u97f3\u697d",
+          "artist": "SpaceAmbient",
+          "title": "Accretionist - Infinite Horizons [SpaceAmbient Channel]",
           "source": "youtube_music",
           "grade": "unmarked"
         }
@@ -322,14 +322,14 @@
     {
       "id": "_control_charlotte_apollo",
       "query": "Charlotte de Witte - Apollo",
-      "ndcg": 1.0,
+      "ndcg": 0.7724991376288949,
       "grades": [
         "unmarked",
         "unmarked",
         "unmarked",
         "unmarked",
-        "unmarked",
-        "unmarked",
+        "relevant",
+        "relevant",
         "unmarked",
         "unmarked",
         "unmarked",
@@ -343,16 +343,34 @@
           "grade": "unmarked"
         },
         {
+          "artist": "Alignment",
+          "title": "Attack EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
           "artist": "Klangkuenstler",
           "title": "Dunkle Illusion",
           "source": "youtube_music",
           "grade": "unmarked"
         },
         {
-          "artist": "Will Clarke",
-          "title": "Rock With Me",
-          "source": "youtube_music",
+          "artist": "Indira Paganotto",
+          "title": "Lions Of God EP",
+          "source": "bandcamp",
           "grade": "unmarked"
+        },
+        {
+          "artist": "Amelie Lens",
+          "title": "Man Over Machine",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Amelie Lens",
+          "title": "Higher EP",
+          "source": "bandcamp",
+          "grade": "relevant"
         },
         {
           "artist": "Sara Landry",
@@ -361,38 +379,20 @@
           "grade": "unmarked"
         },
         {
-          "artist": "Joyhauser",
-          "title": "Tape Space",
-          "source": "youtube_music",
+          "artist": "Various Artists",
+          "title": "Versus",
+          "source": "bandcamp",
           "grade": "unmarked"
         },
         {
-          "artist": "Paul Kalkbrenner",
-          "title": "Revolte",
-          "source": "youtube_music",
+          "artist": "Billie Jo",
+          "title": "Sander",
+          "source": "cosine_club",
           "grade": "unmarked"
         },
         {
           "artist": "Under Black Helmet",
           "title": "Mute",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "Creeds",
-          "title": "Push Up (Short Version)",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "BEAUZ, Kevu",
-          "title": "Ocho (BEAUZ & KEVU VIP) (Extended Mix)",
-          "source": "youtube_music",
-          "grade": "unmarked"
-        },
-        {
-          "artist": "BENNETT",
-          "title": "Vois sur ton chemin (Techno Mix)",
           "source": "youtube_music",
           "grade": "unmarked"
         }
