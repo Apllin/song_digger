@@ -1,63 +1,48 @@
 """
-trackid.net adapter — DJ co-occurrence within ±2 positions.
+trackid.net JSON API adapter.
 
-Cache → scrape with budget → persist → return. The seed track page lists DJ
-sets that played it; we fetch up to MAX_SETS_PER_SEED of those, parse each
-set, and emit tracks within ±WINDOW positions of the seed.
+trackid.net is a tracklist-detection site (their bots auto-identify tracks
+in DJ sets uploaded to SoundCloud / Mixcloud / YouTube). Their data is
+exposed via /api/public/... endpoints — JSON, no auth required, no
+Cloudflare challenges on these paths.
 
-  - URL pattern is /track/<id> for tracks and /dj/<slug>/<set-slug> for sets
-  - selectors match trackid.net's structural class names
-  - separate TrackidCooccurrence cache table and trackidnet_enabled flag
+Flow for a seed track:
+  1. /musictracks?keywords=<artist track> → pick the best matching seed
+     (exact-artist match with highest playCount; fall back to first
+     nonzero-playCount entry).
+  2. The seed record carries minCreatedSlug + maxCreatedSlug — the earliest
+     and latest known DJ-set audiostreams that played it.
+  3. /audiostreams/<slug> → tracklist for each of those sets. Use the most
+     recent detectionProcess (sets get reprocessed; later runs supersede).
+  4. Aggregate every non-seed track across both tracklists by slug.
+     Co-occurrence count = number of fetched sets the candidate appears in
+     (1 or 2). Sort by count desc, then by referenceCount asc — tracks
+     that travel with the seed but aren't globally ubiquitous rank first.
 
-Ships disabled (settings.trackidnet_enabled = False) until the parser is
-verified against live markup. Cache, scraper, and route wiring stay in place
-so re-enabling is a one-config change.
-
-TODO(parser-not-verified): the selectors below — ".set-track", ".track-artist",
-".track-title" and the "/dj/" URL prefix — are PLACEHOLDERS copied from the
-B3 spec as plausible examples. They have NOT been verified against the live
-trackid.net DOM. Before flipping settings.trackidnet_enabled to True you must:
-  1. Open https://www.trackid.net/track/<some-popular-track> in a browser
-     and inspect the live DOM via DevTools.
-  2. Update the selectors in _find_seed_id / _fetch_set_urls / _adjacent_tracks
-     to match real markup.
-  3. Re-capture the HTML fixtures in tests/fixtures/trackidnet/ from real
-     trackid.net pages and pin the new capture date in their headers.
-  4. Re-run pytest tests/test_trackidnet.py on the new fixtures.
-Without this step the adapter will return 0 results on enable.
+Soft-degrades: any HTTP error, JSON parse error, or missing seed returns [].
+Never raises into the caller (per python-adapter-pattern).
 """
 import asyncio
-import time
-from collections import defaultdict
+from typing import Any
 
 import httpx
-from bs4 import BeautifulSoup
 
 from app.adapters.base import AbstractAdapter
 from app.config import settings
-from app.core.db import (
-    fetch_trackid_cooccurrence,
-    upsert_trackid_cooccurrence_batch,
-)
 from app.core.models import TrackMeta
 
-BASE = "https://www.trackid.net"
-SEARCH = f"{BASE}/search"
+API_BASE = "https://trackid.net/api/public"
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
-HTTP_TIMEOUT_S = 4.0
-RATE_LIMIT_S = 1.0
-SCRAPE_BUDGET_S = 8.0
-MAX_SETS_PER_SEED = 20
-WINDOW = 2
-TTL_DAYS = 7
+TIMEOUT_SECONDS = 8.0
+SEARCH_PAGE_SIZE = 20
 DEFAULT_LIMIT = 50
 
 
 class TrackidnetAdapter(AbstractAdapter):
-    name = "trackidnet"
+    SOURCE = "trackidnet"
 
     async def find_similar(
         self, query: str, limit: int = DEFAULT_LIMIT
@@ -69,215 +54,52 @@ class TrackidnetAdapter(AbstractAdapter):
         if not track:
             return []
 
-        cached = await fetch_trackid_cooccurrence(
-            artist=artist, track=track, ttl_days=TTL_DAYS, limit=limit
+        async with httpx.AsyncClient(
+            timeout=TIMEOUT_SECONDS,
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        ) as client:
+            seed = await _find_seed_track(client, artist, track)
+            if not seed:
+                return []
+
+            audiostream_slugs = _collect_audiostream_slugs(seed)
+            if not audiostream_slugs:
+                return []
+
+            tracklists = await _fetch_tracklists(client, audiostream_slugs)
+
+        seed_slug = seed.get("slug") or ""
+        coocc: dict[str, dict[str, Any]] = {}
+        for audiostream in tracklists:
+            for tr in _extract_tracks(audiostream, seed_slug):
+                slug = tr.get("slug")
+                if not slug:
+                    continue
+                rec = coocc.get(slug)
+                if rec is None:
+                    coocc[slug] = {"track": tr, "count": 1}
+                else:
+                    rec["count"] += 1
+
+        # Higher co-occurrence first; among ties, prefer lower
+        # referenceCount (less globally generic) — tracks with no
+        # referenceCount at all rank last via the 9999 sentinel.
+        ranked = sorted(
+            coocc.values(),
+            key=lambda r: (-r["count"], r["track"].get("referenceCount") or 9999),
         )
-        if cached:
-            return cached
 
-        try:
-            scraped = await self._scrape_with_budget(
-                artist, track, budget_s=SCRAPE_BUDGET_S
-            )
-        except Exception as e:
-            print(f"[Trackidnet] scrape error: {e}")
-            return []
-
-        if not scraped:
-            return []
-
-        await upsert_trackid_cooccurrence_batch(
-            seed_artist=artist, seed_track=track, pairs=scraped
-        )
-
-        return scraped[:limit]
+        return [_to_track_meta(r["track"], float(r["count"])) for r in ranked[:limit]]
 
     async def random_techno_track(self) -> TrackMeta | None:
         return None
 
-    # ── scraping internals ────────────────────────────────────────────────
 
-    async def _scrape_with_budget(
-        self, artist: str, track: str, budget_s: float
-    ) -> list[TrackMeta]:
-        deadline = time.monotonic() + budget_s
-
-        async with httpx.AsyncClient(
-            timeout=HTTP_TIMEOUT_S,
-            headers={"User-Agent": USER_AGENT},
-            follow_redirects=True,
-        ) as client:
-            seed_id = await self._find_seed_id(client, artist, track)
-            if not seed_id or time.monotonic() > deadline:
-                return []
-
-            await asyncio.sleep(RATE_LIMIT_S)
-            set_urls = await self._fetch_set_urls(
-                client, seed_id, max_sets=MAX_SETS_PER_SEED
-            )
-            if not set_urls:
-                return []
-
-            cooccur: dict[tuple[str, str], dict] = defaultdict(
-                lambda: {"setCount": 0, "url": "", "artist": "", "title": ""}
-            )
-            for set_url in set_urls:
-                if time.monotonic() > deadline:
-                    break
-                try:
-                    pairs = await self._adjacent_tracks(
-                        client, set_url, seed_id, window=WINDOW
-                    )
-                except Exception as e:
-                    print(f"[Trackidnet] set parse failed for {set_url}: {e}")
-                    pairs = []
-                for p in pairs:
-                    key = (p["artist"].lower(), p["title"].lower())
-                    bucket = cooccur[key]
-                    bucket["setCount"] += 1
-                    if not bucket["url"]:
-                        bucket["url"] = p["url"]
-                        bucket["artist"] = p["artist"]
-                        bucket["title"] = p["title"]
-                await asyncio.sleep(RATE_LIMIT_S)
-
-        sorted_pairs = sorted(
-            cooccur.values(),
-            key=lambda x: (-x["setCount"], x["url"]),
-        )
-
-        return [
-            TrackMeta(
-                title=p["title"],
-                artist=p["artist"],
-                source=self.name,
-                sourceUrl=p["url"],
-                score=float(p["setCount"]),
-            )
-            for p in sorted_pairs
-        ]
-
-    async def _find_seed_id(
-        self, client: httpx.AsyncClient, artist: str, track: str
-    ) -> str | None:
-        """Search trackid.net and return the trailing slug of the first track result."""
-        params = {"query": f"{artist} {track}"}
-        try:
-            resp = await client.get(SEARCH, params=params)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[Trackidnet] search request failed: {e}")
-            return None
-
-        try:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            link = soup.select_one('a[href^="/track/"]')
-            if not link:
-                return None
-            href = link.get("href", "")
-            return href.removeprefix("/track/") or None
-        except Exception as e:
-            print(f"[Trackidnet] search parse failed for {artist} - {track}: {e}")
-            return None
-
-    async def _fetch_set_urls(
-        self, client: httpx.AsyncClient, seed_id: str, max_sets: int
-    ) -> list[str]:
-        """Seed track page lists DJ sets that played it. Return up to max_sets."""
-        url = f"{BASE}/track/{seed_id}"
-        try:
-            resp = await client.get(url)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[Trackidnet] seed page failed for {seed_id}: {e}")
-            return []
-
-        try:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            seen: set[str] = set()
-            urls: list[str] = []
-            for link in soup.select('a[href^="/dj/"]'):
-                href = link.get("href", "")
-                if not href:
-                    continue
-                full = f"{BASE}{href}"
-                if full in seen:
-                    continue
-                seen.add(full)
-                urls.append(full)
-                if len(urls) >= max_sets:
-                    break
-            return urls
-        except Exception as e:
-            print(f"[Trackidnet] set list parse failed for {seed_id}: {e}")
-            return []
-
-    # TODO(parser-not-verified): the selectors used below
-    # (.set-track / .track-artist / .track-title and the /dj/ URL prefix in
-    # _fetch_set_urls) are PLACEHOLDERS copied from the B3 spec as plausible
-    # examples. They are NOT verified against the live trackid.net DOM.
-    # Before flipping settings.trackidnet_enabled to True:
-    #   1. Open https://www.trackid.net/track/<some-popular-track> in a
-    #      browser and inspect the live DOM via DevTools.
-    #   2. Update these selectors to match real markup.
-    #   3. Re-capture HTML fixtures in tests/fixtures/trackidnet/ from real
-    #      trackid.net pages, pinning the new capture date.
-    #   4. Re-run pytest tests/test_trackidnet.py on the new fixtures.
-    # Without this step the adapter will return 0 results on enable.
-    async def _adjacent_tracks(
-        self,
-        client: httpx.AsyncClient,
-        set_url: str,
-        seed_id: str,
-        window: int,
-    ) -> list[dict]:
-        """Fetch a DJ set page and return tracks within ±window of the seed."""
-        try:
-            resp = await client.get(set_url)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[Trackidnet] set fetch failed for {set_url}: {e}")
-            return []
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        track_rows = soup.select("div.set-track")
-        tracks_in_set: list[dict] = []
-        seen_tids: set[str] = set()
-        seed_idx: int | None = None
-        for row in track_rows:
-            a = row.select_one('a[href^="/track/"]')
-            if not a:
-                continue
-            href = a.get("href", "")
-            tid = href.removeprefix("/track/")
-            if not tid or tid in seen_tids:
-                continue
-            artist_node = row.select_one(".track-artist")
-            title_node = row.select_one(".track-title")
-            artist_name = artist_node.get_text(strip=True) if artist_node else ""
-            title = title_node.get_text(strip=True) if title_node else ""
-            if not artist_name or not title:
-                continue
-            tracks_in_set.append({
-                "id": tid,
-                "artist": artist_name,
-                "title": title,
-                "url": f"{BASE}{href}",
-            })
-            seen_tids.add(tid)
-            if tid == seed_id:
-                seed_idx = len(tracks_in_set) - 1
-
-        if seed_idx is None:
-            return []
-
-        start = max(0, seed_idx - window)
-        end = min(len(tracks_in_set), seed_idx + window + 1)
-        return [t for t in tracks_in_set[start:end] if t["id"] != seed_id]
-
+# ── helpers ───────────────────────────────────────────────────────────────
 
 def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" -> (artist, track). Returns (query, None) when no separator."""
+    """Parse "Artist - Track" → (artist, track). Returns (query, None) when
+    no separator. Adapters needing a track must short-circuit on (artist, None)."""
     if " - " not in query:
         return query.strip(), None
     artist, _, track = query.partition(" - ")
@@ -286,3 +108,115 @@ def _split_query(query: str) -> tuple[str, str | None]:
     if not track:
         return artist, None
     return artist, track
+
+
+async def _find_seed_track(
+    client: httpx.AsyncClient, artist: str, track: str
+) -> dict | None:
+    """Pick the best catalogue entry for (artist, track) from /musictracks.
+
+    Picker: exact artist match (case-insensitive) with highest playCount;
+    fall back to the first entry that has any plays at all. Tracks with
+    playCount=0 carry no co-occurrence signal and are skipped.
+
+    Caveat (documented in commit message and in the spec): when a query
+    matches both an original and a remix, the picker takes the higher
+    playCount. If the user wanted the remix but the original is more
+    played, candidates will be drawn from the original's sets.
+    """
+    keywords = f"{artist} {track}".strip()
+    try:
+        resp = await client.get(
+            f"{API_BASE}/musictracks",
+            params={
+                "keywords": keywords,
+                "pageSize": SEARCH_PAGE_SIZE,
+                "currentPage": 0,
+                "sortField": "",
+                "sortDirection": "",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        print(f"[Trackidnet] search failed for {keywords!r}: {e}")
+        return None
+
+    results = (data.get("result") or {}).get("musicTracks") or []
+    if not results:
+        return None
+
+    artist_lc = artist.lower()
+    with_artist = [
+        r for r in results
+        if (r.get("artist") or "").lower() == artist_lc
+        and (r.get("playCount") or 0) > 0
+    ]
+    if with_artist:
+        return max(with_artist, key=lambda r: r.get("playCount") or 0)
+
+    nonzero = [r for r in results if (r.get("playCount") or 0) > 0]
+    if nonzero:
+        return nonzero[0]
+
+    return None
+
+
+def _collect_audiostream_slugs(seed: dict) -> list[str]:
+    """Earliest and latest known sets for this seed; deduplicate when the
+    track has only one play (min == max)."""
+    slugs: list[str] = []
+    for key in ("minCreatedSlug", "maxCreatedSlug"):
+        s = seed.get(key)
+        if s and s not in slugs:
+            slugs.append(s)
+    return slugs
+
+
+async def _fetch_tracklists(
+    client: httpx.AsyncClient, slugs: list[str]
+) -> list[dict]:
+    """Fetch each audiostream concurrently. Failed fetches drop out silently."""
+    async def _one(slug: str) -> dict | None:
+        try:
+            resp = await client.get(f"{API_BASE}/audiostreams/{slug}")
+            resp.raise_for_status()
+            return (resp.json() or {}).get("result")
+        except (httpx.HTTPError, ValueError) as e:
+            print(f"[Trackidnet] audiostream {slug} failed: {e}")
+            return None
+
+    results = await asyncio.gather(*(_one(s) for s in slugs))
+    return [r for r in results if r is not None]
+
+
+def _extract_tracks(audiostream: dict, seed_slug: str) -> list[dict]:
+    """Every track from the most-recent detection process, with the seed
+    filtered out (matched by slug, all instances if it appears more than once).
+
+    Sets get reprocessed over time; later runs may add or correct tracks.
+    Mixing tracks across processes would double-count, so we use only the
+    process with the latest endDate. ISO-8601 timestamps sort correctly
+    lexicographically.
+    """
+    processes = audiostream.get("detectionProcesses") or []
+    if not processes:
+        return []
+
+    latest = max(processes, key=lambda p: p.get("endDate") or "")
+    tracks = latest.get("detectionProcessMusicTracks") or []
+    if not tracks:
+        return []
+
+    return [t for t in tracks if t.get("slug") != seed_slug]
+
+
+def _to_track_meta(track: dict, score: float) -> TrackMeta:
+    slug = track.get("slug") or ""
+    return TrackMeta(
+        title=(track.get("title") or "").strip(),
+        artist=(track.get("artist") or "").strip(),
+        source=TrackidnetAdapter.SOURCE,
+        sourceUrl=f"https://trackid.net/musictracks/{slug}" if slug else "",
+        score=score,
+    )

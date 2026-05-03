@@ -1,0 +1,67 @@
+{
+  "result": {
+    "musicTracks": [
+      {
+        "id": 502601,
+        "artist": "nina kraviz",
+        "title": "Tarde (David Löhlein Amor Mix)",
+        "label": "nina kraviz",
+        "labelSlug": "nina-kraviz-1",
+        "slug": "nina-kraviz-tarde-david-lohlein-amor-mix",
+        "playCount": 10,
+        "minCreatedOn": "2023-05-04T06:32:21Z",
+        "minCreatedSlug": "heisss-podcast-015-david-lohlein",
+        "maxCreatedOn": "2025-07-17T00:00:00Z",
+        "maxCreatedSlug": "nina-kraviz-neversea-kapital-2025",
+        "favouriteDate": null,
+        "accountMusicTrack": null
+      },
+      {
+        "id": 502602,
+        "artist": "nina kraviz",
+        "title": "Tarde",
+        "label": "трип",
+        "labelSlug": "trip",
+        "slug": "nina-kraviz-tarde",
+        "playCount": 4,
+        "minCreatedOn": "2022-01-15T10:00:00Z",
+        "minCreatedSlug": "some-podcast-001",
+        "maxCreatedOn": "2024-03-20T00:00:00Z",
+        "maxCreatedSlug": "some-podcast-099",
+        "favouriteDate": null,
+        "accountMusicTrack": null
+      },
+      {
+        "id": 502603,
+        "artist": "various",
+        "title": "Tarde (Cover)",
+        "label": "compilation",
+        "labelSlug": "compilation",
+        "slug": "various-tarde-cover",
+        "playCount": 1,
+        "minCreatedOn": "2023-08-01T00:00:00Z",
+        "minCreatedSlug": "compilation-mix-001",
+        "maxCreatedOn": "2023-08-01T00:00:00Z",
+        "maxCreatedSlug": "compilation-mix-001",
+        "favouriteDate": null,
+        "accountMusicTrack": null
+      },
+      {
+        "id": 502604,
+        "artist": "nina kraviz",
+        "title": "Tarde (Bare Catalogue)",
+        "label": "nina kraviz",
+        "labelSlug": "nina-kraviz-1",
+        "slug": "nina-kraviz-tarde-bare",
+        "playCount": 0,
+        "minCreatedOn": null,
+        "minCreatedSlug": null,
+        "maxCreatedOn": null,
+        "maxCreatedSlug": null,
+        "favouriteDate": null,
+        "accountMusicTrack": null
+      }
+    ],
+    "rowCount": 4
+  }
+}
