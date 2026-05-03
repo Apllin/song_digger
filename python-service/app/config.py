@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # fixed against the live markup. Cache, scraper internals, and route
     # wiring stay in place so re-enabling is a one-config change.
     tracklist1001_enabled: bool = False
+    # Disabled by default like tracklist1001 — flip to True in .env once the
+    # parser is verified against the live trackid.net markup. Cache, scraper,
+    # and route wiring stay in place so re-enabling is a one-config change.
+    trackidnet_enabled: bool = False
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 

@@ -1,0 +1,52 @@
+<!--
+  Captured 2026-05-03 (synthetic DJ set page).
+  Selectors under test:
+    - `div.set-track` for each track row
+    - `a[href^="/track/"]` for the track link inside each row
+    - `.track-artist` and `.track-title` for metadata
+
+  Layout: 5 tracks, seed (12345) at index 2. With WINDOW=2 the adapter
+  should pick up tids 91, 92, 94, 95 (everything except the seed itself
+  in the 0..4 window). Includes one row missing inner spans to verify
+  the parser drops malformed rows without raising.
+-->
+<html><body>
+<div class="set-track-list">
+
+  <div class="set-track">
+    <a href="/track/91-pre-track-one">link</a>
+    <span class="track-artist">Reeko</span>
+    <span class="track-title">Faceless</span>
+  </div>
+
+  <div class="set-track">
+    <a href="/track/92-pre-track-two">link</a>
+    <span class="track-artist">Exium</span>
+    <span class="track-title">Conundrum</span>
+  </div>
+
+  <div class="set-track">
+    <a href="/track/12345-oscar-mulero-horses">link</a>
+    <span class="track-artist">Oscar Mulero</span>
+    <span class="track-title">Horses</span>
+  </div>
+
+  <div class="set-track">
+    <a href="/track/94-post-track-one">link</a>
+    <span class="track-artist">Architectural</span>
+    <span class="track-title">Glass Wall</span>
+  </div>
+
+  <div class="set-track">
+    <a href="/track/95-post-track-two">link</a>
+    <span class="track-artist">Linear System</span>
+    <span class="track-title">Static</span>
+  </div>
+
+  <!-- Malformed row: link present but artist/title spans missing. Parser must skip. -->
+  <div class="set-track">
+    <a href="/track/96-malformed">link</a>
+  </div>
+
+</div>
+</body></html>
