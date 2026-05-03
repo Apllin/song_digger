@@ -107,3 +107,24 @@ model TracklistCooccurrence {
   @@index([seedTracklistId])
   @@index([updatedAt])
 }
+
+model TrackidCooccurrence {
+  id            String   @id @default(cuid())
+
+  seedTrackidId String
+  pairTrackidId String
+
+  pairArtist    String
+  pairTitle     String
+
+  setCount      Int      @default(1)
+
+  pairUrl       String
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([seedTrackidId, pairTrackidId])
+  @@index([seedTrackidId])
+  @@index([updatedAt])
+}
