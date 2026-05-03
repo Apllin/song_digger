@@ -14,6 +14,19 @@ design rationale; what differs here is the source-specific surface:
 Like 1001tracklists, ships disabled (settings.trackidnet_enabled = False) until
 the parser is verified against live markup. Cache, scraper, and route wiring
 stay in place so re-enabling is a one-config change.
+
+TODO(parser-not-verified): the selectors below — ".set-track", ".track-artist",
+".track-title" and the "/dj/" URL prefix — are PLACEHOLDERS copied from the
+B3 spec as plausible examples. They have NOT been verified against the live
+trackid.net DOM. Before flipping settings.trackidnet_enabled to True you must:
+  1. Open https://www.trackid.net/track/<some-popular-track> in a browser
+     and inspect the live DOM via DevTools.
+  2. Update the selectors in _find_seed_id / _fetch_set_urls / _adjacent_tracks
+     to match real markup.
+  3. Re-capture the HTML fixtures in tests/fixtures/trackidnet/ from real
+     trackid.net pages and pin the new capture date in their headers.
+  4. Re-run pytest tests/test_trackidnet.py on the new fixtures.
+Without this step the adapter will return 0 results on enable.
 """
 import asyncio
 import time
@@ -202,6 +215,18 @@ class TrackidnetAdapter(AbstractAdapter):
             print(f"[Trackidnet] set list parse failed for {seed_id}: {e}")
             return []
 
+    # TODO(parser-not-verified): the selectors used below
+    # (.set-track / .track-artist / .track-title and the /dj/ URL prefix in
+    # _fetch_set_urls) are PLACEHOLDERS copied from the B3 spec as plausible
+    # examples. They are NOT verified against the live trackid.net DOM.
+    # Before flipping settings.trackidnet_enabled to True:
+    #   1. Open https://www.trackid.net/track/<some-popular-track> in a
+    #      browser and inspect the live DOM via DevTools.
+    #   2. Update these selectors to match real markup.
+    #   3. Re-capture HTML fixtures in tests/fixtures/trackidnet/ from real
+    #      trackid.net pages, pinning the new capture date.
+    #   4. Re-run pytest tests/test_trackidnet.py on the new fixtures.
+    # Without this step the adapter will return 0 results on enable.
     async def _adjacent_tracks(
         self,
         client: httpx.AsyncClient,

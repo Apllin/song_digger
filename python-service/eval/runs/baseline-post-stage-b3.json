@@ -1,0 +1,402 @@
+{
+  "timestamp": "2026-05-03T01:56:18.461122+00:00",
+  "web_url": "http://localhost:3000",
+  "seed_count": 5,
+  "results": [
+    {
+      "id": "mulero-horses",
+      "query": "Oscar Mulero - Horses",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue: Volume 2",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Setaoc Mass",
+          "title": "Inferno",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "LNRT",
+          "title": "Players Only",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Klaudia Gawlas",
+          "title": "Time Loop (Julian Jeweil Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Binary Sunset",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "boy 2000 & Baltra",
+          "title": "feel",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Various Artists",
+          "title": "Kompakt 500",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alfred Kopke",
+          "title": "Sixty One",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Hardmau",
+          "title": "Castrato (Original Mix)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "rene-wise-pleasure-note",
+      "query": "Rene Wise - Pleasure Note",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "OOIOO / Lightning Bolt",
+          "title": "THE HORIZON SPIRALS / THE HORIZON VIRAL",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Phil Berg",
+          "title": "Sappho",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Kr!z",
+          "title": "Nautilus (Marcal Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "peace586",
+          "title": "Peace To The World",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Day Tripper",
+          "title": "Day Tripper Creativity is free.Art Isn't",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "DJ Dextro",
+          "title": "Gift From The Future",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Atonism, Vault Records",
+          "title": "At The End Of The Corridor",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Dax J",
+          "title": "Escape The System (Par Grindvik I'm Going In rework)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Bo Jackson",
+          "title": "American Joy",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "linear-system-guanine",
+      "query": "Linear System - Guanine",
+      "ndcg": 0.8125952066495404,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Rill",
+          "title": "Silky Stones",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "DJ Dextro",
+          "title": "Covil dos Abutres",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Ignez",
+          "title": "Aventurine EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "R\u00f8dh\u00e5d & Kameliia",
+          "title": "CARMINE 04 [240717]",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Rene Wise",
+          "title": "Knock Motion E.P",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Arthur Robert",
+          "title": "Charisma",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Peverelist",
+          "title": "Pulse Remix EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Museum",
+          "title": "Raider",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Snuff The Ablist, Koaste, Orifice Vulgatron",
+          "title": "Maelstrom feat. Koaste & Orifice Vulgatron",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "ignez-veil",
+      "query": "Ignez - Veil",
+      "ndcg": 0.8871958738785232,
+      "grades": [
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Golden Cosmic Vibes",
+          "title": "\u203b\u3054\u3081\u3093\u306a\u3055\u3044\u6b8b\u5ff5\u306a\u304c\u3089\u624b\u9045\u308c\u306e\u65b9\u306b\u306f\u8868\u793a\u3055\u308c\u307e\u305b\u3093\u3002\u4eca\u591c\u307e\u3067\u306b\u898b\u308b\u4e8b\u304c\u3067\u304d\u305f\u65b9\u306f\u304a\u3081\u3067\u3068\u3046\u3054\u3056\u3044\u307e\u3059\u3010\u9f8d\u795e\u69d8\u306e\u5927\u304d\u306a\u529b\u304c\u3042\u306a\u305f\u3092\u30d4\u30f3\u30c1\u304b\u3089\u6551\u3063\u3066\u5b88\u308a\u629c\u3044\u3066\u304f\u308c\u307e\u3059\u3011\u5e78\u904b\u3092\u5f15\u304d\u5bc4\u305b\u308b\u97f3",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rene Wise",
+          "title": "Pleasure Note [SK11X007]",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "monosleep",
+          "title": "winter fingertips",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Your Mom's Agency",
+          "title": "Soli Tunes",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Michael Vignola",
+          "title": "Halo",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "caterina barbieri",
+          "title": "Spirit Exit",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Your Mom's Agency",
+          "title": "Detroit x Berlin",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Aphex Twin",
+          "title": "#19",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Vidna Obmana",
+          "title": "The Spiritual Bonding",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "SpaceAmbient",
+          "title": "Accretionist - Infinite Horizons [SpaceAmbient Channel]",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "_control_charlotte_apollo",
+      "query": "Charlotte de Witte - Apollo",
+      "ndcg": 0.8032285550939751,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Ignez",
+          "title": "Euphoria",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alignment",
+          "title": "Attack EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Nicole Moudaber",
+          "title": "What Was (Chris Liebing Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Indira Paganotto",
+          "title": "Lions Of God EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sara Landry",
+          "title": "Silicon Hex",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Amelie Lens",
+          "title": "Higher EP",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Resonance Techno",
+          "title": "Teik Ar\u00f4 - Acid Resurrection Pt 2 (#Acid #Techno)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jaymie Silk",
+          "title": "Until We Meet Again",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Billie Jo",
+          "title": "Sander",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Joyhauser",
+          "title": "Tape Space",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    }
+  ]
+}
