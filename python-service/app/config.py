@@ -7,9 +7,9 @@ _REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    cosine_club_api_key: str = "cosine_6rxVmKV8_ztVO6i3UyqanGuJSlVEsblk2kNpAwkqV"
-    discogs_token: str = "eOgJIsfofGaBPEdbNNeNBnWOSyJXTxijlwqzKEFc"
-    # Empty by default — adapter no-ops when missing.
+    # Empty by default — adapters no-op when missing. Real values live in .env.
+    cosine_club_api_key: str = ""
+    discogs_token: str = ""
     yandex_music_token: str = ""
     lastfm_api_key: str = ""
     # Postgres connection string — shared with web (Prisma). Empty in test

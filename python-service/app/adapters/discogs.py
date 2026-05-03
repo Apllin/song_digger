@@ -4,11 +4,6 @@ from app.config import settings
 
 BASE_URL = "https://api.discogs.com"
 
-HEADERS = {
-    "User-Agent": "SongDigger/1.0",
-    "Authorization": f"Discogs token={settings.discogs_token}",
-}
-
 
 class DiscogsAdapter:
     """
@@ -19,12 +14,18 @@ class DiscogsAdapter:
     Uses a persistent httpx client so multiple paginated requests share one
     TCP connection instead of reopening it for every call.
     Retries automatically on 429 Rate-Limit (up to 3 attempts, honours Retry-After).
+
+    Soft-degrades when DISCOGS_TOKEN is missing: every public method returns
+    an empty result instead of firing a guaranteed-401 request.
     """
 
     def __init__(self) -> None:
+        headers = {"User-Agent": "SongDigger/1.0"}
+        if settings.discogs_token:
+            headers["Authorization"] = f"Discogs token={settings.discogs_token}"
         self._client = httpx.AsyncClient(
             base_url=BASE_URL,
-            headers=HEADERS,
+            headers=headers,
             timeout=20.0,
         )
 
@@ -49,6 +50,8 @@ class DiscogsAdapter:
 
     async def search_artist(self, query: str, limit: int = 10) -> list[dict]:
         """Search for artists by name."""
+        if not settings.discogs_token:
+            return []
         resp = await self._get(
             "/database/search",
             params={"q": query, "type": "artist", "per_page": limit},
@@ -72,6 +75,8 @@ class DiscogsAdapter:
         Get paginated list of artist releases.
         Returns: { releases, pagination: { page, pages, total } }
         """
+        if not settings.discogs_token:
+            return {"releases": [], "pagination": {}}
         resp = await self._get(
             f"/artists/{artist_id}/releases",
             params={
@@ -103,6 +108,8 @@ class DiscogsAdapter:
 
     async def search_label(self, query: str, limit: int = 10) -> list[dict]:
         """Search for labels by name."""
+        if not settings.discogs_token:
+            return []
         resp = await self._get(
             "/database/search",
             params={"q": query, "type": "label", "per_page": limit},
@@ -126,6 +133,8 @@ class DiscogsAdapter:
         Get paginated releases for a label.
         Returns: { releases, pagination: { page, pages, total } }
         """
+        if not settings.discogs_token:
+            return {"releases": [], "pagination": {}}
         resp = await self._get(
             f"/labels/{label_id}/releases",
             params={
@@ -161,6 +170,8 @@ class DiscogsAdapter:
         Get full tracklist for a release or master release.
         release_type: "master" or "release"
         """
+        if not settings.discogs_token:
+            return []
         endpoint = (
             f"/masters/{release_id}"
             if release_type == "master"

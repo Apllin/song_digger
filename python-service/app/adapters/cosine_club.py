@@ -33,6 +33,8 @@ class CosineClubAdapter(AbstractAdapter):
         Two-step: search for the query, then fetch similar by track id.
         Returns [] if the search has no hits or any step fails.
         """
+        if not settings.cosine_club_api_key:
+            return []
         try:
             seed_id = await self._search_first_id(query)
             if not seed_id:
@@ -51,6 +53,8 @@ class CosineClubAdapter(AbstractAdapter):
 
     async def search_suggestions(self, query: str, limit: int = 10) -> list[str]:
         """Return 'Artist - Title' strings for autocomplete."""
+        if not settings.cosine_club_api_key:
+            return []
         try:
             resp = await self._client.get(
                 "/v1/search",
