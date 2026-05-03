@@ -23,6 +23,8 @@ const SOURCE_LABELS: Record<string, string> = {
   bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
   beatport: "Beatport",
+  yandex_music: "Yandex.Music",
+  lastfm: "Last.fm",
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -30,6 +32,8 @@ const SOURCE_COLORS: Record<string, string> = {
   bandcamp: "bg-sky-900/60 text-sky-300",
   cosine_club: "bg-purple-900/60 text-purple-300",
   beatport: "bg-green-900/60 text-green-300",
+  yandex_music: "bg-yellow-900/60 text-yellow-300",
+  lastfm: "bg-rose-900/60 text-rose-300",
 };
 
 interface TrackCardProps {
