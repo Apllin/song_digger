@@ -137,15 +137,23 @@ export function SearchBar({
       setActiveIndex((i) => Math.max(i - 1, -1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (activeIndex >= 0) {
-        const item = dropdownItems[activeIndex];
+      // Pick actively-navigated item, or auto-pick the first suggestion when
+      // it contains the typed query (i.e. it's the bolded highlighted match).
+      let pickIndex = activeIndex;
+      if (pickIndex < 0 && !showHistory && dropdownItems.length > 0) {
+        const trimmed = value.trim().toLowerCase();
+        if (trimmed && dropdownItems[0].text.toLowerCase().includes(trimmed)) {
+          pickIndex = 0;
+        }
+      }
+      if (pickIndex >= 0) {
+        const item = dropdownItems[pickIndex];
         onChange(item.text);
         setShowSuggestions(false);
         setShowHistory(false);
         setActiveIndex(-1);
         addToHistory(item.text);
         if (!loading) {
-          // trigger search with the picked value
           setTimeout(() => onSubmit(), 0);
         }
       } else {

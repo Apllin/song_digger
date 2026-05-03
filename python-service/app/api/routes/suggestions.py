@@ -1,4 +1,5 @@
 import asyncio
+import re
 import httpx
 from fastapi import APIRouter
 from app.adapters.youtube_music import YouTubeMusicAdapter
@@ -114,6 +115,44 @@ def _dedupe_ordered(items: list[str]) -> list[str]:
     return out
 
 
+# After a track title, only these markers signal a legitimate suffix
+# (remix, version, featured artist). Anything else means a different track.
+_TITLE_SUFFIX_RE = re.compile(
+    r"^\s+([(\[\-/&,]|feat\b|ft\b|featuring\b|vs\b|with\b)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_text(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _filter_track_matches(
+    suggestions: list[str], artist_query: str, title_query: str
+) -> list[str]:
+    """
+    Keep "Artist - Title" suggestions whose artist contains the searched artist
+    and whose title is the searched title — optionally followed by a remix /
+    version / feature suffix (paren, bracket, dash, feat, ...).
+    """
+    artist_n = _normalize_text(artist_query)
+    title_n = _normalize_text(title_query)
+    out: list[str] = []
+    for s in suggestions:
+        if " - " not in s:
+            continue
+        s_artist, _, s_title = s.partition(" - ")
+        if artist_n not in _normalize_text(s_artist):
+            continue
+        s_title_n = _normalize_text(s_title)
+        if not s_title_n.startswith(title_n):
+            continue
+        rest = s_title_n[len(title_n):]
+        if not rest or _TITLE_SUFFIX_RE.match(rest):
+            out.append(s)
+    return out
+
+
 def _rerank_by_coverage(items: list[str], query: str) -> list[str]:
     """
     For multi-word queries re-rank suggestions by how many query words appear
@@ -163,10 +202,15 @@ async def get_suggestions(q: str) -> list[str]:
             if isinstance(ytm_results, list):
                 combined.extend(ytm_results)
 
-            if combined:
-                return _dedupe_ordered(combined)[:10]
+            if not combined:
+                fallback = await _ytm.get_suggestions(q)
+                return _filter_track_matches(fallback, artist_part, title_part)[:10]
 
-            return (await _ytm.get_suggestions(q))[:10]
+            deduped = _dedupe_ordered(combined)
+            # Strict filter: only the exact track + its remix/version/feature
+            # variants. Drops unrelated MB/YTM noise the user explicitly asked
+            # us to stop showing.
+            return _filter_track_matches(deduped, artist_part, title_part)[:10]
 
         # Edge case: "Artist - " with empty title → treat as artist-only
         q = artist_part
