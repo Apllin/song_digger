@@ -8,6 +8,12 @@ from app.feature_extraction.cheap import (
     _key_compatibility,
     extract_cheap_features,
 )
+from app.feature_extraction.discogs import (
+    artist_corelease,
+    derive_collaborators,
+    normalize_artist,
+    year_proximity,
+)
 
 
 # A reusable "everything present" candidate so tests can override one field
@@ -172,3 +178,92 @@ def test_structural_features_never_null_even_with_empty_metadata():
     assert feats["topRank"] == 42
     assert feats["hasEmbed"] == 0
     assert feats["rrfScore"] == 0.001
+
+
+# ── C2 features (Discogs-derived) ────────────────────────────────────────────
+
+
+def test_year_proximity_same_year_is_one():
+    assert year_proximity(2018, 2018) == 1.0
+
+
+def test_year_proximity_one_year_apart_is_half():
+    assert year_proximity(2018, 2019) == 0.5
+    assert year_proximity(2019, 2018) == 0.5
+
+
+def test_year_proximity_decays_with_distance():
+    # 5 years apart → 1/6 ≈ 0.1667
+    assert abs(year_proximity(2015, 2020) - (1 / 6)) < 1e-9
+
+
+def test_year_proximity_returns_none_when_either_year_missing():
+    assert year_proximity(None, 2020) is None
+    assert year_proximity(2020, None) is None
+    assert year_proximity(None, None) is None
+
+
+def test_artist_corelease_member_returns_one():
+    seed_collabs = {"ancientmethods", "regis"}
+    assert artist_corelease(seed_collabs, "ancientmethods") == 1
+
+
+def test_artist_corelease_non_member_returns_zero():
+    seed_collabs = {"ancientmethods", "regis"}
+    assert artist_corelease(seed_collabs, "amelielens") == 0
+
+
+def test_artist_corelease_returns_none_when_not_cached():
+    # Distinct from "checked, no collaborators" — that case is `set()` / 0.
+    assert artist_corelease(None, "amelielens") is None
+
+
+def test_artist_corelease_empty_set_returns_zero():
+    # We've checked the seed and confirmed it has no collaborators; every
+    # candidate naturally returns 0, not None.
+    assert artist_corelease(set(), "anyone") == 0
+
+
+def test_derive_collaborators_happy_path():
+    discography = [
+        {"releaseId": "r1"},
+        {"releaseId": "r2"},
+        {"releaseId": "r3"},
+    ]
+    credits = {
+        "r1": ["Oscar Mulero", "Ancient Methods"],
+        "r2": ["Oscar Mulero", "Regis"],
+        "r3": ["Oscar Mulero"],
+    }
+    out = derive_collaborators("Oscar Mulero", discography, credits)
+    assert out == {"ancientmethods", "regis"}
+
+
+def test_derive_collaborators_filters_self_credits():
+    discography = [{"releaseId": "r1"}]
+    # Same person credited under both forms — both should be filtered.
+    credits = {"r1": ["Oscar Mulero", "Óscar Mulero"]}
+    out = derive_collaborators("Oscar Mulero", discography, credits)
+    assert out == set()
+
+
+def test_derive_collaborators_normalizes_diacritics():
+    discography = [{"releaseId": "r1"}]
+    credits = {"r1": ["Óscar Mulero"]}
+    # Seed is a different artist; "Óscar Mulero" should appear as the
+    # diacritic-stripped form, matching the cache-key normalization.
+    out = derive_collaborators("Regis", discography, credits)
+    assert out == {"oscarmulero"}
+
+
+def test_derive_collaborators_skips_releases_with_no_credits():
+    discography = [{"releaseId": "r1"}, {"releaseId": "r2"}]
+    credits = {"r1": ["Regis"]}  # r2 missing entirely
+    out = derive_collaborators("Oscar Mulero", discography, credits)
+    assert out == {"regis"}
+
+
+def test_normalize_artist_strips_diacritics_and_punctuation():
+    assert normalize_artist("Óscar Mulero") == "oscarmulero"
+    assert normalize_artist("Étienne de Crécy") == "etiennedecrecy"
+    assert normalize_artist("DJ-Stingray!") == "djstingray"
