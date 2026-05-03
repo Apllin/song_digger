@@ -1,19 +1,27 @@
 # Source Availability
 
 > **Operational snapshot of external source adapter health.**
-> Last verified: 2026-05-01. Re-validate (commands at the bottom) before
+> Last verified: 2026-05-03. Re-validate (commands at the bottom) before
 > trusting this for new work — sources break and recover independently.
 
 ## tl;dr
 
 [scoring.md](scoring.md) describes a multi-source RRF pipeline, and the
-code path is wired exactly that way. **As of 2026-05-01, two sources
-contribute: YouTube Music Radio and Bandcamp.** Bandcamp was rewritten
-on 2026-05-01 to use the public `bcsearch_public_api` JSON endpoint and
-the new `<li class="recommended-album">` footer format, after the old
-`/search` HTML page was put behind an Imperva client-challenge.
-Cosine.club is gone from DNS, Beatport is anti-bot-blocked, and Yandex
-is still a no-op without a token.
+code path is wired exactly that way. **As of 2026-05-03, the active
+contributors are: YouTube Music Radio, Bandcamp, Cosine.club (post-API
+migration), and Last.fm.** Cosine.club moved to a new public API at
+`https://cosine.club/api` (the previous `api.cosine.club` host went
+NXDOMAIN — the adapter was rewritten to point at the new endpoint and
+no longer returns BPM/key/energy/label/genre, which now come from
+Beatport enrichment only). Bandcamp uses the public
+`bcsearch_public_api` JSON endpoint and the `<li class="recommended-album">`
+footer format. Last.fm landed in Stage B with a track→artist fallback
+(default-on, gated by `lastfm_artist_fallback_enabled`). Beatport is
+still anti-bot-blocked for the public scraper but contributes only as
+inline BPM/key enrichment, not as an RRF input. Yandex is still a no-op
+without a token. trackid.net is implemented but flag-disabled
+(`trackidnet_enabled = False`) pending parser verification —
+1001tracklists was removed in Stage A.5 v2 (see ADR-0012).
 
 This is not a code bug. The aggregator and the adapter wiring are
 correct. It's an external-services bill of health.
@@ -22,11 +30,13 @@ correct. It's an external-services bill of health.
 
 | Source | Status | Symptom | Action |
 |---|---|---|---|
-| `cosine_club` | ❌ DNS gone | `[Errno 8] nodename nor servname provided, or not known` on every request. `host api.cosine.club` returns `NXDOMAIN`. | Find replacement domain (api.cosine.app? api.cosine.io?) or replace adapter with another audio-embedding service. The docstring on the adapter still points at `https://registry.scalar.com/@cosine/apis/cosineclub-api/` — verify there first. |
+| `cosine_club` | ✓ Works (post-API migration 2026-05) | New public API at `https://cosine.club/api` — two-step `/v1/search` → `/v1/tracks/{id}/similar`. Returns rank + YouTube URLs only; BPM/key/energy/label/genre are no longer in the public schema. The previous `api.cosine.club` host went NXDOMAIN; the adapter was rewritten to use the new endpoint. Requires `COSINE_CLUB_API_KEY`. | Watch for `[CosineClub] find_similar error:` log lines indicating the schema or auth shape shifted again. |
 | `beatport` (enrichment + BPM/key fallback, not RRF) | ❌ 403 Forbidden | `Client error '403 Forbidden'` for every `/search/tracks?q=...` URL. Anti-bot (likely Cloudflare) blocking the unauthenticated scraper. | Switch to Beatport's official API (paid, requires partner agreement) or move BPM/key enrichment to a different source (MusicBrainz/AcousticBrainz, Mixed In Key API). |
 | `bandcamp` | ✓ Works (rewritten 2026-05-01) | Returns 7 album recommendations per seed in 1.4–2.0 s (well inside the 4 s budget in [similar.py](../../python-service/app/api/routes/similar.py)). The previous version was silently returning `[]` because Bandcamp put `/search` behind Imperva's client-challenge AND changed the recommendation footer from `data-recommended-from-tralbum` JSON to `<li class="recommended-album">` blocks. The adapter now hits the public `bcsearch_public_api` JSON endpoint for search and parses the new `<li>` format on the track page. | Watch for `[Bandcamp] track page challenged` or `[Bandcamp] no recs in page` log lines — those indicate Imperva expanded the challenge to track pages or the footer markup changed again. |
 | `yandex_music` | ⚠ No-op without token | `YANDEX_MUSIC_TOKEN` env var is unset; adapter early-returns `[]`. Documented behavior, but the env is empty in the dev `.env`. | Set the token if the developer has a Yandex account. Cheapest single improvement to source diversity. |
-| `youtube_music` | ✓ Works | The only adapter consistently producing 10+ results per seed. Drives the entire ranked output today. | — |
+| `lastfm` | ✓ Works (Stage B) | `track.getSimilar` populates the primary list; when empty, the artist-fallback (`artist.getSimilar` → top-3 per similar artist, capped at 30) takes over. Default-on, gated by `lastfm_artist_fallback_enabled = True`. Requires `LASTFM_API_KEY`. Per-artist similars cached in `LastfmArtistSimilars` (30-day TTL). | Watch for `[Lastfm]` log prefixes; nothing user-facing fails when the API key is missing (adapter early-returns `[]`). |
+| `trackidnet` | ⚠ Flag-disabled | `trackidnet_enabled = False` default. Selectors are PLACEHOLDERS pending verification per the TODO in `app/adapters/trackidnet.py`. Returns `[]` until the flag is flipped AND the selectors are validated against live markup. | Verify selectors against `https://www.trackid.net/track/<...>` in DevTools, re-capture fixtures, then flip the flag. |
+| `youtube_music` | ✓ Works | The most consistently-producing adapter — 10+ results per seed via the YTM Radio playlist. | — |
 
 ## How this was discovered
 
@@ -82,12 +92,12 @@ behavior.
 
 ### For Stage B
 
-Stage B adds Last.fm, 1001tracklists, and trackid.net. If those
-adapters land while cosine_club / beatport / bandcamp are still
-broken, Stage B will look like a huge jump in measured quality — but
-some of that jump is just *having more than one source*, not the
-specific co-play / tag signal those new sources contribute. Worth
-disentangling in the Stage B writeup.
+Stage B added Last.fm (default-on) and trackid.net (flag-disabled
+pending parser verification). 1001tracklists was added then removed in
+Stage A.5 v2 — see ADR-0012. With cosine_club back online and Last.fm
+contributing, RRF now fuses across 4+ sources for typical seeds, so
+the Stage B baseline diff captures both the source-count gain and the
+genuine collaborative-filtering signal.
 
 ## Re-validation commands
 

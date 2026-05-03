@@ -42,8 +42,8 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 
 ### Python service (`python-service/app`)
 
-- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `random`, `suggestions`, `discogs`, `ytm_playlist`).
-- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `lastfm`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
+- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `enrich`, `random`, `suggestions`, `discogs`, `ytm_playlist`, `features`).
+- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `lastfm`, `trackidnet`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar(query, limit)`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
 - `core/models.py` defines the shared `TrackMeta` Pydantic model returned to web.
 - `config.py` uses `pydantic-settings` reading the repo-root `.env`; holds tokens for Cosine.club, Discogs, Yandex.Music, Last.fm. `extra="ignore"` so shared web/db env vars in the same file don't break validation.
 
@@ -51,7 +51,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 
 - App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
 - `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
-- `lib/aggregator.ts` — ranking/blending logic combining source track features with liked/disliked feedback (centroid blend with caps). This runs in Node, not Python.
+- `lib/aggregator.ts` — RRF fusion across per-source ranks; post-RRF dislike penalty (`DISLIKED_ARTIST_PENALTY`) + embed bonus (`EMBED_BONUS`); BPM hard-filter; artist diversification (max 2 consecutive). Runs in Node, not Python.
 - `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
 
@@ -60,7 +60,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 1. User query hits `web/app/api/search/route.ts`.
 2. Web may persist a `SearchQuery` via Prisma, then calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar`.
 3. Python route fans out to enabled adapters, each returning `TrackMeta[]`.
-4. Web re-ranks results with `lib/aggregator.ts` using favorites/dislikes pulled from Postgres, then returns to the client.
+4. Web re-ranks results with `lib/aggregator.ts` using disliked-artist feedback pulled from Postgres, then persists tracks + results and returns the search-id to the client (work runs as a fire-and-forget background task).
 
 ## Project-specific gotchas
 

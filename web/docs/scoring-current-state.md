@@ -3,6 +3,15 @@
 > baseline reference that Stages B–D will mutate. Where `scoring.md`
 > describes the *intended* architecture, this document describes only what
 > the code actually executes today.
+>
+> **Frozen historical record.** Constants and code paths called out as
+> "currently inert" / "currently exist" below describe the 2026-05-01
+> state. Some have since been removed — for example
+> `computeEffectiveSource`, `LIKED_WEIGHT_PER_TRACK`, and
+> `LIKED_WEIGHT_MAX` are no longer in `aggregator.ts` (Stage A.5 cleanup).
+> 1001tracklists (mentioned in §6.6 / §6.7) was removed in Stage A.5 v2
+> (ADR-0012). Trust `scoring.md` for current behavior; trust this doc
+> only for the snapshot it was taken on.
 
 # Scoring — current state
 

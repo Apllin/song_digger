@@ -32,28 +32,41 @@ fetches, comes back to web for cache hydration + fusion + persistence:
    whether `track` is set (track-mode vs artist-only) and fans out to
    adapters in parallel.
 3. **Phase 1** (track-mode): Cosine.club, YouTube Music radio, Bandcamp
-   (4 s timeout), Yandex Music, and a YTM song-lookup all start
-   simultaneously. Source BPM/key/energy/label/genre are inferred from
-   the median of the top-5 Cosine results, and a `cosine_confident`
-   flag is set when the mean top-5 cosine score ≥ 0.5.
-4. **Phase 2** (only when `cosine_confident == False`): reversed-order
+   (4 s timeout), Yandex Music, Last.fm `track.getSimilar`, trackid.net
+   (flag-disabled by default — see ADR-0012 for the related 1001TL
+   removal), and a YTM song-lookup all start simultaneously. Source
+   BPM/key/energy/label/genre are inferred from the median of the top-5
+   Cosine results (post-2026-05 Cosine API migration: Cosine no longer
+   returns BPM/key/energy/label/genre fields, so this inference now
+   yields Nones in practice and the Beatport fallback below carries the
+   load), and a `cosine_confident` flag is set when the mean top-5
+   cosine score ≥ 0.5.
+4. **Phase 1.5 — Last.fm artist fallback**: when `track.getSimilar`
+   returned 0 results AND `lastfm_artist_fallback_enabled = True`
+   (default), the Last.fm adapter expands via
+   `artist.getSimilar(seed_artist)` → top-3 tracks per similar artist
+   for the top 10 artists, scored by `match × position_decay`, capped
+   at 30 candidates. Artist similars cached in `LastfmArtistSimilars`
+   with 30-day TTL. This is the highest-yield underground-seed
+   recovery path.
+5. **Phase 2** (only when `cosine_confident == False`): reversed-order
    Cosine query, Beatport top-3 lookup for source BPM/key, Cosine
    artist-only search, Bandcamp artist-only search. When still not
    confident, individual Cosine results below the 0.5 score threshold
    are dropped.
-5. Per-source `SourceList` objects are built, each filtered through
+6. Per-source `SourceList` objects are built, each filtered through
    `_filter_artist` (remove the seed's own artist by token match) and
    `_dedup_within_source` (drop duplicate `sourceUrl`).
-6. **Inline Beatport enrichment**: the first 6 unique tracks across all
+7. **Inline Beatport enrichment**: the first 6 unique tracks across all
    source lists missing BPM or key get fanned out to Beatport (semaphore
    8) and the results written back into the source lists.
-7. Python returns `SimilarResponse` with the source lists plus seed
+8. Python returns `SimilarResponse` with the source lists plus seed
    metadata.
-8. Web hydrates each track from Postgres `Track` rows by `sourceUrl`,
+9. Web hydrates each track from Postgres `Track` rows by `sourceUrl`,
    filling BPM/key/energy/genre/label only where Python returned null.
-9. `aggregateTracks` runs RRF fusion, post-RRF nudges, and artist
-   diversification (see sections below).
-10. Tracks are persisted (`Track` upserts + `SearchResult` rows), the
+10. `aggregateTracks` runs RRF fusion, post-RRF nudges, and artist
+    diversification (see sections below).
+11. Tracks are persisted (`Track` upserts + `SearchResult` rows), the
     `SearchQuery` row is marked `status="done"`, and tracks beyond
     index 6 still missing BPM/key are queued for background Beatport
     enrichment so the next search hits the cache.
@@ -66,10 +79,12 @@ and `_dedup_within_source` passes.
 
 | Source | Adapter | Ranked-list semantics | Fields populated on `TrackMeta` | Has its own score? |
 |---|---|---|---|---|
-| `cosine_club` | [cosine_club.py](../../python-service/app/adapters/cosine_club.py) | `GET /v1/similar?q={artist - track}` — audio-embedding nearest neighbours, ordered by API. | `title`, `artist`, `sourceUrl`, `coverUrl`, `bpm`, `key` (Camelot), `energy`, `genre`, `label`, `score` | Yes (`score` ∈ [0, 1]) — used as the `cosine_confident` gate (threshold 0.5) and to drop sub-threshold individual results when not confident. **Not** consumed by the web aggregator: `rrfFuse` ignores `score`. |
+| `cosine_club` | [cosine_club.py](../../python-service/app/adapters/cosine_club.py) | Two-step: `GET /v1/search?q={artist - track}` → `GET /v1/tracks/{id}/similar` (audio-embedding nearest neighbours, ordered by API). | `title`, `artist`, `sourceUrl`, `coverUrl`, `score`. Post-2026-05 API migration the public schema no longer exposes BPM/key/energy/label/genre — those now come from Beatport enrichment only. | Yes (`score` ∈ [0, 1]) — used as the `cosine_confident` gate (threshold 0.5) and to drop sub-threshold individual results when not confident. **Not** consumed by the web aggregator: `rrfFuse` ignores `score`. |
 | `youtube_music` | [youtube_music.py](../../python-service/app/adapters/youtube_music.py) | YTM Radio (`playlistId="RDAMVM{videoId}"`); seed itself is skipped. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `bandcamp` | [bandcamp.py](../../python-service/app/adapters/bandcamp.py) | Search → fetch matching track page → parse "you may also like" `data-recommended-from-tralbum` JSON. Hard 4 s timeout. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `yandex_music` | [yandex_music.py](../../python-service/app/adapters/yandex_music.py) | `client.search(...)` → `client.tracks_similar(seed.id)`. No-op without `YANDEX_MUSIC_TOKEN`. | `title`, `artist`, `sourceUrl`, `coverUrl` | No |
+| `lastfm` | [lastfm.py](../../python-service/app/adapters/lastfm.py) | `track.getSimilar` (collaborative-filtering). When that returns empty AND `lastfm_artist_fallback_enabled` (default True), expands via `artist.getSimilar` → top-3 per similar artist, capped at 30 (see Phase 1.5 above). No-op without `LASTFM_API_KEY`. | `title`, `artist`, `sourceUrl`, `coverUrl`, `score` (`match` value or `match × position_decay` in fallback) | Yes (`score` is the Last.fm `match` value or fallback decay product). Used as a noise floor (`MIN_MATCH = 0.05`); not consumed by `rrfFuse`. |
+| `trackidnet` | [trackidnet.py](../../python-service/app/adapters/trackidnet.py) | DJ-set co-occurrence within ±2 positions of the seed. Cache → scrape → persist → return. **Flag-disabled by default** (`trackidnet_enabled = False`) pending parser verification — see TODOs in the adapter. Returns `[]` until enabled. | `title`, `artist`, `sourceUrl`, `score` (`setCount` co-occurrence count) | Yes — but adapter is disabled today. |
 
 Beatport is **not** an RRF input. It contributes only as: (a) a fallback
 source for inferring the seed's BPM/key when Cosine is unconfident, and
@@ -215,8 +230,10 @@ or a sentence in an old ADR.
   reintroduced in Stage D as a learned feature inside a logistic
   regression rather than a hand-tuned blend, which is the right shape
   for it.
-- **Co-occurrence sources (Last.fm tags, 1001tracklists, trackid.net)**
-  — adapters do not exist yet. Stage B adds them.
+- **Co-occurrence sources** — Last.fm landed in Stage B
+  (track-similar + artist-fallback), trackid.net is implemented but
+  flag-disabled pending parser verification, 1001tracklists was
+  removed in Stage A.5 v2 (see ADR-0012).
 - **Cosine `score` as a ranking signal** — used only as a confidence
   gate (0.5 threshold) and per-track inclusion filter. `rrfFuse` uses
   rank position, not the underlying scores.
