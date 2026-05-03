@@ -1,7 +1,7 @@
 # 0010 — Label graph for stylistic proximity
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Deferred (2026-05-03 — no `LabelGraphEdge` Postgres model, no `build_label_graph.py` script. scoring.md confirms label-graph proximity bonus is not applied. May revisit when Stage D/E label features are scoped).
 
 **Context:**
 For techno specifically, the record label is a strong stylistic signal.

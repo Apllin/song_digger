@@ -1,7 +1,7 @@
 # 0008 — Tier-based fallback for unknown seeds
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Superseded by Stage B+ (2026-05-03 — Stage B took the simpler binary `cosine_confident` split in `similar.py:_find_by_artist_and_track` instead of a 4-tier classifier; no tier label exposed to the UI. See scoring.md §"What this document does NOT cover").
 
 **Context:**
 Cosine.club has the strongest signal but a small catalog (~1.15M tracks).

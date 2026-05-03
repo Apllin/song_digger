@@ -1,7 +1,7 @@
 # 0005 — Camelot key as soft signal, not hard filter
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Deferred (2026-05-03 — `aggregateTracks` references no key signal; key is populated and displayed only. Stage D may revisit via the C1 `keyCompat` feature in `feature_extraction/cheap.py`).
 
 **Context:**
 Camelot wheel notation expresses harmonic compatibility for DJ mixing —

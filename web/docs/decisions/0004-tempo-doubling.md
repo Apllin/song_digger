@@ -1,7 +1,7 @@
 # 0004 — Tempo doubling treated as near-match
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Superseded by ADR-0003 (2026-05-03 — `calculateBpmScore` was removed alongside the weighted-sum scorer; BPM is now a hard filter only, see scoring.md §"Hard filters").
 
 **Context:**
 DJs and producers regularly pitch-shift tracks between harmonic subdivisions
