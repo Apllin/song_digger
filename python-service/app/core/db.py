@@ -261,6 +261,228 @@ async def upsert_candidate_features_batch(rows: list[dict]) -> None:
         print(f"[Features] cache write error: {e}")
 
 
+async def fetch_artist_discography_cache(
+    *,
+    artist: str,
+    ttl_days: int,
+) -> list[dict] | None:
+    """
+    Read ArtistDiscography for `artist` (already-normalized).
+
+    Returns the cached releases list, or None on miss / expired / DB-unavailable.
+    Per ADR-0013 we cache empty lists too (a valid signal "Discogs has nothing
+    on this artist") — those round-trip back as `[]`, not None.
+    """
+    pool = await _get_pool()
+    if pool is None:
+        return None
+
+    cutoff = datetime.utcnow() - timedelta(days=ttl_days)
+
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT "releases"
+                FROM "ArtistDiscography"
+                WHERE "artistName" = $1
+                  AND "updatedAt" >= $2
+                """,
+                artist, cutoff,
+            )
+    except Exception as e:
+        print(f"[Discogs] discography cache read error: {e}")
+        return None
+
+    if row is None:
+        return None
+
+    raw = row["releases"]
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception as e:
+            print(f"[Discogs] discography cache decode error: {e}")
+            return None
+    if not isinstance(raw, list):
+        return None
+    return raw
+
+
+async def upsert_artist_discography(
+    *,
+    artist: str,
+    releases: list[dict],
+    discogs_artist_id: str | None = None,
+) -> None:
+    """
+    Persist (or replace) the cached discography for `artist`. `debutYear` is
+    denormalized as the minimum non-null year in the list; absent if the list
+    is empty or all years are missing.
+    """
+    pool = await _get_pool()
+    if pool is None:
+        return
+
+    payload = json.dumps(releases)
+    years = [r["year"] for r in releases if isinstance(r.get("year"), int)]
+    debut_year = min(years) if years else None
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO "ArtistDiscography"
+                  (id, "artistName", "discogsArtistId", "releases",
+                   "debutYear", "createdAt", "updatedAt")
+                VALUES (
+                  gen_random_uuid()::text,
+                  $1, $2, $3::jsonb, $4, now(), now()
+                )
+                ON CONFLICT ("artistName") DO UPDATE
+                SET "releases" = EXCLUDED."releases",
+                    "discogsArtistId" = EXCLUDED."discogsArtistId",
+                    "debutYear" = EXCLUDED."debutYear",
+                    "updatedAt" = now()
+                """,
+                artist, discogs_artist_id, payload, debut_year,
+            )
+    except Exception as e:
+        print(f"[Discogs] discography cache write error: {e}")
+
+
+async def fetch_artist_collaborations_cache(
+    *,
+    artist: str,
+    ttl_days: int,
+) -> set[str] | None:
+    """Read the cached collaborator set for `artist`, or None on miss/expired."""
+    pool = await _get_pool()
+    if pool is None:
+        return None
+
+    cutoff = datetime.utcnow() - timedelta(days=ttl_days)
+
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT "collaborators"
+                FROM "ArtistCollaborations"
+                WHERE "artistName" = $1
+                  AND "updatedAt" >= $2
+                """,
+                artist, cutoff,
+            )
+    except Exception as e:
+        print(f"[Discogs] collaborations cache read error: {e}")
+        return None
+
+    if row is None:
+        return None
+
+    raw = row["collaborators"]
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception as e:
+            print(f"[Discogs] collaborations cache decode error: {e}")
+            return None
+    if not isinstance(raw, list):
+        return None
+    return set(raw)
+
+
+async def upsert_artist_collaborations(
+    *,
+    artist: str,
+    collaborators: list[str],
+) -> None:
+    """Persist (or replace) the collaborator set for `artist`."""
+    pool = await _get_pool()
+    if pool is None:
+        return
+
+    payload = json.dumps(collaborators)
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO "ArtistCollaborations"
+                  (id, "artistName", "collaborators", "createdAt", "updatedAt")
+                VALUES (
+                  gen_random_uuid()::text,
+                  $1, $2::jsonb, now(), now()
+                )
+                ON CONFLICT ("artistName") DO UPDATE
+                SET "collaborators" = EXCLUDED."collaborators",
+                    "updatedAt" = now()
+                """,
+                artist, payload,
+            )
+    except Exception as e:
+        print(f"[Discogs] collaborations cache write error: {e}")
+
+
+async def update_candidate_features_discogs_batch(
+    *,
+    search_query_id: str,
+    updates: list[dict],
+) -> int:
+    """
+    Apply C2 column updates to existing CandidateFeatures rows.
+
+      UPDATE CandidateFeatures
+         SET "yearProximity" = $1,
+             "artistCorelease" = $2
+       WHERE "searchQueryId" = $3 AND "trackId" = $4
+
+    Returns the number of rows actually updated. Zero is fine — it just means
+    the C1 /features/extract call hadn't completed by the time the discogs-fill
+    callback ran. The next search re-fires with the same trackIds and lands the
+    update on the already-existing rows.
+
+    Single transaction for the whole batch (per prisma-transaction skill — one
+    round-trip is cheaper than per-row autocommit, and the operations are small
+    enough to clear the 30s budget several times over).
+    """
+    if not updates:
+        return 0
+
+    pool = await _get_pool()
+    if pool is None:
+        return 0
+
+    matched = 0
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for u in updates:
+                    status = await conn.execute(
+                        """
+                        UPDATE "CandidateFeatures"
+                        SET "yearProximity" = $1,
+                            "artistCorelease" = $2
+                        WHERE "searchQueryId" = $3 AND "trackId" = $4
+                        """,
+                        u.get("yearProximity"),
+                        u.get("artistCorelease"),
+                        search_query_id,
+                        u["trackId"],
+                    )
+                    if status.startswith("UPDATE "):
+                        try:
+                            matched += int(status.split()[1])
+                        except (ValueError, IndexError):
+                            pass
+    except Exception as e:
+        print(f"[Discogs] candidate-features batch write error: {e}")
+        return 0
+
+    return matched
+
+
 async def upsert_lastfm_artist_similars(
     *,
     artist: str,

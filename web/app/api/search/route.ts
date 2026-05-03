@@ -196,6 +196,53 @@ async function saveTracks(
  * value) and the just-persisted track-id map. Failures are caught and
  * logged — the search response must not depend on this call succeeding.
  */
+/**
+ * Fire-and-forget POST to python-service /features/discogs-fill.
+ *
+ * Mirrors the C1 /features/extract pattern: never awaited, never thrown,
+ * never blocks the user's search response. The Python handler eventually
+ * fills `yearProximity` and `artistCorelease` on the same CandidateFeatures
+ * rows that /features/extract created. If discogs-fill races ahead and
+ * lands first, the UPDATE finds zero rows — the next search re-fires.
+ *
+ * Per ADR-0013, Discogs is rate-limited and slow; this is the asynchronous
+ * leg of Stage C2.
+ */
+function postDiscogsFill(
+  searchId: string,
+  aggregated: FusedCandidate[],
+  trackIdsByUrl: Map<string, string>,
+  pythonResult: SimilarResponse,
+): Promise<void> {
+  const candidates = aggregated.flatMap((t) => {
+    const trackId = trackIdsByUrl.get(t.sourceUrl);
+    if (!trackId) return [];
+    return [{
+      trackId,
+      artist: t.artist,
+      title: t.title,
+    }];
+  });
+
+  if (!candidates.length || !pythonResult.source_artist) {
+    return Promise.resolve();
+  }
+
+  return fetch(`${PYTHON_SERVICE_URL}/features/discogs-fill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      search_query_id: searchId,
+      seed_artist: pythonResult.source_artist,
+      candidates,
+    }),
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      console.error("[Search] discogs-fill call failed:", err);
+    });
+}
+
 function postExtractFeatures(
   searchId: string,
   aggregated: FusedCandidate[],
@@ -294,6 +341,11 @@ async function runSearch(
   // Fire-and-forget feature extraction. Failures must not block status="done"
   // — features are observability for Stage D, not user-facing state.
   void postExtractFeatures(searchId, aggregated, trackIdsByUrl, pythonResult);
+
+  // Stage C2: also fire the Discogs fill. Eventually consistent against the
+  // C1 rows /features/extract just created. Both calls are independent of
+  // the user-visible search response.
+  void postDiscogsFill(searchId, aggregated, trackIdsByUrl, pythonResult);
 
   await prisma.searchQuery.update({
     where: { id: searchId },
