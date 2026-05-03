@@ -36,16 +36,16 @@ pnpm exec prisma migrate dev    # apply migrations against DATABASE_URL
 pnpm exec prisma generate       # regenerate client into app/generated/prisma
 ```
 
-Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`. There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
+Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`. There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
 
 ## Architecture
 
 ### Python service (`python-service/app`)
 
 - `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `random`, `suggestions`, `discogs`, `ytm_playlist`).
-- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
+- `adapters/` — one module per external source (`bandcamp`, `beatport`, `cosine_club`, `discogs`, `lastfm`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (`find_similar`, `random_techno_track`). Add a new source by implementing this interface and registering it where routes aggregate adapters.
 - `core/models.py` defines the shared `TrackMeta` Pydantic model returned to web.
-- `config.py` uses `pydantic-settings` reading the repo-root `.env`; holds tokens for Cosine.club, Discogs, Yandex.Music. `extra="ignore"` so shared web/db env vars in the same file don't break validation.
+- `config.py` uses `pydantic-settings` reading the repo-root `.env`; holds tokens for Cosine.club, Discogs, Yandex.Music, Last.fm. `extra="ignore"` so shared web/db env vars in the same file don't break validation.
 
 ### Web (`web/`)
 

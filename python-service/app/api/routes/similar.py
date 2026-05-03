@@ -8,6 +8,7 @@ from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.beatport import BeatportAdapter
 from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
+from app.adapters.lastfm import LastfmAdapter
 
 router = APIRouter()
 
@@ -16,6 +17,7 @@ _cosine = CosineClubAdapter()
 _beatport = BeatportAdapter()
 _bandcamp = BandcampAdapter()
 _yandex = YandexMusicAdapter()
+_lastfm = LastfmAdapter()
 
 BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
 
@@ -224,11 +226,12 @@ async def _find_by_artist_and_track(
     reversed_query = f"{track} - {artist}"
 
     # Phase 1: all external sources in parallel.
-    cosine_tracks, ytm_tracks, bandcamp_tracks, yandex_tracks, ytm_source_search = await asyncio.gather(
+    cosine_tracks, ytm_tracks, bandcamp_tracks, yandex_tracks, lastfm_tracks, ytm_source_search = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
         _bandcamp_safe(full_query),
         _yandex.find_similar(full_query, limit),
+        _lastfm.find_similar(full_query, limit),
         _ytm.search_songs(full_query, limit=1),
         return_exceptions=True,
     )
@@ -237,6 +240,7 @@ async def _find_by_artist_and_track(
     ytm_tracks = ytm_tracks if isinstance(ytm_tracks, list) else []
     bandcamp_tracks = bandcamp_tracks if isinstance(bandcamp_tracks, list) else []
     yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
+    lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -338,6 +342,7 @@ async def _find_by_artist_and_track(
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
         SourceList(source="bandcamp", tracks=_dedup_within_source(_filter_artist(bandcamp_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
+        SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
     ]
 
     # Derive label/genre from whichever cosine_tracks list we ended up using

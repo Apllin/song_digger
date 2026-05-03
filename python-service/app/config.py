@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     discogs_token: str = "eOgJIsfofGaBPEdbNNeNBnWOSyJXTxijlwqzKEFc"
     # Empty by default — adapter no-ops when missing.
     yandex_music_token: str = ""
+    lastfm_api_key: str = ""
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 
