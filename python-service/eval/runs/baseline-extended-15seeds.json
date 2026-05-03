@@ -1,0 +1,1192 @@
+{
+  "timestamp": "2026-05-03T14:43:23.150032+00:00",
+  "web_url": "http://localhost:3000",
+  "seed_count": 15,
+  "results": [
+    {
+      "id": "mulero-horses",
+      "query": "Oscar Mulero - Horses",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Amotik",
+          "title": "Chauhattar (feat. Tina Ramamurthy)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue: Volume 2",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rory Marshall, Christopher Coe",
+          "title": "Spooky Business",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Binary Sunset",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Klanglos",
+          "title": "Distant Places",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Various Artists",
+          "title": "Kompakt 500",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Indira Paganotto",
+          "title": "Cyber Slaves",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Hardmau",
+          "title": "Castrato (Original Mix)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alfred Kopke",
+          "title": "Sixty One",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "rene-wise-pleasure-note",
+      "query": "Rene Wise - Pleasure Note",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Ignez",
+          "title": "Spirit",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "The You in I",
+          "title": "The I in You",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jaymie Silk",
+          "title": "Until We Meet Again",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Atonism, Vault Records",
+          "title": "At The End Of The Corridor",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Immolation",
+          "title": "Descent",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "DJ Dextro",
+          "title": "Gift From The Future",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Chl\u00e4r",
+          "title": "Altitude",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Bo Jackson",
+          "title": "American Joy",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Dax J",
+          "title": "Escape The System (Par Grindvik I'm Going In rework)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "linear-system-guanine",
+      "query": "Linear System - Guanine",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Keith Carnal",
+          "title": "Exorcism",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rill",
+          "title": "Silky Stones",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Ignez",
+          "title": "Aventurine EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Yan Cook",
+          "title": "Exomoon",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rene Wise",
+          "title": "Knock Motion E.P",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Function",
+          "title": "Yul (Beyond the Horizon)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Peverelist",
+          "title": "Pulse Remix EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Snuff The Ablist, Koaste, Orifice Vulgatron",
+          "title": "Maelstrom feat. Koaste & Orifice Vulgatron",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Museum",
+          "title": "Raider",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "ignez-veil",
+      "query": "Ignez - Veil",
+      "ndcg": 0.817835483840445,
+      "grades": [
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant"
+      ],
+      "results": [
+        {
+          "artist": "Golden Cosmic Vibes",
+          "title": "\u203b\u3054\u3081\u3093\u306a\u3055\u3044\u6b8b\u5ff5\u306a\u304c\u3089\u624b\u9045\u308c\u306e\u65b9\u306b\u306f\u8868\u793a\u3055\u308c\u307e\u305b\u3093\u3002\u4eca\u591c\u307e\u3067\u306b\u898b\u308b\u4e8b\u304c\u3067\u304d\u305f\u65b9\u306f\u304a\u3081\u3067\u3068\u3046\u3054\u3056\u3044\u307e\u3059\u3010\u9f8d\u795e\u69d8\u306e\u5927\u304d\u306a\u529b\u304c\u3042\u306a\u305f\u3092\u30d4\u30f3\u30c1\u304b\u3089\u6551\u3063\u3066\u5b88\u308a\u629c\u3044\u3066\u304f\u308c\u307e\u3059\u3011\u5e78\u904b\u3092\u5f15\u304d\u5bc4\u305b\u308b\u97f3",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Rene Wise",
+          "title": "Pleasure Note [SK11X007]",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "monosleep",
+          "title": "winter fingertips",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Your Mom's Agency",
+          "title": "Soli Tunes",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "SpaceAmbient",
+          "title": "Accretionist - Infinite Horizons [SpaceAmbient Channel]",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "caterina barbieri",
+          "title": "Spirit Exit",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Aphex Twin",
+          "title": "#19",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Your Mom's Agency",
+          "title": "Detroit x Berlin",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Vidna Obmana",
+          "title": "The Spiritual Bonding",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "CRAVO",
+          "title": "Eternal Paradox [SK11X008]",
+          "source": "bandcamp",
+          "grade": "relevant"
+        }
+      ]
+    },
+    {
+      "id": "dozzy-parola-rework",
+      "query": "Donato Dozzy - Parola (Rework)",
+      "ndcg": 0.8471779732814125,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Psyk",
+          "title": "Falling (Peter Van Hoesen Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Valentino Mora",
+          "title": "Transmagnetic",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Tozzi",
+          "title": "Deep Blue",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Jo.Ke, Nu",
+          "title": "Who Loves The Sun",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Foals",
+          "title": "Late Night (Solomun Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Tassilo Vanh\u00f6fen",
+          "title": "Pleasure Dome",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Donato Dozzy, adiel",
+          "title": "Cavallina",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "dr walker",
+          "title": "527 - dr walker - da dark dada-ist",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Mesak",
+          "title": "Commonaukko",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Spacegoat",
+          "title": "Weird Night Promo",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "_control_charlotte_apollo",
+      "query": "Charlotte de Witte - Apollo",
+      "ndcg": 0.8032285550939751,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Ignez",
+          "title": "Euphoria",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alignment",
+          "title": "Attack EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sara Landry",
+          "title": "Silicon Hex",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Indira Paganotto",
+          "title": "Lions Of God EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Nicole Moudaber",
+          "title": "What Was (Chris Liebing Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Amelie Lens",
+          "title": "Higher EP",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Klangkuenstler",
+          "title": "Dunkle Illusion",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jaymie Silk",
+          "title": "Until We Meet Again",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Billie Jo",
+          "title": "Sander",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Introversion",
+          "title": "Force Majeure",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "_control_beyer-drumcode",
+      "query": "Adam Beyer - Your Mind",
+      "ndcg": 0.9673399266021623,
+      "grades": [
+        "relevant",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Bart Skils & Weska",
+          "title": "Polarize",
+          "source": "cosine_club",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Adam Beyer, Green Velvet & Layton Giordani",
+          "title": "Space Date (Pleaseurekraft Remix)",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Various Artists",
+          "title": "A-Sides, Vol. 8",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luigi Madonna",
+          "title": "Primo",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Various Artists",
+          "title": "A-Sides Vol. 9",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Charlotte de Witte",
+          "title": "Watching",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Various Artists",
+          "title": "A-Sides Vol.7",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jaymie Silk",
+          "title": "Until We Meet Again",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alex Mine",
+          "title": "Lost",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sam Paganini",
+          "title": "Rave - Remix",
+          "source": "lastfm",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "sara-landry-hex",
+      "query": "Sara Landry - Silicon Hex",
+      "ndcg": 0.7665241578325117,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant"
+      ],
+      "results": [
+        {
+          "artist": "Sara Landry, Ian Urbina",
+          "title": "Over",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Christian Cambas",
+          "title": "Lion",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Marco Faraone",
+          "title": "Pressure",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Charlotte de Witte",
+          "title": "Form",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Ri Za",
+          "title": "It Wasn't There",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Stephan Maman",
+          "title": "Kiss",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Diamandy & Sandokan",
+          "title": "Falarma",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Thomas Schumacher, Caitlin",
+          "title": "Aligned by Nature",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Bastet",
+          "title": "Interstellar",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Klangkuenstler",
+          "title": "Dunkle Illusion",
+          "source": "youtube_music",
+          "grade": "relevant"
+        }
+      ]
+    },
+    {
+      "id": "svetec-set-up",
+      "query": "SVETEC - Set Up",
+      "ndcg": 0.8032285550939751,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "BY\u00d8RN",
+          "title": "Heimdall",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alignment",
+          "title": "Infinity",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jonas Xenon",
+          "title": "Kung Fu EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Micky Hopkins",
+          "title": "Detonate",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "BAUGRUPPE90",
+          "title": "Sportbeton EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "I Hate Models",
+          "title": "Transcendental Fusion",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Funk Assault",
+          "title": "Minimum One Post A Week",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Luix Spectrum, LOCO13",
+          "title": "Blessing (SveTec Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Xen Chron",
+          "title": "A Fireside Chat",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "ViperXXL",
+          "title": "Concilium",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "plastikman-spastik",
+      "query": "Plastikman - Plasticine",
+      "ndcg": 0.7962372977085499,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Rrose",
+          "title": "Mirror",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Siu Mata & Amor Satyr",
+          "title": "Speed Dembow Vol.II",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Juan Atkins, Moritz von Oswald, Borderland",
+          "title": "Electric Dub",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sully",
+          "title": "Swandive",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "The Field",
+          "title": "The Follower",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "BAKEY",
+          "title": "Take It Further EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Richie Hawtin",
+          "title": "No Way Back",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Neil Landstrumm",
+          "title": "DON CARDAMAN EP",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Unruly Girls",
+          "title": "Dren Crom",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Occulterra",
+          "title": "Sp\u00e4tnacht",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "nodge-nn-8",
+      "query": "Norman Nodge - Nn 8.0",
+      "ndcg": 1.0,
+      "grades": [
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Marcel Dettmann",
+          "title": "Lattice",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Len Faki",
+          "title": "BX 3",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Laurent Garnier",
+          "title": "Closer To You (feat. Scan X)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Ellen Allien",
+          "title": "Go (Marcel Dettmann Remix)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Abstrakt",
+          "title": "Cristalli Ionici",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Positive Merge, Mattias Fridell",
+          "title": "Strange Box",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Marcelus",
+          "title": "Friction",
+          "source": "lastfm",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Enrico Sangiuliano",
+          "title": "Symbiosis",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Javier Salazar",
+          "title": "Naucodie (Asllan Remix)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sasha Carassi",
+          "title": "Spectogram",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "nocow-russian",
+      "query": "Nocow - Art Deco",
+      "ndcg": 0.8718838771078951,
+      "grades": [
+        "unmarked",
+        "relevant",
+        "relevant",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "skorri",
+          "title": "randyrtsport",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Nina Kraviz",
+          "title": "fecha de la cita",
+          "source": "youtube_music",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Vladimir Dubyshkin",
+          "title": "ivanovo night luxe",
+          "source": "bandcamp",
+          "grade": "relevant"
+        },
+        {
+          "artist": "Travmkind",
+          "title": "Living in my mind",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "aadja",
+          "title": "pyrocbs",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "AADJA",
+          "title": "introvert problems",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "I Hate Models",
+          "title": "Heartbreaker",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "cerrot",
+          "title": "butterfly effect",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Valance Drakes",
+          "title": "Awaken Old Memories From Their Slumber",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "\u0442\u0440\u0435\u0432\u043e\u0436\u043d\u044b\u0439 \u0432\u0437\u0433\u043b\u044f\u0434",
+          "title": "\u0414\u0430\u043d\u0438\u043a2",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "dubyshkin-trp",
+      "query": "Vladimir Dubyshkin - Belissimo",
+      "ndcg": 0.9667147927059906,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "false_friend",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Jenz Im Gl\u00fcck",
+          "title": "Old School Party",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Blue Hour",
+          "title": "Shimmer (Vladimir Dubyshkin Body Mix) (feat. Vladimir Dubyshkin)",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Compilation",
+          "title": "RAW Summer Hits 1 \u2022 Special Edits",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Charlotte de Witte",
+          "title": "Selected",
+          "source": "youtube_music",
+          "grade": "false_friend"
+        },
+        {
+          "artist": "Compilation",
+          "title": "RAW Summer Hits 2 \u2022 Special Edits",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Feral",
+          "title": "Flare",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "LSDXOXO",
+          "title": "BODY MODS",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Ignez",
+          "title": "Euphoria",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Coco Steel & Lovebomb",
+          "title": "E1 AC1D0",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Alexander Babaev",
+          "title": "Octahedron",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "ohota-russian",
+      "query": "Ohota - Total",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Stan Getz & Luiz Bonf\u00e1",
+          "title": "Ebony Samba",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Profondita",
+          "title": "Yanina",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Mobitex",
+          "title": "Kun Bear",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Psybort",
+          "title": "Stellar Euphony",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sounds of Snow",
+          "title": "Celestial Keys",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Nulla Kaya",
+          "title": "Last Heartbeat",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Astronaut Ape vs. By The Rain",
+          "title": "Neutrinos",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Hante.",
+          "title": "Coming Home",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Mystic Crock",
+          "title": "Drown In Space",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Howard Roberts",
+          "title": "Triste",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        }
+      ]
+    },
+    {
+      "id": "zabelin-russian",
+      "query": "Nikita Zabelin - Party Problems",
+      "ndcg": 1.0,
+      "grades": [
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked",
+        "unmarked"
+      ],
+      "results": [
+        {
+          "artist": "Len Faki",
+          "title": "BX 3",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "The You in I",
+          "title": "The I in You",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "LNRT",
+          "title": "Players Only",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Jaymie Silk",
+          "title": "Until We Meet Again",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Immolation",
+          "title": "Descent",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Cassegrain, Tin Man",
+          "title": "High and Low",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Adam Schatz",
+          "title": "Civil Engineering Vol. 1 - feat. Carmen Quill & Qasim Naqvi",
+          "source": "bandcamp",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Sandwell District, Function",
+          "title": "Disaffected",
+          "source": "youtube_music",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Aos",
+          "title": "What/Why (Fugal Remix)",
+          "source": "cosine_club",
+          "grade": "unmarked"
+        },
+        {
+          "artist": "Emika",
+          "title": "Restless Wings",
+          "source": "yandex_music",
+          "grade": "unmarked"
+        }
+      ]
+    }
+  ]
+}

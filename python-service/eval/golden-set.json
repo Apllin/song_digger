@@ -105,6 +105,32 @@
         { "query": "Reinier Zonneveld", "reason": "Live peak-time, festival circuit" }
       ]
     },
+    {
+      "id": "dozzy-parola-rework",
+      "query": "Donato Dozzy - Parola (Rework)",
+      "verification_status": "verified",
+      "category": "hypnotic_core",
+      "style_notes": "Italian hypnotic legend. Spazio Disponibile co-founder. From Variations EP SPAZIO017 (2019).",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Neel", "reason": "Spazio Disponibile co-founder, VFTL duo" },
+        { "query": "Voices From The Lake", "reason": "Dozzy + Neel project" },
+        { "query": "Mike Parker", "reason": "Close collaborator, mutual remixes" },
+        { "query": "Cio D'Or", "reason": "Prologue scene peer" },
+        { "query": "Giorgio Gigli", "reason": "Italian hypnotic peer" },
+        { "query": "Modern Heads", "reason": "Italian hypnotic peer" },
+        { "query": "Brando Lupi", "reason": "Italian hypnotic peer" },
+        { "query": "Luigi Tozzi", "reason": "Italian deep hypnotic, Spazio peer" },
+        { "query": "Anna Caragnano", "reason": "Direct collaborator on Parola" },
+        { "query": "Claudio PRC", "reason": "Italian deep hypnotic" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Sara Landry", "reason": "Hard techno" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" }
+      ]
+    },
 
     {
       "id": "_control_charlotte_apollo",
@@ -128,6 +154,270 @@
         { "query": "Reeko", "reason": "Pole Group hypnotic, opposite scene" },
         { "query": "Rene Wise", "reason": "Hypnotic techno with rolling grooves, different audience" }
       ]
+    },
+    {
+      "id": "_control_beyer-drumcode",
+      "query": "Adam Beyer - Your Mind",
+      "verification_status": "track_unverified",
+      "category": "hard",
+      "style_notes": "SECOND CONTROL — peak-time techno, Drumcode, ~140 BPM. Track 'Your Mind' is one of Beyer's catalog tracks; verify exact title.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time peer" },
+        { "query": "Amelie Lens", "reason": "Peak-time peer" },
+        { "query": "Enrico Sangiuliano", "reason": "Drumcode regular" },
+        { "query": "Reinier Zonneveld", "reason": "Festival peak-time" },
+        { "query": "Joseph Capriati", "reason": "Drumcode regular" },
+        { "query": "Pan-Pot", "reason": "Mainstream techno" },
+        { "query": "Layton Giordani", "reason": "Drumcode rising peer" },
+        { "query": "Bart Skils", "reason": "Drumcode regular" },
+        { "query": "Sara Landry", "reason": "Hard techno" }
+      ],
+      "false_friends": [
+        { "query": "Donato Dozzy", "reason": "Deep hypnotic" },
+        { "query": "Mike Parker", "reason": "Hypnotic" },
+        { "query": "Oscar Mulero", "reason": "Pole Group hypnotic" },
+        { "query": "Linear System", "reason": "Modern hypnotic" },
+        { "query": "Plastikman", "reason": "Minimal techno" },
+        { "query": "Norman Nodge", "reason": "Berlin minimal/hypnotic" }
+      ]
+    },
+
+    {
+      "id": "sara-landry-hex",
+      "query": "Sara Landry - Silicon Hex",
+      "verification_status": "track_unverified",
+      "category": "hard",
+      "style_notes": "Hard techno, ~150 BPM. Modern peak-time/hard crossover. Track 'Silicon Hex' surfaced in baseline eval but verify against her actual catalog.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "I Hate Models", "reason": "Hard techno peer" },
+        { "query": "Dax J", "reason": "Hard techno, similar BPM" },
+        { "query": "FJAAK", "reason": "Hard techno crossover" },
+        { "query": "Reinier Zonneveld", "reason": "Peak-time/hard live" },
+        { "query": "Charlotte de Witte", "reason": "Peak-time peer at top end" },
+        { "query": "Indira Paganotto", "reason": "Hard techno modern" },
+        { "query": "Klangkuenstler", "reason": "Hard techno modern" },
+        { "query": "999999999", "reason": "Hard techno duo" }
+      ],
+      "false_friends": [
+        { "query": "Donato Dozzy", "reason": "Deep hypnotic, opposite end" },
+        { "query": "Mike Parker", "reason": "Hypnotic-dub" },
+        { "query": "Plastikman", "reason": "Minimal techno" },
+        { "query": "Norman Nodge", "reason": "Berlin hypnotic" }
+      ]
+    },
+
+    {
+      "id": "svetec-set-up",
+      "query": "SVETEC - Set Up",
+      "verification_status": "track_unverified",
+      "category": "hard",
+      "style_notes": "Slovenian producer, peak-time/hard techno, ~145-150 BPM. Releases on Octopus, Funk'n Deep, Sleaze. Track 'Set Up' should be verified against his discography.",
+      "expected_tier": 1,
+      "relevant": [
+        {
+          "query": "Sara Landry",
+          "reason": "Modern hard techno peer"
+        },
+        {
+          "query": "I Hate Models",
+          "reason": "Hard techno peer"
+        },
+        {
+          "query": "Klangkuenstler",
+          "reason": "Hard techno modern"
+        },
+        {
+          "query": "Indira Paganotto",
+          "reason": "Hard techno modern"
+        },
+        {
+          "query": "999999999",
+          "reason": "Hard techno duo"
+        },
+        {
+          "query": "Dax J",
+          "reason": "Hard techno, similar BPM"
+        },
+        {
+          "query": "Reinier Zonneveld",
+          "reason": "Festival hard techno"
+        },
+        {
+          "query": "Charlotte de Witte",
+          "reason": "Peak-time peer"
+        },
+        {
+          "query": "Trym",
+          "reason": "Hard techno modern peer"
+        }
+      ],
+      "false_friends": [
+        {
+          "query": "Donato Dozzy",
+          "reason": "Deep hypnotic, opposite end"
+        },
+        {
+          "query": "Mike Parker",
+          "reason": "Hypnotic-dub"
+        },
+        {
+          "query": "Plastikman",
+          "reason": "Minimal techno, different aesthetic"
+        },
+        {
+          "query": "Norman Nodge",
+          "reason": "Berlin hypnotic/minimal"
+        }
+      ]
+    },
+
+    {
+      "id": "plastikman-spastik",
+      "query": "Plastikman - Plasticine",
+      "category": "minimal",
+      "style_notes": "Richie Hawtin's defining alias. Minimal/acid techno. 'Spastik' (1993) is one of his most known tracks.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Richie Hawtin", "reason": "Same artist, other alias" },
+        { "query": "Robert Hood", "reason": "Minimal techno foundational" },
+        { "query": "Jeff Mills", "reason": "Detroit techno minimal lineage" },
+        { "query": "F.U.S.E.", "reason": "Hawtin's other alias" },
+        { "query": "Speedy J", "reason": "Minimal/IDM peer" },
+        { "query": "Daniel Bell", "reason": "Detroit minimal peer" },
+        { "query": "Surgeon", "reason": "British minimal/industrial peer" },
+        { "query": "Regis", "reason": "Downwards minimal" },
+        { "query": "Cristian Vogel", "reason": "Tresor minimal peer" }
+      ],
+      "false_friends": [
+        { "query": "Tale Of Us", "reason": "Melodic techno" },
+        { "query": "Charlotte de Witte", "reason": "Peak-time festival" },
+        { "query": "Sara Landry", "reason": "Hard techno modern" },
+        { "query": "Boris Brejcha", "reason": "High-tech minimal but melodic — different intent" }
+      ]
+    },
+
+    {
+      "id": "nodge-nn-8",
+      "query": "Norman Nodge - Nn 8.0",
+      "verification_status": "track_unverified",
+      "category": "minimal",
+      "style_notes": "Berlin/Berghain DJ, releases on Ostgut Ton, MDR. Style closer to hypnotic-Berlin techno than minimal in strict sense. Track 'Nn 8.0' should be verified — naming pattern suggests it's part of a series.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Marcel Dettmann", "reason": "Berghain/Ostgut Ton peer" },
+        { "query": "Ben Klock", "reason": "Berghain peer" },
+        { "query": "Function", "reason": "Ostgut Ton/Sandwell District peer" },
+        { "query": "Steffi", "reason": "Ostgut Ton peer" },
+        { "query": "DVS1", "reason": "Berlin techno peer" },
+        { "query": "Donato Dozzy", "reason": "Hypnotic-Berlin overlap" },
+        { "query": "Etapp Kyle", "reason": "Klockworks/Berghain" },
+        { "query": "Stef Mendesidis", "reason": "Klockworks/Berlin scene" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time, different scene" },
+        { "query": "Sara Landry", "reason": "Hard techno modern" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" },
+        { "query": "Adam Beyer", "reason": "Drumcode mainstream" }
+      ]
+    },
+
+    {
+      "id": "nocow-russian",
+      "query": "Nocow - Art Deco",
+      "category": "russian",
+      "style_notes": "Russian producer, releases on Trip, Gost Zvuk, Coloured Vibration. Hypnotic/atmospheric techno with experimental edges. Track title is a guess; verify.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Vladimir Dubyshkin", "reason": "Trip scene Russian peer" },
+        { "query": "Buttechno", "reason": "Russian techno, Gost Zvuk" },
+        { "query": "PTU", "reason": "Russian hypnotic-industrial" },
+        { "query": "Nina Kraviz", "reason": "Trip founder, Russian techno" },
+        { "query": "Bjarki", "reason": "Trip regular" },
+        { "query": "Ohota", "reason": "Russian techno peer" },
+        { "query": "Nikita Zabelin", "reason": "Russian techno peer" },
+        { "query": "OL", "reason": "Russian experimental techno" },
+        { "query": "Gost Zvuk", "reason": "Russian label collective" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time mainstream" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" },
+        { "query": "Sara Landry", "reason": "Hard techno" }
+      ]
+    },
+
+    {
+      "id": "dubyshkin-trp",
+      "query": "Vladimir Dubyshkin - Belissimo",
+      "category": "russian",
+      "style_notes": "Russian producer on Trip/nichts. Hypnotic-industrial with experimental edges. Cyrillic encoding edge case if title has Russian chars.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "PTU", "reason": "Russian hypnotic-industrial peer, Trip" },
+        { "query": "Nocow", "reason": "Russian techno peer" },
+        { "query": "Buttechno", "reason": "Russian techno peer" },
+        { "query": "Nina Kraviz", "reason": "Trip founder" },
+        { "query": "Bjarki", "reason": "Trip regular, similar experimental edge" },
+        { "query": "Ohota", "reason": "Russian techno peer" },
+        { "query": "Nikita Zabelin", "reason": "Russian techno peer" },
+        { "query": "Inhalt der Nacht", "reason": "Eastern European hypnotic register" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time festival" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" },
+        { "query": "Sara Landry", "reason": "Hard techno modern" }
+      ]
+    },
+
+    {
+      "id": "ohota-russian",
+      "query": "Ohota - Total",
+      "category": "russian",
+      "style_notes": "Russian producer. Style ranges hypnotic-industrial. Limited info available; verify discography.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Vladimir Dubyshkin", "reason": "Russian techno peer" },
+        { "query": "Nocow", "reason": "Russian techno peer" },
+        { "query": "Buttechno", "reason": "Russian techno peer" },
+        { "query": "Nikita Zabelin", "reason": "Russian techno peer" },
+        { "query": "PTU", "reason": "Russian hypnotic-industrial" },
+        { "query": "OL", "reason": "Russian experimental" },
+        { "query": "Nina Kraviz", "reason": "Trip founder, Russian scene" },
+        { "query": "Bjarki", "reason": "Trip regular" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Sara Landry", "reason": "Hard techno" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" }
+      ]
+    },
+
+    {
+      "id": "zabelin-russian",
+      "query": "Nikita Zabelin - Party Problems",
+      "category": "russian",
+      "style_notes": "Russian producer/DJ, founder of RND.ZVUK. Modern Russian techno scene. Track title is a guess; verify.",
+      "expected_tier": 1,
+      "relevant": [
+        { "query": "Buttechno", "reason": "Russian techno peer" },
+        { "query": "Vladimir Dubyshkin", "reason": "Russian techno peer" },
+        { "query": "Nocow", "reason": "Russian techno peer" },
+        { "query": "Ohota", "reason": "Russian techno peer" },
+        { "query": "PTU", "reason": "Russian hypnotic-industrial" },
+        { "query": "Nina Kraviz", "reason": "Russian techno scene" },
+        { "query": "Philipp Gorbachev", "reason": "Russian techno" }
+      ],
+      "false_friends": [
+        { "query": "Charlotte de Witte", "reason": "Peak-time" },
+        { "query": "Adam Beyer", "reason": "Drumcode peak-time" },
+        { "query": "Sara Landry", "reason": "Hard techno modern" },
+        { "query": "Tale Of Us", "reason": "Melodic techno" }
+      ]
     }
   ]
+
 }
