@@ -1,3 +1,5 @@
+import { cachedFetch } from "@/lib/dev-cache";
+
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
@@ -41,7 +43,7 @@ export interface SimilarResponse {
 export async function fetchSimilarTracks(
   req: SimilarRequest
 ): Promise<SimilarResponse> {
-  const res = await fetch(`${PYTHON_SERVICE_URL}/similar`, {
+  const res = await cachedFetch(`${PYTHON_SERVICE_URL}/similar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -58,7 +60,7 @@ export async function fetchSimilarTracks(
 }
 
 export async function enrichTracks(tracks: TrackMeta[]): Promise<TrackMeta[]> {
-  const res = await fetch(`${PYTHON_SERVICE_URL}/enrich`, {
+  const res = await cachedFetch(`${PYTHON_SERVICE_URL}/enrich`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tracks),
