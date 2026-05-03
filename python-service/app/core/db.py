@@ -9,7 +9,7 @@ Soft-degrades when DATABASE_URL is empty: callers see no rows on read and
 no-ops on write, mirroring the project-wide adapter convention.
 """
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import asyncpg
 
@@ -63,7 +63,9 @@ async def fetch_cooccurrence(
     if pool is None:
         return []
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=ttl_days)
+    # The Prisma column is TIMESTAMP(3) WITHOUT TIME ZONE; asyncpg refuses
+    # tz-aware values for it. Use a naive UTC instant so the comparison works.
+    cutoff = datetime.utcnow() - timedelta(days=ttl_days)
     seed = _seed_key(artist, track)
 
     try:

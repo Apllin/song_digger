@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # Postgres connection string — shared with web (Prisma). Empty in test
     # environments; the tracklist1001 cache helpers soft-degrade when unset.
     database_url: str = ""
+    # Disabled by default: the live 1001tracklists search HTML differs from
+    # the fixtures the adapter was written against (the GET/POST search
+    # endpoints both return the homepage instead of results, suggesting an
+    # AJAX/CSRF-gated search path). Flip to True once the search parser is
+    # fixed against the live markup. Cache, scraper internals, and route
+    # wiring stay in place so re-enabling is a one-config change.
+    tracklist1001_enabled: bool = False
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 

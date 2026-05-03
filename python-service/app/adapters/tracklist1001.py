@@ -27,6 +27,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.adapters.base import AbstractAdapter
+from app.config import settings
 from app.core.db import fetch_cooccurrence, upsert_cooccurrence_batch
 from app.core.models import TrackMeta
 
@@ -53,6 +54,12 @@ class Tracklists1001Adapter(AbstractAdapter):
     async def find_similar(
         self, query: str, limit: int = DEFAULT_LIMIT
     ) -> list[TrackMeta]:
+        # Feature-flag gate: search parser is broken against live markup
+        # (1001TL search returns the homepage; likely AJAX/CSRF). Adapter
+        # ships disabled until that's fixed. See app/config.py for context.
+        if not settings.tracklist1001_enabled:
+            return []
+
         # The seed→set→adjacency pivot needs both artist and track. Without a
         # specific track, return [] (parallels Last.fm's artist-only behavior).
         artist, track = _split_query(query)

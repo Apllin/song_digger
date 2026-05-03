@@ -9,6 +9,7 @@ from app.adapters.beatport import BeatportAdapter
 from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
+from app.adapters.tracklist1001 import Tracklists1001Adapter
 
 router = APIRouter()
 
@@ -18,8 +19,13 @@ _beatport = BeatportAdapter()
 _bandcamp = BandcampAdapter()
 _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
+_tracklist1001 = Tracklists1001Adapter()
 
 BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
+# Tracklist1001 cold-cache scrape budget is 8s internally; warm cache is sub-second.
+# Hard-cap slightly above the budget so a slow scrape doesn't stall /similar but
+# warm hits aren't penalized.
+TRACKLIST1001_TIMEOUT = 9.0
 
 
 async def _bandcamp_safe(query: str) -> list[TrackMeta]:
@@ -31,6 +37,20 @@ async def _bandcamp_safe(query: str) -> list[TrackMeta]:
         return []
     except Exception as e:
         print(f"[Bandcamp] error: {e}")
+        return []
+
+
+async def _tracklist1001_safe(query: str, limit: int) -> list[TrackMeta]:
+    """Run 1001tracklists with a hard timeout — cold-cache scrape can take several seconds."""
+    try:
+        return await asyncio.wait_for(
+            _tracklist1001.find_similar(query, limit), timeout=TRACKLIST1001_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        print(f"[Tracklist1001] timed out after {TRACKLIST1001_TIMEOUT}s, skipping")
+        return []
+    except Exception as e:
+        print(f"[Tracklist1001] error: {e}")
         return []
 
 MAX_TRACKS = 500
@@ -226,12 +246,21 @@ async def _find_by_artist_and_track(
     reversed_query = f"{track} - {artist}"
 
     # Phase 1: all external sources in parallel.
-    cosine_tracks, ytm_tracks, bandcamp_tracks, yandex_tracks, lastfm_tracks, ytm_source_search = await asyncio.gather(
+    (
+        cosine_tracks,
+        ytm_tracks,
+        bandcamp_tracks,
+        yandex_tracks,
+        lastfm_tracks,
+        tracklist1001_tracks,
+        ytm_source_search,
+    ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
         _bandcamp_safe(full_query),
         _yandex.find_similar(full_query, limit),
         _lastfm.find_similar(full_query, limit),
+        _tracklist1001_safe(full_query, limit),
         _ytm.search_songs(full_query, limit=1),
         return_exceptions=True,
     )
@@ -241,6 +270,7 @@ async def _find_by_artist_and_track(
     bandcamp_tracks = bandcamp_tracks if isinstance(bandcamp_tracks, list) else []
     yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
+    tracklist1001_tracks = tracklist1001_tracks if isinstance(tracklist1001_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -343,6 +373,7 @@ async def _find_by_artist_and_track(
         SourceList(source="bandcamp", tracks=_dedup_within_source(_filter_artist(bandcamp_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
+        SourceList(source="tracklist1001", tracks=_dedup_within_source(_filter_artist(tracklist1001_tracks))),
     ]
 
     # Derive label/genre from whichever cosine_tracks list we ended up using

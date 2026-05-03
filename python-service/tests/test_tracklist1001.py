@@ -87,6 +87,14 @@ def _no_sleep(monkeypatch):
     monkeypatch.setattr("app.adapters.tracklist1001.asyncio.sleep", _noop)
 
 
+@pytest.fixture
+def _enabled(monkeypatch):
+    """Flip the feature flag on for tests that exercise scrape/cache paths."""
+    monkeypatch.setattr(
+        "app.adapters.tracklist1001.settings.tracklist1001_enabled", True
+    )
+
+
 # ── _split_query ──────────────────────────────────────────────────────────────
 
 def test_split_query_artist_track():
@@ -101,9 +109,29 @@ def test_split_query_trailing_separator():
     assert _split_query("Oscar Mulero - ") == ("Oscar Mulero", None)
 
 
+# ── feature flag (disabled by default) ───────────────────────────────────────
+
+async def test_disabled_by_default_returns_empty_without_network():
+    """Default tracklist1001_enabled=False short-circuits before any work."""
+    adapter = Tracklists1001Adapter()
+    client = _ScriptedClient([])
+    fetch = AsyncMock()
+    upsert = AsyncMock()
+    # Note: no _enabled fixture — relies on the production default.
+    with _patch_client(client), \
+         patch("app.adapters.tracklist1001.fetch_cooccurrence", fetch), \
+         patch("app.adapters.tracklist1001.upsert_cooccurrence_batch", upsert):
+        results = await adapter.find_similar("Oscar Mulero - Horses")
+
+    assert results == []
+    fetch.assert_not_called()
+    upsert.assert_not_called()
+    assert client.calls == []
+
+
 # ── find_similar: artist-only short-circuit ──────────────────────────────────
 
-async def test_artist_only_returns_empty_without_network():
+async def test_artist_only_returns_empty_without_network(_enabled):
     """No track parsed → return [] without calling the cache or scraping."""
     adapter = Tracklists1001Adapter()
     client = _ScriptedClient([])
@@ -122,7 +150,7 @@ async def test_artist_only_returns_empty_without_network():
 
 # ── find_similar: cache hit ──────────────────────────────────────────────────
 
-async def test_cache_hit_returns_without_scraping():
+async def test_cache_hit_returns_without_scraping(_enabled):
     cached = [
         TrackMeta(
             title="Faceless",
@@ -164,7 +192,7 @@ def _full_scrape_rules() -> list[tuple[str, object]]:
     ]
 
 
-async def test_cache_miss_scrape_writes_back_and_returns_pairs():
+async def test_cache_miss_scrape_writes_back_and_returns_pairs(_enabled):
     adapter = Tracklists1001Adapter()
     client = _ScriptedClient(_full_scrape_rules())
     upsert = AsyncMock()
@@ -192,7 +220,7 @@ async def test_cache_miss_scrape_writes_back_and_returns_pairs():
     assert len(kwargs["pairs"]) == 4
 
 
-async def test_cache_miss_search_returns_no_seed_short_circuits():
+async def test_cache_miss_search_returns_no_seed_short_circuits(_enabled):
     """Empty search HTML → no seed id → don't fetch seed page or sets."""
     adapter = Tracklists1001Adapter()
     rules = [("/search/index.php", _resp(_fixture("search_empty.html")))]
@@ -209,7 +237,7 @@ async def test_cache_miss_search_returns_no_seed_short_circuits():
     upsert.assert_not_called()  # nothing to persist
 
 
-async def test_seed_page_with_no_sets_returns_empty():
+async def test_seed_page_with_no_sets_returns_empty(_enabled):
     """Seed page parses but lists no DJ sets → no adjacency to compute."""
     adapter = Tracklists1001Adapter()
     rules = [
@@ -228,7 +256,7 @@ async def test_seed_page_with_no_sets_returns_empty():
     upsert.assert_not_called()
 
 
-async def test_set_without_seed_contributes_no_pairs():
+async def test_set_without_seed_contributes_no_pairs(_enabled):
     """A set page that doesn't contain the seed → adjacency returns []."""
     adapter = Tracklists1001Adapter()
     rules = [
@@ -250,7 +278,7 @@ async def test_set_without_seed_contributes_no_pairs():
 
 # ── Resilience: per-step parse failures don't kill the whole scrape ─────────
 
-async def test_one_set_failing_does_not_abort_scrape(capsys):
+async def test_one_set_failing_does_not_abort_scrape(_enabled, capsys):
     """One set raises during fetch; the others contribute normally."""
     adapter = Tracklists1001Adapter()
     rules = [
@@ -277,7 +305,7 @@ async def test_one_set_failing_does_not_abort_scrape(capsys):
     assert "[Tracklist1001]" in captured.out  # error logged to stdout
 
 
-async def test_search_network_failure_returns_empty(capsys):
+async def test_search_network_failure_returns_empty(_enabled, capsys):
     adapter = Tracklists1001Adapter()
     rules = [("/search/index.php", httpx.ConnectError("nope"))]
     client = _ScriptedClient(rules)
@@ -293,7 +321,7 @@ async def test_search_network_failure_returns_empty(capsys):
 
 # ── Budget enforcement ─────────────────────────────────────────────────────
 
-async def test_budget_exceeded_returns_partial_results(monkeypatch):
+async def test_budget_exceeded_returns_partial_results(_enabled, monkeypatch):
     """
     Force time.monotonic to advance past the 8s budget after the first set
     is fetched. Adapter should return whatever it managed to collect from
