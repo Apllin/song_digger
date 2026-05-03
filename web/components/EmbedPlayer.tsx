@@ -371,7 +371,7 @@ function BandcampPlayer({
         <iframe
           ref={iframeRef}
           src={embedUrl}
-          className="w-full border-0 rounded-lg mt-1 h-20"
+          className="w-full border-0 rounded-lg mt-1 h-[42px]"
           allow="autoplay"
           title={title}
         />

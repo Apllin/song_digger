@@ -25,17 +25,29 @@ export function BottomPlayer() {
   const holderRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const currentVideoIdRef = useRef<string | null>(null);
+  const bcAudioRef = useRef<HTMLAudioElement>(null);
 
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [bcActive, setBcActive] = useState(false);
   const [volume, setVolumeState] = useState(100);
+  const [bcAudioUrl, setBcAudioUrl] = useState<string | null>(null);
 
   const changeVolume = (v: number) => {
     setVolumeState(v);
-    playerRef.current?.setVolume(v);
+    if (track?.source === "youtube_music") {
+      playerRef.current?.setVolume(v);
+    } else if (track?.source === "bandcamp" && bcAudioRef.current) {
+      bcAudioRef.current.volume = v / 100;
+    }
+  };
+
+  const bcToggle = () => {
+    const a = bcAudioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch((err) => console.error("[Bandcamp] play() rejected:", err));
+    else a.pause();
   };
 
   // Extract YT videoId
@@ -59,7 +71,20 @@ export function BottomPlayer() {
       return;
     }
 
-    if (track.source === "youtube_music" && videoId) {
+    // Non-YT source: pause the YT iframe (don't destroy — YT.Player replaces
+    // the holder div with an iframe and doesn't restore it on destroy(), so a
+    // later re-init lands in a detached node with no audio). Reset transport
+    // state so the bandcamp <audio> drives it cleanly.
+    if (track.source !== "youtube_music") {
+      try { playerRef.current?.pauseVideo(); } catch {}
+      setPlaying(false);
+      setReady(false);
+      setCurrentTime(0);
+      setDuration(0);
+      return;
+    }
+
+    if (videoId) {
       if (currentVideoIdRef.current === videoId) return; // same video, don't reload
       currentVideoIdRef.current = videoId;
       setReady(false);
@@ -97,12 +122,42 @@ export function BottomPlayer() {
       });
       return () => { destroyed = true; };
     }
-
-    if (track.source === "bandcamp") {
-      setBcActive(true);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.sourceUrl]);
+  }, [track?.sourceUrl, track?.source]);
+
+  // Bandcamp: resolve a streamable mp3 from the source page; the <audio>
+  // element below drives playback, time, seek, and volume.
+  useEffect(() => {
+    if (track?.source !== "bandcamp" || !track.sourceUrl) {
+      setBcAudioUrl(null);
+      return;
+    }
+    let cancelled = false;
+    setBcAudioUrl(null);
+    setCurrentTime(0);
+    setDuration(0);
+    fetch(`/api/bandcamp-audio?url=${encodeURIComponent(track.sourceUrl)}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          console.error("[Bandcamp] /api/bandcamp-audio failed:", r.status, await r.text().catch(() => ""));
+          return null;
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.audioUrl) {
+          console.error("[Bandcamp] no audioUrl in response:", data);
+          return;
+        }
+        setBcAudioUrl(data.audioUrl as string);
+        if (typeof data.duration === "number") setDuration(data.duration);
+      })
+      .catch((err) => console.error("[Bandcamp] audio fetch error:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [track?.source, track?.sourceUrl]);
 
   // When YT player already exists and track changes, handle ready state for loadVideoById
   useEffect(() => {
@@ -121,9 +176,11 @@ export function BottomPlayer() {
     return () => clearInterval(checkReady);
   }, [videoId]);
 
-  // Poll progress while playing
+  // Poll progress while playing — YouTube only. Bandcamp drives `currentTime`
+  // through the <audio> element's `onTimeUpdate`; polling here would stomp it
+  // with stale (or zero) values from the YT player ref.
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || track?.source !== "youtube_music") return;
     const id = setInterval(() => {
       const ct = playerRef.current?.getCurrentTime() ?? 0;
       const dur = playerRef.current?.getDuration() ?? 0;
@@ -131,7 +188,7 @@ export function BottomPlayer() {
       if (dur > 0) setDuration(dur);
     }, 500);
     return () => clearInterval(id);
-  }, [playing]);
+  }, [playing, track?.source]);
 
   const toggle = () => {
     if (!playerRef.current) return;
@@ -139,10 +196,17 @@ export function BottomPlayer() {
   };
 
   const seek = (pct: number) => {
-    if (!playerRef.current || duration <= 0) return;
+    if (duration <= 0) return;
     const t = pct * duration;
-    playerRef.current.seekTo(t, true);
-    setCurrentTime(t);
+    if (track?.source === "youtube_music") {
+      if (!playerRef.current) return;
+      playerRef.current.seekTo(t, true);
+      setCurrentTime(t);
+    } else if (track?.source === "bandcamp") {
+      if (!bcAudioRef.current) return;
+      bcAudioRef.current.currentTime = t;
+      setCurrentTime(t);
+    }
   };
 
   const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -169,13 +233,25 @@ export function BottomPlayer() {
         style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }}
       />
 
-      {/* Bandcamp iframe (shown inline above bar) */}
-      {track.source === "bandcamp" && bcActive && track.embedUrl && (
-        <iframe
-          src={track.embedUrl}
-          className="w-full border-0 h-20"
-          allow="autoplay"
-          title={track.title}
+      {/* Hidden Bandcamp audio — direct mp3 stream extracted from the source page. */}
+      {track.source === "bandcamp" && bcAudioUrl && (
+        <audio
+          ref={bcAudioRef}
+          src={bcAudioUrl}
+          autoPlay
+          onLoadedMetadata={(e) => {
+            const a = e.currentTarget;
+            if (a.duration && isFinite(a.duration)) setDuration(a.duration);
+            a.volume = volume / 100;
+          }}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => playNext()}
+          onError={(e) => {
+            const err = e.currentTarget.error;
+            console.error("[Bandcamp] <audio> error:", err?.code, err?.message, "src=", e.currentTarget.src);
+          }}
         />
       )}
 
@@ -213,41 +289,34 @@ export function BottomPlayer() {
               </svg>
             </button>
 
-            {track.source === "youtube_music" ? (
-              <button
-                onClick={toggle}
-                disabled={!ready}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors disabled:opacity-40"
-                aria-label={playing ? "Pause" : "Play"}
-              >
-                {!ready ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                ) : playing ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={() => setBcActive((v) => !v)}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors"
-                aria-label={bcActive ? "Hide player" : "Show player"}
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  {bcActive
-                    ? <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                    : <path d="M8 5v14l11-7z" />}
-                </svg>
-              </button>
-            )}
+            {(track.source === "youtube_music" || track.source === "bandcamp") && (() => {
+              const isBc = track.source === "bandcamp";
+              const isReady = isBc ? !!bcAudioUrl : ready;
+              const onClick = isBc ? bcToggle : toggle;
+              return (
+                <button
+                  onClick={onClick}
+                  disabled={!isReady}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors disabled:opacity-40"
+                  aria-label={playing ? "Pause" : "Play"}
+                >
+                  {!isReady ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : playing ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })()}
 
             <button
               onClick={() => playNext()}
@@ -261,8 +330,8 @@ export function BottomPlayer() {
               </svg>
             </button>
 
-            {/* Volume (YouTube only) */}
-            {track.source === "youtube_music" && (
+            {/* Volume (YouTube + Bandcamp) */}
+            {(track.source === "youtube_music" || track.source === "bandcamp") && (
               <div className="flex items-center gap-1.5 ml-1">
                 <button
                   onClick={() => changeVolume(volume === 0 ? 100 : 0)}
@@ -322,8 +391,8 @@ export function BottomPlayer() {
           </div>
         </div>
 
-        {/* Progress bar (YouTube only) */}
-        {track.source === "youtube_music" && (
+        {/* Progress bar (YouTube + Bandcamp) */}
+        {(track.source === "youtube_music" || track.source === "bandcamp") && (
           <div className="flex items-center gap-2 pb-0.5">
             <span className="text-[10px] text-zinc-600 tabular-nums w-7 text-right shrink-0">
               {formatTime(currentTime)}
