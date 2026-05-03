@@ -310,6 +310,67 @@ async def fetch_lastfm_artist_similars(
     return raw
 
 
+async def upsert_candidate_features_batch(rows: list[dict]) -> None:
+    """
+    Upsert CandidateFeatures rows for a single search.
+
+    Conflict on (searchQueryId, trackId) replaces existing values — the same
+    search shouldn't have inconsistent features for the same candidate, and
+    re-running extraction for a search should overwrite cleanly.
+
+    Per ADR-0011 the table tracks observability data, not user-facing state,
+    so this function soft-degrades like the other cache writers: missing
+    DATABASE_URL or any DB error is logged with the [Features] prefix and
+    returns None. Search response is fire-and-forget on this side.
+
+    The id column uses gen_random_uuid()::text — Prisma's cuid() is JS-only
+    and the column accepts any unique string (matches the convention in the
+    1001TL/trackid cooccurrence writers above).
+    """
+    if not rows:
+        return
+    pool = await _get_pool()
+    if pool is None:
+        return
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for row in rows:
+                    await conn.execute(
+                        """
+                        INSERT INTO "CandidateFeatures"
+                          (id, "searchQueryId", "trackId",
+                           "bpmDelta", "keyCompat", "energyDelta",
+                           "labelMatch", "genreMatch",
+                           "nSources", "topRank", "hasEmbed",
+                           "rrfScore", "createdAt")
+                        VALUES (
+                          gen_random_uuid()::text,
+                          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now()
+                        )
+                        ON CONFLICT ("searchQueryId", "trackId") DO UPDATE
+                        SET "bpmDelta" = EXCLUDED."bpmDelta",
+                            "keyCompat" = EXCLUDED."keyCompat",
+                            "energyDelta" = EXCLUDED."energyDelta",
+                            "labelMatch" = EXCLUDED."labelMatch",
+                            "genreMatch" = EXCLUDED."genreMatch",
+                            "nSources" = EXCLUDED."nSources",
+                            "topRank" = EXCLUDED."topRank",
+                            "hasEmbed" = EXCLUDED."hasEmbed",
+                            "rrfScore" = EXCLUDED."rrfScore"
+                        """,
+                        row["searchQueryId"], row["trackId"],
+                        row.get("bpmDelta"), row.get("keyCompat"),
+                        row.get("energyDelta"),
+                        row.get("labelMatch"), row.get("genreMatch"),
+                        row["nSources"], row["topRank"], row["hasEmbed"],
+                        row["rrfScore"],
+                    )
+    except Exception as e:
+        print(f"[Features] cache write error: {e}")
+
+
 async def upsert_lastfm_artist_similars(
     *,
     artist: str,

@@ -141,7 +141,7 @@ export function aggregateTracks(
   sourceLists: SourceList[],
   filters: SearchFilters,
   feedback?: TrackFeedback,
-): TrackMeta[] {
+): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 
