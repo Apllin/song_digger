@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     # Empty by default — adapter no-ops when missing.
     yandex_music_token: str = ""
     lastfm_api_key: str = ""
+    # Postgres connection string — shared with web (Prisma). Empty in test
+    # environments; the tracklist1001 cache helpers soft-degrade when unset.
+    database_url: str = ""
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 
