@@ -15,9 +15,13 @@ const POPULAR_LABELS = [
 
 const PAGE_SIZE = 15;
 
-async function fetchAllLabelReleases(labelId: number): Promise<LabelRelease[]> {
+async function fetchAllLabelReleases(
+  labelId: number,
+  signal?: AbortSignal
+): Promise<LabelRelease[]> {
   const first = await fetch(
-    `/api/discography/label/releases?labelId=${labelId}&page=1&perPage=100`
+    `/api/discography/label/releases?labelId=${labelId}&page=1&perPage=100`,
+    { signal }
   ).then((r) => r.json());
 
   const releases: LabelRelease[] = first.releases ?? [];
@@ -27,7 +31,8 @@ async function fetchAllLabelReleases(labelId: number): Promise<LabelRelease[]> {
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, i) =>
         fetch(
-          `/api/discography/label/releases?labelId=${labelId}&page=${i + 2}&perPage=100`
+          `/api/discography/label/releases?labelId=${labelId}&page=${i + 2}&perPage=100`,
+          { signal }
         ).then((r) => r.json())
       )
     );
@@ -54,6 +59,8 @@ function LabelsContent() {
   const [s, setS] = useAtom(labelsAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const autocompleteAbortRef = useRef<AbortController | null>(null);
   const { history, addToHistory } = useSearchHistory("labels-history");
 
   function selectLabel(label: Label) {
@@ -70,43 +77,63 @@ function LabelsContent() {
   }
 
   function searchLabelByName(name: string) {
+    searchAbortRef.current?.abort();
+    autocompleteAbortRef.current?.abort();
+    const ac = new AbortController();
+    searchAbortRef.current = ac;
+
     setS((prev) => ({
       ...prev,
       query: name,
       selectedLabel: null,
       releases: [],
+      suggestions: [],
       page: 1,
       showSuggestions: false,
       showHistory: false,
       loadingLabels: true,
     }));
     addToHistory(name);
-    fetch(`/api/discography/label/search?q=${encodeURIComponent(name)}`)
+    fetch(`/api/discography/label/search?q=${encodeURIComponent(name)}`, { signal: ac.signal })
       .then((r) => r.json())
       .then((data: Label[]) => {
+        if (ac.signal.aborted) return;
         const exact = data.find((l) => l.name.toLowerCase() === name.toLowerCase());
         const pick = exact ?? data[0];
         if (pick) selectLabel(pick);
       })
       .catch(() => {})
-      .finally(() => setS((prev) => ({ ...prev, loadingLabels: false })));
+      .finally(() => {
+        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingLabels: false }));
+      });
   }
 
   // Autocomplete while typing
   useEffect(() => {
+    if (debouncedQuery !== s.query) return;
     if (debouncedQuery.length < 2 || s.selectedLabel) {
       setS((prev) => ({ ...prev, suggestions: [] }));
       return;
     }
+    autocompleteAbortRef.current?.abort();
+    const ac = new AbortController();
+    autocompleteAbortRef.current = ac;
     setS((prev) => ({ ...prev, loadingLabels: true }));
-    fetch(`/api/discography/label/search?q=${encodeURIComponent(debouncedQuery)}`)
+    fetch(`/api/discography/label/search?q=${encodeURIComponent(debouncedQuery)}`, {
+      signal: ac.signal,
+    })
       .then((r) => r.json())
-      .then((data: Label[]) =>
-        setS((prev) => ({ ...prev, suggestions: data, showSuggestions: true }))
-      )
-      .catch(() => setS((prev) => ({ ...prev, suggestions: [] })))
-      .finally(() => setS((prev) => ({ ...prev, loadingLabels: false })));
-  }, [debouncedQuery, s.selectedLabel, setS]);
+      .then((data: Label[]) => {
+        if (ac.signal.aborted) return;
+        setS((prev) => ({ ...prev, suggestions: data, showSuggestions: true }));
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setS((prev) => ({ ...prev, suggestions: [] }));
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingLabels: false }));
+      });
+  }, [debouncedQuery, s.selectedLabel, s.query, setS]);
 
   // Close on outside click
   useEffect(() => {
@@ -122,11 +149,20 @@ function LabelsContent() {
   // Load releases when label selected
   useEffect(() => {
     if (!s.selectedLabel) return;
+    const ac = new AbortController();
     setS((prev) => ({ ...prev, loadingReleases: true }));
-    fetchAllLabelReleases(s.selectedLabel.id)
-      .then((all) => setS((prev) => ({ ...prev, releases: all })))
-      .catch(() => setS((prev) => ({ ...prev, releases: [] })))
-      .finally(() => setS((prev) => ({ ...prev, loadingReleases: false })));
+    fetchAllLabelReleases(s.selectedLabel.id, ac.signal)
+      .then((all) => {
+        if (ac.signal.aborted) return;
+        setS((prev) => ({ ...prev, releases: all }));
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setS((prev) => ({ ...prev, releases: [] }));
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingReleases: false }));
+      });
+    return () => ac.abort();
   }, [s.selectedLabel, setS]);
 
   const totalPages = Math.ceil(s.releases.length / PAGE_SIZE);
