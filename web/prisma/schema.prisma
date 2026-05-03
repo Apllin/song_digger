@@ -86,3 +86,24 @@ model PlaylistTrack {
   @@unique([playlistId, trackId])
   @@index([playlistId, order])
 }
+
+model TracklistCooccurrence {
+  id              String   @id @default(cuid())
+
+  seedTracklistId String
+  pairTracklistId String
+
+  pairArtist      String
+  pairTitle       String
+
+  setCount        Int      @default(1)
+
+  pairUrl         String
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([seedTracklistId, pairTracklistId])
+  @@index([seedTracklistId])
+  @@index([updatedAt])
+}
