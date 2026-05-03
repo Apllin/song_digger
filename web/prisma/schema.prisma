@@ -128,3 +128,22 @@ model TrackidCooccurrence {
   @@index([seedTrackidId])
   @@index([updatedAt])
 }
+
+model LastfmArtistSimilars {
+  id         String   @id @default(cuid())
+
+  // Lowercased, trimmed seed artist name. Mirrors the _normalize convention
+  // used by the 1001TL / trackid co-occurrence caches in app/core/db.py.
+  seedArtist String   @unique
+
+  // JSON list of {name, match, url} objects from Last.fm artist.getSimilar.
+  // Stored as Json (not relational rows) because reads are always all-at-once
+  // for a seed, refreshes are atomic (replace whole row), and Last.fm's
+  // response is naturally a list.
+  similars   Json
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([updatedAt])
+}
