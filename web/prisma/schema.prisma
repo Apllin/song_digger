@@ -8,36 +8,38 @@ datasource db {
 }
 
 model Track {
-  id             String          @id @default(cuid())
-  title          String
-  artist         String
-  source         String
-  sourceUrl      String          @unique
-  coverUrl       String?
-  embedUrl       String?
-  bpm            Float?
-  key            String?
-  energy         Float?
-  genre          String?
-  label          String?
-  createdAt      DateTime        @default(now())
-  favorites      Favorite?
-  playlistTracks PlaylistTrack[]
-  searchResults  SearchResult[]
+  id                String              @id @default(cuid())
+  title             String
+  artist            String
+  source            String
+  sourceUrl         String              @unique
+  coverUrl          String?
+  embedUrl          String?
+  bpm               Float?
+  key               String?
+  energy            Float?
+  genre             String?
+  label             String?
+  createdAt         DateTime            @default(now())
+  favorites         Favorite?
+  playlistTracks    PlaylistTrack[]
+  searchResults     SearchResult[]
+  candidateFeatures CandidateFeatures[]
 
   @@index([source])
   @@index([bpm])
 }
 
 model SearchQuery {
-  id        String         @id @default(cuid())
-  input     String
-  status    String         @default("pending")
-  filters   Json?
-  createdAt DateTime       @default(now())
-  sourceBpm Float?
-  sourceKey String?
-  results   SearchResult[]
+  id                String              @id @default(cuid())
+  input             String
+  status            String              @default("pending")
+  filters           Json?
+  createdAt         DateTime            @default(now())
+  sourceBpm         Float?
+  sourceKey         String?
+  results           SearchResult[]
+  candidateFeatures CandidateFeatures[]
 }
 
 model SearchResult {
@@ -146,4 +148,43 @@ model LastfmArtistSimilars {
   updatedAt  DateTime @updatedAt
 
   @@index([updatedAt])
+}
+
+model CandidateFeatures {
+  id String @id @default(cuid())
+
+  searchQueryId String
+  trackId       String
+
+  // C1 features (cheap, computed at search-persistence time)
+  bpmDelta    Float?
+  keyCompat   Float?
+  energyDelta Float?
+  labelMatch  Float?
+  genreMatch  Float?
+  nSources    Int
+  topRank     Int
+  hasEmbed    Int
+  rrfScore    Float
+
+  // C2 features (Discogs, eventually-consistent — populated by background job)
+  yearProximity   Float?
+  artistCorelease Int?
+
+  // C3 features (joined from cache tables once 1001TL/trackid land enabled)
+  cooccurrence1001tl  Int?
+  cooccurrenceTrackid Int?
+  appearsInLastfm     Int?
+  appearsInCosine     Int?
+  appearsInYandex     Int?
+
+  createdAt DateTime @default(now())
+
+  searchQuery SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
+  track       Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([searchQueryId, trackId])
+  @@index([searchQueryId])
+  @@index([trackId])
+  @@index([createdAt])
 }
