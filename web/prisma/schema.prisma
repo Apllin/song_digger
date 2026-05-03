@@ -129,6 +129,54 @@ model LastfmArtistSimilars {
   @@index([updatedAt])
 }
 
+model ArtistDiscography {
+  id              String   @id @default(cuid())
+
+  // Lowercased artist name with diacritics stripped via NFKD + non-alphanumerics
+  // dropped — mirrors web/lib/aggregator.ts:normalizeArtist so the same key
+  // resolves whether the lookup originates from the web side (identityKey) or
+  // python-service.
+  artistName      String   @unique
+
+  // Discogs artist ID. Numeric upstream; stored as String to match the rest of
+  // the ID columns in this schema and to keep the column null-safe when the
+  // search step found nothing.
+  discogsArtistId String?
+
+  // JSON array of releases:
+  //   [{ releaseId: string, year: number, title: string, label: string }, ...]
+  // Sorted by year ascending. Source for both yearProximity lookups and the
+  // collaborator extraction in ArtistCollaborations.
+  releases        Json
+
+  // Year of the artist's earliest known release; cheap to derive at write
+  // time and useful as a Stage D feature on its own ("how long has this
+  // artist been around?") without re-scanning the JSON.
+  debutYear       Int?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+model ArtistCollaborations {
+  id            String   @id @default(cuid())
+
+  // Same normalization as ArtistDiscography.artistName.
+  artistName    String   @unique
+
+  // JSON array of collaborator artist names (normalized).
+  // Derived from ArtistDiscography.releases — when artist A appears on a
+  // release with artist B, B ends up in A's collaborators set.
+  collaborators Json
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
 model CandidateFeatures {
   id String @id @default(cuid())
 
