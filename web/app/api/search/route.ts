@@ -251,8 +251,9 @@ async function runSearch(
   filters: SearchFilters,
   feedback: TrackFeedback | undefined,
 ) {
-  // ── Fetch from Python (Cosine.club + YTM + Bandcamp "you may also like") ───
-  // Bandcamp runs inside Python with a 4s timeout so it never blocks the response.
+  // ── Fetch from Python — fan out to all enabled adapters in /similar. ─────
+  // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
+  // trackid 9s) from blocking the response.
   const pythonResult = await fetchSimilarTracks({
     input,
     artist,

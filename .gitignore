@@ -32,8 +32,9 @@ build/
 python-service/Song Digger RRF Rollout.md
 python-service/song-digger-stages/
 
-# Local backlog (working notes, not source)
+# Local backlog and audit reports (working notes, not source)
 BACKLOG.md
+AUDIT_REPORT.md
 
 # Eval runs — only named baselines are committed, the rest accumulate per-PR
 python-service/eval/runs/*

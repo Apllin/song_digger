@@ -1,10 +1,9 @@
-"""Tests for the core deduplication and metadata inference logic in similar.py."""
+"""Tests for the core normalization and metadata inference logic in similar.py."""
 import pytest
 from app.api.routes.similar import (
     _normalize,
     _normalize_title,
     _same_artist,
-    _deduplicate,
     _extract_source_meta,
     _extract_source_label_genre,
 )
@@ -25,6 +24,22 @@ def make_track(**kwargs) -> TrackMeta:
 
 def test_normalize_lowercases_and_strips():
     assert _normalize("  Oscar Mulero  ") == "oscar mulero"
+
+
+def test_normalize_strips_diacritics():
+    # Mirrors web/lib/aggregator.ts:normalizeArtist diacritic strip — without
+    # this, "Óscar Mulero" tokens won't match "Oscar Mulero" in _same_artist
+    # and the seed-artist filter silently misses one of them.
+    assert _normalize("Óscar Mulero") == "oscar mulero"
+    assert _normalize("Étienne de Crécy") == "etienne de crecy"
+    assert _normalize("Björk") == "bjork"
+
+
+def test_same_artist_handles_diacritics():
+    # Direct symptom: source returns "Óscar Mulero" while seed is the canonical
+    # "Oscar Mulero" — must filter as same artist.
+    assert _same_artist("Óscar Mulero", "Oscar Mulero") is True
+    assert _same_artist("Oscar Mulero", "Óscar Mulero") is True
 
 
 def test_normalize_empty():
@@ -145,104 +160,6 @@ def test_same_artist_substring():
 
 def test_same_artist_different():
     assert _same_artist("Oscar Mulero", "Ancient Methods") is False
-
-
-# ── _deduplicate ──────────────────────────────────────────────────────────────
-
-def test_deduplicate_removes_same_url():
-    t1 = make_track(sourceUrl="https://music.youtube.com/watch?v=aaa")
-    t2 = make_track(sourceUrl="https://music.youtube.com/watch?v=aaa")
-    result = _deduplicate([t1, t2])
-    assert len(result) == 1
-
-
-def test_deduplicate_keeps_different_tracks():
-    """Different artist+title → both survive even if source is the same."""
-    t1 = make_track(title="Track A", artist="Artist One", sourceUrl="https://music.youtube.com/watch?v=aaa")
-    t2 = make_track(title="Track B", artist="Artist Two", sourceUrl="https://music.youtube.com/watch?v=bbb")
-    result = _deduplicate([t1, t2])
-    assert len(result) == 2
-
-
-def test_deduplicate_same_artist_title_different_urls_collapses():
-    """Same artist+title from two different YTM URLs = identity duplicate → keep first."""
-    t1 = make_track(title="Grid", artist="Oscar Mulero", sourceUrl="https://music.youtube.com/watch?v=aaa")
-    t2 = make_track(title="Grid", artist="Oscar Mulero", sourceUrl="https://music.youtube.com/watch?v=bbb")
-    result = _deduplicate([t1, t2])
-    assert len(result) == 1
-    assert result[0].sourceUrl == "https://music.youtube.com/watch?v=aaa"
-
-
-def test_deduplicate_same_artist_title_different_sources():
-    """Same artist+title from YTM and Bandcamp — keep the one with BPM/key."""
-    ytm = make_track(
-        title="Grid (Original Mix)",
-        artist="Oscar Mulero",
-        source="youtube_music",
-        sourceUrl="https://music.youtube.com/watch?v=aaa",
-        bpm=None,
-        key=None,
-    )
-    bandcamp = make_track(
-        title="Grid (Original Mix)",
-        artist="Oscar Mulero",
-        source="bandcamp",
-        sourceUrl="https://someartist.bandcamp.com/track/grid",
-        bpm=140.0,
-        key="8A",
-    )
-    result = _deduplicate([ytm, bandcamp])
-    assert len(result) == 1
-    assert result[0].bpm == 140.0
-    assert result[0].key == "8A"
-
-
-def test_deduplicate_prefers_first_when_equal_metadata():
-    t1 = make_track(sourceUrl="https://music.youtube.com/watch?v=aaa", bpm=140.0, key="8A")
-    t2 = make_track(
-        title="Test Track",
-        artist="Test Artist",
-        source="bandcamp",
-        sourceUrl="https://artist.bandcamp.com/track/test",
-        bpm=140.0,
-        key="8A",
-    )
-    result = _deduplicate([t1, t2])
-    assert len(result) == 1
-    assert result[0].sourceUrl == t1.sourceUrl
-
-
-def test_deduplicate_normalizes_title_variants():
-    """'Grid' and 'Grid (Original Mix)' should be treated as the same track."""
-    t1 = make_track(title="Grid", artist="Oscar Mulero", sourceUrl="https://music.youtube.com/watch?v=aaa")
-    t2 = make_track(title="Grid (Original Mix)", artist="Oscar Mulero", sourceUrl="https://music.youtube.com/watch?v=bbb")
-    result = _deduplicate([t1, t2])
-    assert len(result) == 1
-
-
-def test_deduplicate_empty_list():
-    assert _deduplicate([]) == []
-
-
-def test_deduplicate_keeps_original_and_remix_separate():
-    """A track and its remix are different recordings — must NOT collapse."""
-    original = make_track(
-        title="Strings of Life",
-        artist="Derrick May",
-        sourceUrl="https://music.youtube.com/watch?v=aaa",
-    )
-    remix = make_track(
-        title="Strings of Life (Carl Craig Remix)",
-        artist="Derrick May",
-        sourceUrl="https://music.youtube.com/watch?v=bbb",
-    )
-    bracket_remix = make_track(
-        title="Strings of Life [Remix]",
-        artist="Derrick May",
-        sourceUrl="https://music.youtube.com/watch?v=ccc",
-    )
-    result = _deduplicate([original, remix, bracket_remix])
-    assert len(result) == 3
 
 
 # ── _extract_source_meta ──────────────────────────────────────────────────────

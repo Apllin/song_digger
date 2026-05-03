@@ -134,6 +134,14 @@ describe("normalizeArtist", () => {
     expect(normalizeArtist("DJ-Stingray!")).toBe("djstingray");
     expect(normalizeArtist("Oscar Mulero")).toBe("oscarmulero");
   });
+
+  it("strips diacritics so accented forms fuse with unaccented across sources", () => {
+    // Real-world: Óscar Mulero (Cosine) vs Oscar Mulero (YTM) should merge in RRF.
+    expect(normalizeArtist("Óscar Mulero")).toBe("oscarmulero");
+    expect(normalizeArtist("Étienne de Crécy")).toBe("etiennedecrecy");
+    expect(normalizeArtist("Björk")).toBe("bjork");
+    expect(normalizeArtist("Sebastián Ingrosso")).toBe("sebastianingrosso");
+  });
 });
 
 describe("aggregateTracks — basic pipeline", () => {

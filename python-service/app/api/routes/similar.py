@@ -1,5 +1,6 @@
 import re
 import asyncio
+import unicodedata
 from collections import Counter
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
@@ -53,7 +54,6 @@ async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
         print(f"[Trackidnet] error: {e}")
         return []
 
-MAX_TRACKS = 500
 # Beatport inline enrichment: top results visible on first paint. The rest are
 # enriched in the background via /enrich (see web/lib/enrichment-queue.ts).
 INLINE_BUDGET = 6
@@ -61,7 +61,13 @@ ENRICH_CONCURRENCY = 8
 
 
 def _normalize(s: str) -> str:
-    return s.lower().strip()
+    # NFKD-decompose so accented forms split into base + combining marks,
+    # then drop the marks. Mirrored in web/lib/aggregator.ts:normalizeArtist —
+    # without this, "Óscar Mulero" and "Oscar Mulero" produce different tokens
+    # in _same_artist and the seed-artist filter silently misses one of them.
+    decomposed = unicodedata.normalize("NFKD", s)
+    stripped = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    return stripped.lower().strip()
 
 
 def _same_artist(a: str, b: str) -> bool:
@@ -139,46 +145,6 @@ def _normalize_title(s: str) -> str:
     for pat in _STRIP_PATTERNS:
         s = pat.sub("", s)
     return s.strip()
-
-
-def _has_metadata(t: TrackMeta) -> bool:
-    return t.bpm is not None or t.key is not None
-
-
-def _deduplicate(tracks: list[TrackMeta]) -> list[TrackMeta]:
-    """
-    Deduplicate by sourceUrl first, then by normalised artist+title.
-    Prevents the same track from appearing twice when it comes from
-    both YTM and Bandcamp (different URLs, same content).
-    Keeps the copy with BPM/key metadata; on a tie, first-seen wins.
-
-    Big-O: O(n) — uses index map instead of list scan for replacement.
-    """
-    seen_urls: set[str] = set()
-    # identity key → index in result list (for O(1) replacement)
-    identity_index: dict[str, int] = {}
-    result: list[TrackMeta] = []
-
-    for t in tracks:
-        if t.sourceUrl in seen_urls:
-            continue
-        seen_urls.add(t.sourceUrl)
-
-        identity_key = f"{_normalize(t.artist)}||{_normalize_title(t.title)}"
-        if identity_key in identity_index:
-            existing_idx = identity_index[identity_key]
-            existing = result[existing_idx]
-            # Replace in-place if current has metadata and existing does not
-            if _has_metadata(t) and not _has_metadata(existing):
-                seen_urls.discard(existing.sourceUrl)
-                seen_urls.add(t.sourceUrl)
-                result[existing_idx] = t
-                identity_index[identity_key] = existing_idx
-        else:
-            identity_index[identity_key] = len(result)
-            result.append(t)
-
-    return result
 
 
 COSINE_CONFIDENCE_THRESHOLD = 0.5

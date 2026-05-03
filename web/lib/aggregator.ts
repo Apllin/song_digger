@@ -54,7 +54,16 @@ export function normalizeTitle(s: string): string {
 }
 
 export function normalizeArtist(artist: string): string {
-  return artist.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // NFKD-decompose so accented forms split into base + combining marks,
+  // then strip the combining marks before the alphanumeric filter — otherwise
+  // "Óscar Mulero" → "scarmulero" (Ó dropped) doesn't fuse with
+  // "Oscar Mulero" → "oscarmulero" across sources. Mirror in
+  // python-service _normalize / _same_artist.
+  return artist
+    .normalize("NFKD")
+    .replace(/\p{Mn}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function identityKey(t: TrackMeta): string {

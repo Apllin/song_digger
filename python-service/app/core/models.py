@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class TrackMeta(BaseModel):
     title: str
     artist: str
-    source: str  # "youtube_music" | "cosine_club"
+    source: str
     sourceUrl: str
     coverUrl: str | None = None
     embedUrl: str | None = None
