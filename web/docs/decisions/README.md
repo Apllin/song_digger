@@ -63,3 +63,5 @@ Body:
 | 0008 | Tier-based fallback for unknown seeds | Accepted |
 | 0009 | Eval harness as merge gate | Accepted |
 | 0010 | Label graph similarity | Accepted |
+| 0011 | Feature vector schema for learned ranking | Accepted |
+| 0012 | Remove 1001tracklists adapter | Accepted |

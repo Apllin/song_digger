@@ -35,7 +35,7 @@ in multiple sources at decent ranks. k = 60 default.
 - Positive: rank-based fusion is scale-invariant. We don't need to calibrate
   signal weights against each other.
 - Positive: multi-source agreement becomes a first-class signal — a track
-  high in cosine + last.fm + 1001TL outranks one only in cosine.
+  high in cosine + last.fm + trackid outranks one only in cosine.
 - Positive: graceful degradation when cosine is silent. With weighted-sum,
   cosine-absent meant the dominant 0.42-weight signal was missing and ranking
   was effectively random. With RRF, fusion proceeds over remaining sources

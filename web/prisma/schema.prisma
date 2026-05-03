@@ -89,27 +89,6 @@ model PlaylistTrack {
   @@index([playlistId, order])
 }
 
-model TracklistCooccurrence {
-  id              String   @id @default(cuid())
-
-  seedTracklistId String
-  pairTracklistId String
-
-  pairArtist      String
-  pairTitle       String
-
-  setCount        Int      @default(1)
-
-  pairUrl         String
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@unique([seedTracklistId, pairTracklistId])
-  @@index([seedTracklistId])
-  @@index([updatedAt])
-}
-
 model TrackidCooccurrence {
   id            String   @id @default(cuid())
 
@@ -135,7 +114,7 @@ model LastfmArtistSimilars {
   id         String   @id @default(cuid())
 
   // Lowercased, trimmed seed artist name. Mirrors the _normalize convention
-  // used by the 1001TL / trackid co-occurrence caches in app/core/db.py.
+  // used by the trackid co-occurrence cache in app/core/db.py.
   seedArtist String   @unique
 
   // JSON list of {name, match, url} objects from Last.fm artist.getSimilar.
@@ -171,8 +150,7 @@ model CandidateFeatures {
   yearProximity   Float?
   artistCorelease Int?
 
-  // C3 features (joined from cache tables once 1001TL/trackid land enabled)
-  cooccurrence1001tl  Int?
+  // C3 features (joined from cache tables once trackid lands enabled)
   cooccurrenceTrackid Int?
   appearsInLastfm     Int?
   appearsInCosine     Int?

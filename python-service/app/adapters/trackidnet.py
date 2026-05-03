@@ -1,19 +1,17 @@
 """
 trackid.net adapter — DJ co-occurrence within ±2 positions.
 
-Structurally identical to the 1001tracklists adapter (B2): cache → scrape with
-budget → persist → return. See app/adapters/tracklist1001.py for the full
-design rationale; what differs here is the source-specific surface:
+Cache → scrape with budget → persist → return. The seed track page lists DJ
+sets that played it; we fetch up to MAX_SETS_PER_SEED of those, parse each
+set, and emit tracks within ±WINDOW positions of the seed.
 
   - URL pattern is /track/<id> for tracks and /dj/<slug>/<set-slug> for sets
-  - selectors match trackid.net's structural class names rather than
-    1001TL's microdata
-  - distinct User-Agent so a UA ban on one source doesn't take out the other
+  - selectors match trackid.net's structural class names
   - separate TrackidCooccurrence cache table and trackidnet_enabled flag
 
-Like 1001tracklists, ships disabled (settings.trackidnet_enabled = False) until
-the parser is verified against live markup. Cache, scraper, and route wiring
-stay in place so re-enabling is a one-config change.
+Ships disabled (settings.trackidnet_enabled = False) until the parser is
+verified against live markup. Cache, scraper, and route wiring stay in place
+so re-enabling is a one-config change.
 
 TODO(parser-not-verified): the selectors below — ".set-track", ".track-artist",
 ".track-title" and the "/dj/" URL prefix — are PLACEHOLDERS copied from the
@@ -45,7 +43,6 @@ from app.core.models import TrackMeta
 
 BASE = "https://www.trackid.net"
 SEARCH = f"{BASE}/search"
-# Distinct UA from tracklist1001 so a ban on one source doesn't take both out.
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -243,8 +240,6 @@ class TrackidnetAdapter(AbstractAdapter):
             return []
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        # trackid.net's DJ-set HTML uses class-based rows rather than the
-        # microdata tags 1001TL exposes.
         track_rows = soup.select("div.set-track")
         tracks_in_set: list[dict] = []
         seen_tids: set[str] = set()

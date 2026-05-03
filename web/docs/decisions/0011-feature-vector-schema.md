@@ -30,9 +30,8 @@ search, with an explicit column per feature (no `Json` blob).
   `genreMatch`, `nSources`, `topRank`, `hasEmbed`, `rrfScore`) are
   populated synchronously after `aggregateTracks` returns.
 - C2 columns (`yearProximity`, `artistCorelease`) and C3 columns
-  (`cooccurrence1001tl`, `cooccurrenceTrackid`, `appearsInLastfm/Cosine/
-  Yandex`) are added now as nullable to avoid a follow-up migration when
-  those sub-stages land.
+  (`cooccurrenceTrackid`, `appearsInLastfm/Cosine/Yandex`) are added now
+  as nullable to avoid a follow-up migration when those sub-stages land.
 - Numerical features are nullable, not zero-defaulted. Logistic regression
   treats "missing data" and "value happens to be 0" differently; for "this
   track has no BPM" the right signal is `NULL`, not `0`. Structural
@@ -45,8 +44,7 @@ Computation lives in `python-service/app/feature_extraction/` (pure
 function from inputs to feature dict, no I/O). The web service fires a
 fire-and-forget `POST /features/extract` after `saveTracks` completes; the
 Python endpoint persists via `app.core.db.upsert_candidate_features_batch`,
-mirroring the pattern already used for the 1001TL/trackid co-occurrence
-caches.
+mirroring the pattern already used for the trackid co-occurrence cache.
 
 **Consequences:**
 - Positive: Stage D can train without further schema changes; column

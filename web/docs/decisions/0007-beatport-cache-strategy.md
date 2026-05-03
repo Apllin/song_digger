@@ -50,5 +50,5 @@ inline budget) without adding a job-queue infrastructure dependency.
   enriched)
 - Process restart frequency is high enough that fire-and-forget loss is
   noticeable
-- We add other background work (label graph rebuild, 1001TL cache refresh) —
+- We add other background work (label graph rebuild, trackid cache refresh) —
   at that point, having one shared queue starts paying off
