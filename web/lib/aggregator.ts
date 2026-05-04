@@ -54,16 +54,11 @@ function identityKey(t: TrackMeta): string {
 }
 
 // ── Metadata merge across sources ────────────────────────────────────────────
-// When the same identity appears in multiple sources, prefer the first non-null
-// value already on the candidate; fill remaining nulls from the new track.
+// When the same identity appears in multiple sources, fill any null
+// coverUrl/embedUrl on the existing candidate from the new track.
 function mergeMetadata(dest: FusedCandidate, src: TrackMeta): void {
-  if (dest.bpm == null && src.bpm != null) dest.bpm = src.bpm;
-  if (dest.key == null && src.key != null) dest.key = src.key;
-  if (dest.energy == null && src.energy != null) dest.energy = src.energy;
   if (dest.coverUrl == null && src.coverUrl != null) dest.coverUrl = src.coverUrl;
   if (dest.embedUrl == null && src.embedUrl != null) dest.embedUrl = src.embedUrl;
-  if (dest.label == null && src.label != null) dest.label = src.label;
-  if (dest.genre == null && src.genre != null) dest.genre = src.genre;
 }
 
 // ── Reciprocal Rank Fusion ───────────────────────────────────────────────────

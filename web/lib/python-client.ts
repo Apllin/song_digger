@@ -10,11 +10,6 @@ export interface TrackMeta {
   sourceUrl: string;
   coverUrl?: string;
   embedUrl?: string;
-  bpm?: number;
-  key?: string;
-  energy?: number;
-  genre?: string;
-  label?: string;
   score?: number;
 }
 

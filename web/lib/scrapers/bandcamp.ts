@@ -51,7 +51,6 @@ export async function searchBandcampSimilar(
         .replace(/^by\s+/i, "")
         .trim();
       const coverUrl = $(el).find(".art img").attr("src");
-      const label = $(el).find(".subhead").last().text().trim();
 
       if (!title || !sourceUrl) return;
 
@@ -62,7 +61,6 @@ export async function searchBandcampSimilar(
         sourceUrl,
         coverUrl,
         embedUrl: buildEmbedUrl(href),
-        label,
       });
     });
 

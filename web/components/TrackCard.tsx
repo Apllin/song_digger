@@ -11,11 +11,6 @@ interface Track {
   sourceUrl: string;
   coverUrl?: string | null;
   embedUrl?: string | null;
-  bpm?: number | null;
-  key?: string | null;
-  energy?: number | null;
-  genre?: string | null;
-  label?: string | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -212,24 +207,6 @@ export function TrackCard({
           <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${sourceBadge}`}>
             {SOURCE_LABELS[track.source] ?? track.source}
           </span>
-
-          {track.bpm && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-              {Math.round(track.bpm)} BPM
-            </span>
-          )}
-
-          {track.key && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-emerald-400 font-mono">
-              {track.key}
-            </span>
-          )}
-
-          {track.genre && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">
-              {track.genre}
-            </span>
-          )}
         </div>
 
         {/* Bottom row: open link + find similar */}

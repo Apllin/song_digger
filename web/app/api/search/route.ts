@@ -9,41 +9,6 @@ import type { SimilarResponse, SourceList, TrackMeta } from "@/lib/python-client
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
-/**
- * For each Python track, fill BPM/key/energy/genre/label from the Track row
- * if Python didn't return one. Cache loses to Python on non-null values
- * (cosine results are fresh; older Postgres rows may be stale).
- */
-async function hydrateFromCache(tracks: TrackMeta[]): Promise<TrackMeta[]> {
-  if (!tracks.length) return tracks;
-
-  const cached = await prisma.track.findMany({
-    where: { sourceUrl: { in: tracks.map((t) => t.sourceUrl) } },
-    select: {
-      sourceUrl: true,
-      bpm: true,
-      key: true,
-      energy: true,
-      genre: true,
-      label: true,
-    },
-  });
-  const cacheMap = new Map(cached.map((c) => [c.sourceUrl, c]));
-
-  return tracks.map((t) => {
-    const c = cacheMap.get(t.sourceUrl);
-    if (!c) return t;
-    return {
-      ...t,
-      bpm: t.bpm ?? c.bpm ?? undefined,
-      key: t.key ?? c.key ?? undefined,
-      energy: t.energy ?? c.energy ?? undefined,
-      genre: t.genre ?? c.genre ?? undefined,
-      label: t.label ?? c.label ?? undefined,
-    };
-  });
-}
-
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
 });
@@ -116,20 +81,12 @@ async function saveTracks(
               sourceUrl: t.sourceUrl,
               coverUrl: t.coverUrl,
               embedUrl: t.embedUrl,
-              bpm: t.bpm,
-              key: t.key,
-              energy: t.energy,
-              genre: t.genre,
-              label: t.label,
             },
             update: {
               // null means the current fetch had no data — don't overwrite a
               // previously stored value. undefined tells Prisma to skip the field.
               coverUrl: t.coverUrl ?? undefined,
               embedUrl: t.embedUrl ?? undefined,
-              bpm: t.bpm ?? undefined,
-              key: t.key ?? undefined,
-              energy: t.energy ?? undefined,
             },
             select: { id: true, sourceUrl: true },
           })
@@ -237,11 +194,11 @@ function postExtractFeatures(
     const appearances = t.appearances ?? [];
     return [{
       trackId,
-      bpm: t.bpm ?? null,
-      key: t.key ?? null,
-      energy: t.energy ?? null,
-      label: t.label ?? null,
-      genre: t.genre ?? null,
+      bpm: null,
+      key: null,
+      energy: null,
+      label: null,
+      genre: null,
       embedUrl: t.embedUrl ?? null,
       nSources: appearances.length,
       topRank: appearances.length
@@ -316,17 +273,7 @@ async function runSearch(
     ),
   }));
 
-  // Hydrate each source list's tracks from cache before fusion so RRF can
-  // merge metadata across sources with the freshest values available.
-  const allTracks = filteredSourceLists.flatMap((sl) => sl.tracks);
-  const hydratedFlat = await hydrateFromCache(allTracks);
-  const hydratedByUrl = new Map(hydratedFlat.map((t) => [t.sourceUrl, t]));
-  const hydratedLists: SourceList[] = filteredSourceLists.map((sl) => ({
-    source: sl.source,
-    tracks: sl.tracks.map((t) => hydratedByUrl.get(t.sourceUrl) ?? t),
-  }));
-
-  const aggregated = aggregateTracks(hydratedLists);
+  const aggregated = aggregateTracks(filteredSourceLists);
   const trackIdsByUrl = await saveTracks(searchId, aggregated);
 
   // Fire-and-forget feature extraction. Failures must not block status="done"

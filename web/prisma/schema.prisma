@@ -15,11 +15,6 @@ model Track {
   sourceUrl         String              @unique
   coverUrl          String?
   embedUrl          String?
-  bpm               Float?
-  key               String?
-  energy            Float?
-  genre             String?
-  label             String?
   createdAt         DateTime            @default(now())
   favorites         Favorite?
   playlistTracks    PlaylistTrack[]

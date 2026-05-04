@@ -63,16 +63,21 @@ describe("rrfFuse", () => {
     expect(result[0].rrfScore).toBeGreaterThan(result[1].rrfScore);
   });
 
-  it("merges metadata across sources (cosine bpm fills ytm null)", () => {
+  it("merges coverUrl across sources (cosine cover fills ytm null)", () => {
     const ytm: TrackMeta = makeTrack({ title: "Same", artist: "Same", source: "youtube_music" });
-    const cosine: TrackMeta = makeTrack({ title: "Same", artist: "Same", source: "cosine_club", bpm: 138 });
+    const cosine: TrackMeta = makeTrack({
+      title: "Same",
+      artist: "Same",
+      source: "cosine_club",
+      coverUrl: "https://i.example/cosine.jpg",
+    });
     const lists = [
       { source: "youtube_music", tracks: [ytm] },
       { source: "cosine_club", tracks: [cosine] },
     ];
     const result = rrfFuse(lists);
     expect(result).toHaveLength(1);
-    expect(result[0].bpm).toBe(138);
+    expect(result[0].coverUrl).toBe("https://i.example/cosine.jpg");
   });
 
   it("identical track via slightly different titles still fuses (Original Mix)", () => {

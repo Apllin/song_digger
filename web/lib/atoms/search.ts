@@ -10,11 +10,6 @@ export interface Track {
   sourceUrl: string;
   coverUrl?: string | null;
   embedUrl?: string | null;
-  bpm?: number | null;
-  key?: string | null;
-  energy?: number | null;
-  genre?: string | null;
-  label?: string | null;
   score?: number | null;
 }
 
