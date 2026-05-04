@@ -57,11 +57,18 @@ Body:
 | 0002 | Source artist filter on by default | Accepted |
 | 0003 | RRF fusion replaces weighted-sum + balanceBySource | Accepted |
 | 0004 | Tempo doubling treated as near-match | Superseded by ADR-0003 |
-| 0005 | Camelot key as soft signal, not hard filter | Deferred |
+| 0005 | Camelot key as soft signal, not hard filter | Deferred / superseded by ADR-0016 |
 | 0006 | Bandcamp 4-second timeout | Accepted |
-| 0007 | Beatport cache strategy | Accepted |
+| 0007 | Beatport cache strategy | Superseded by ADR-0015 |
 | 0008 | Tier-based fallback for unknown seeds | Superseded by Stage B+ |
 | 0009 | Eval harness as merge gate | Accepted |
 | 0010 | Label graph similarity | Deferred |
-| 0011 | Feature vector schema for learned ranking | Accepted |
+| 0011 | Feature vector schema for learned ranking | Superseded by ADR-0019 |
 | 0012 | Remove 1001tracklists adapter | Accepted |
+| 0013 | Discogs feature caches for Stage C2 | Superseded by ADR-0019 |
+| 0014 | Trackid.net rewrite as JSON API client | Accepted |
+| 0015 | Remove Beatport adapter | Accepted |
+| 0016 | Drop BPM/key from ranking | Accepted |
+| 0017 | Track-level dislike filter via identity match | Accepted |
+| 0018 | Test coverage strategy (unit / smoke / speed) | Accepted |
+| 0019 | Remove feature extraction infrastructure | Accepted |

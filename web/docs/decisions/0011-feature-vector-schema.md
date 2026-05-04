@@ -1,7 +1,8 @@
 # 0011 — Feature vector schema for learned ranking
 
 **Date:** 2026-05-03
-**Status:** Accepted
+**Status:** Accepted (2026-05-03)
+**Superseded by [ADR-0019](0019-remove-feature-extraction.md) (2026-05-04)**
 
 **Context:**
 RRF (ADR-0003) ranks candidates by source-list rank position only. It is

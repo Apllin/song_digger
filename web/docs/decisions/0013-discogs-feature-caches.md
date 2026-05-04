@@ -1,7 +1,8 @@
 # 0013 — Discogs feature caches for Stage C2
 
 **Date:** 2026-05-03
-**Status:** Accepted
+**Status:** Accepted (2026-05-03)
+**Superseded by [ADR-0019](0019-remove-feature-extraction.md) (2026-05-04)**
 
 **Context:**
 Stage C2 adds two C2 columns to `CandidateFeatures` (ADR-0011):

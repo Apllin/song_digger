@@ -204,6 +204,21 @@ title but the original is more played, candidates will be drawn from
 the original's sets. Acceptable for v1; the picker signature is small
 enough to revisit if eval flags it.
 
+**Stage H addendum (2026-05-04).** The audit caught a UI bug
+introduced when this ADR enabled trackid by default:
+`TrackCard.SOURCE_LABELS` and `SOURCE_COLORS` had not been updated for
+the `trackidnet` source key, so trackid candidates rendered with a
+generic gray pill labelled `trackidnet` (lowercase, raw source string)
+and the "Open on …" link footer fell back to the same raw string.
+Fixed in Stage H Step 4 by adding `trackidnet: "trackid.net"` and
+`trackidnet: "bg-amber-900/60 text-amber-300"` to the two
+dictionaries. The `TrackidCooccurrence` cache table referenced in
+this ADR's Consequences section was also dropped in Stage H Step 6
+(see ADR-0019) — it never had any active writers. The trackid live
+adapter still hits trackid.net directly per the architecture
+described above; only the cache layer that was waiting for Stage C3
+went away.
+
 ## Supersedes
 
 The `Stage B3 ships disabled` posture documented in

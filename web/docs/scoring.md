@@ -16,15 +16,15 @@ description of behavior.
 > **Conflict-resolution rule.** Where this document and an ADR disagree,
 > this document describes what runs; the ADR may describe a deferred,
 > abandoned, or superseded plan. ADR-0005 (key as soft signal),
-> ADR-0007 (Beatport cache strategy), ADR-0008 (tier-based fallback)
-> are all in this state — superseded or never implemented. ADR-0015,
-> ADR-0016, and ADR-0017 are the current Stage F decisions.
+> ADR-0007 (Beatport cache strategy), ADR-0008 (tier-based fallback),
+> ADR-0011 (CandidateFeatures), ADR-0013 (Discogs caches) are all in
+> this state — superseded or never implemented. ADR-0015, ADR-0016,
+> ADR-0017, and ADR-0019 are the current Stage F / Stage H decisions.
 
 ## Pipeline at a glance
 
 A search hits the web app, fans out to the Python service for source
-fetches, comes back to web for dislike filtering, cache hydration,
-fusion, and persistence:
+fetches, comes back to web for dislike filtering, fusion, and persistence:
 
 1. `POST /api/search` validates the body, parses `{artist, track}` from
    the query, creates a `SearchQuery` row with `status="running"`, and
@@ -55,20 +55,15 @@ fusion, and persistence:
    `_filter_artist` (remove the seed's own artist by token match) and
    `_dedup_within_source` (drop duplicate `sourceUrl`).
 7. Python returns `SimilarResponse` with the source lists plus seed
-   `source_artist`, `source_label`, `source_genre`. (Pre-Stage-F seed
-   `source_bpm` / `source_key` / `source_energy` were removed in
-   ADR-0016; Beatport seed-meta fallback and inline enrichment were
-   removed in ADR-0015.)
+   `source_artist`. Pre-Stage-F seed `source_bpm` / `source_key` /
+   `source_energy` were removed in ADR-0016; pre-Stage-H seed
+   `source_label` / `source_genre` were removed in ADR-0019.
 8. Web filters out any track whose `(normalizeArtist(t.artist),
    normalizeTitle(t.title))` identity is in `DislikedTrack` (one
    Postgres lookup per request, identity-keyed — see ADR-0017).
-9. Web hydrates each surviving track from Postgres `Track` rows by
-   `sourceUrl`, filling BPM/key/energy/genre/label only where Python
-   returned null. (BPM/key are informational only — they're displayed
-   in the UI but no longer ranked or filtered.)
-10. `aggregateTracks` runs RRF fusion, the embed-bonus tiebreaker, and
-    artist diversification (see sections below).
-11. Tracks are persisted (`Track` upserts + `SearchResult` rows) and
+9. `aggregateTracks` runs RRF fusion and artist diversification (see
+   sections below).
+10. Tracks are persisted (`Track` upserts + `SearchResult` rows) and
     the `SearchQuery` row is marked `status="done"`.
 
 ## Sources and what they contribute
@@ -79,7 +74,7 @@ and `_dedup_within_source` passes.
 
 | Source | Adapter | Ranked-list semantics | Fields populated on `TrackMeta` | Has its own score? |
 |---|---|---|---|---|
-| `cosine_club` | [cosine_club.py](../../python-service/app/adapters/cosine_club.py) | Two-step: `GET /v1/search?q={artist - track}` → `GET /v1/tracks/{id}/similar` (audio-embedding nearest neighbours, ordered by API). | `title`, `artist`, `sourceUrl`, `coverUrl`, `score`. Post-2026-05 API migration the public schema no longer exposes BPM/key/energy/label/genre. | Yes (`score` ∈ [0, 1]) — used as the `cosine_confident` gate (threshold 0.5) and to drop sub-threshold individual results when not confident. **Not** consumed by the web aggregator: `rrfFuse` ignores `score`. |
+| `cosine_club` | [cosine_club.py](../../python-service/app/adapters/cosine_club.py) | Two-step: `GET /v1/search?q={artist - track}` → `GET /v1/tracks/{id}/similar` (audio-embedding nearest neighbours, ordered by API). | `title`, `artist`, `sourceUrl`, `coverUrl`, `score`. Post-2026-05 API migration the public schema only exposes title/artist/url/cover. | Yes (`score` ∈ [0, 1]) — used as the `cosine_confident` gate (threshold 0.5) and to drop sub-threshold individual results when not confident. **Not** consumed by the web aggregator: `rrfFuse` ignores `score`. |
 | `youtube_music` | [youtube_music.py](../../python-service/app/adapters/youtube_music.py) | YTM Radio (`playlistId="RDAMVM{videoId}"`); seed itself is skipped. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `bandcamp` | [bandcamp.py](../../python-service/app/adapters/bandcamp.py) | Search → fetch matching track page → parse "you may also like" `<li class="recommended-album">` blocks. Hard 4 s timeout. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `yandex_music` | [yandex_music.py](../../python-service/app/adapters/yandex_music.py) | `client.search(...)` → `client.tracks_similar(seed.id)`. No-op without `YANDEX_MUSIC_TOKEN`. | `title`, `artist`, `sourceUrl`, `coverUrl` | No |
@@ -115,32 +110,25 @@ Ranks are. See [decisions/0003-rrf-fusion.md](decisions/0003-rrf-fusion.md).
 When the same identity appears in multiple lists, `mergeMetadata`
 ([aggregator.ts](../lib/aggregator.ts)) keeps existing non-null values
 on the candidate and only fills nulls from the newcomer (first-seen
-wins, field-by-field).
-
-The end-to-end precedence on conflict, highest-wins, for any single
-metadata field reaching `aggregateTracks`:
-
-1. Per-source values from the current Python fetch
-2. Postgres-cache hydrate (only fills where Python returned null)
-3. RRF cross-source merge from a sibling list (only fills nulls)
+wins, field-by-field). After Stage H this only covers `coverUrl` and
+`embedUrl` — the other metadata fields no adapter populates were
+removed from `TrackMeta` (ADR-0019, ADR-0016).
 
 ## Post-RRF adjustments
 
-After fusion, `aggregateTracks` applies one tiebreaker, re-sorts, and
-diversifies:
+After fusion, `aggregateTracks` mirrors `rrfScore` onto `score` for
+persistence and runs `diversifyArtists`, which reorders the list so no
+artist appears more than 2 times consecutively. Diversification
+rearranges the output but does not modify `rrfScore`.
 
-| Constant | Value | Trigger |
-|---|---|---|
-| `EMBED_BONUS` | `0.0008` | Candidate has a non-null `embedUrl` (true for all YTM and Bandcamp tracks). ~5% of a single-source rank-1 score — effectively a tiebreaker between otherwise tied candidates. |
-
-After re-sort, `diversifyArtists` reorders the list so no artist appears
-more than 2 times consecutively. Diversification rearranges the output
-but does not modify `rrfScore`; the persisted `score` reflects the
-post-bonus fusion order, the displayed list reflects post-diversification.
-
-The pre-Stage-F `DISLIKED_ARTIST_PENALTY` post-RRF nudge was removed in
-ADR-0017 — disliked tracks are now filtered server-side before fusion,
-keyed on `(artistKey, titleKey)` identity.
+The pre-Stage-F `DISLIKED_ARTIST_PENALTY` post-RRF nudge was removed
+in ADR-0017 — disliked tracks are now filtered server-side before
+fusion, keyed on `(artistKey, titleKey)` identity. The `EMBED_BONUS`
+tiebreaker (Stage F) was removed in Stage H Step 1 as a philosophy
+violation: post-RRF nudges are score-magic the project has rejected
+in favour of "trust the adapters." Inline-playable tracks still
+surface as such in the UI via the embed-aware play button, but with
+no score boost.
 
 ## Hard filters
 
@@ -162,9 +150,10 @@ Every place a candidate can be dropped entirely:
    `sourceUrl` within a single source list, preserving order.
 
 There is no BPM filter, key filter, genre filter, energy filter, or
-score-floor filter in the web aggregator. BPM/key/genre arrive on
-candidates as informational metadata and are displayed in the UI when
-present, but never gate or score the ranking (see ADR-0016).
+score-floor filter in the web aggregator. After Stage H there is also
+no embed bonus, no genre dropdown, no feature-extraction tier, and the
+`Track` table no longer carries `bpm` / `key` / `energy` / `genre` /
+`label` columns.
 
 ## Calibration table
 
@@ -174,13 +163,11 @@ ranked-list composition:
 | Constant | File | Current value |
 |---|---|---|
 | `RRF_K` | [web/lib/aggregator.ts](../lib/aggregator.ts) | `60` |
-| `EMBED_BONUS` | [web/lib/aggregator.ts](../lib/aggregator.ts) | `0.0008` |
 | Diversification window | [web/lib/aggregator.ts](../lib/aggregator.ts) | `maxConsecutive = 2` |
 | `BANDCAMP_TIMEOUT` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `4.0` s |
 | `TRACKIDNET_TIMEOUT` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `25.0` s |
 | `COSINE_CONFIDENCE_THRESHOLD` | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `0.5` |
 | Cosine confidence top-N | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `cosine_tracks[:5]` |
-| Source-meta top-N (label/genre inference) | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `cosine_tracks[:5]` |
 | Cosine fallback: artist-only seeding cutoff | [python-service/app/api/routes/similar.py](../../python-service/app/api/routes/similar.py) | `len(cosine_tracks) < 8` triggers seeded second query |
 | `limit_per_source` (web → python) | [web/app/api/search/route.ts](../app/api/search/route.ts) | `40` |
 | `DB_CHUNK_SIZE` (persistence batching, not ranking) | [web/app/api/search/route.ts](../app/api/search/route.ts) | `50` |
@@ -198,9 +185,15 @@ These are signals that adapters return, ADRs propose, or comments imply
 here so a reader doesn't infer behavior from a stray field on a model
 or a sentence in an old ADR.
 
-- **BPM / key / energy** — populated as informational metadata when a
-  source returns them, displayed in the UI, no longer used for filtering
-  or ranking. See ADR-0016.
+- **BPM / key / energy / genre / label** — no current adapter
+  populates these for new tracks, and after Stage H Step 5 the
+  corresponding columns are gone from `Track` and the badges from
+  `TrackCard`. See ADR-0016 (BPM/key removal) and ADR-0019.
+- **Embed bonus** — was a `+0.0008` post-RRF nudge for tracks with
+  `embedUrl`. Removed in Stage H Step 1 as a philosophy violation.
+- **Genre filter** — was a write-only UI dropdown persisted to
+  `SearchQuery.filters`. Removed in Stage H Step 2 (UI + schema +
+  plumbing).
 - **Tier-based fallback** — Phase 2's binary `cosine_confident` /
   not-confident split is the only fallback. No tier classification, no
   tier label exposed to the UI, no tag-only tier 4 path. ADR-0008
@@ -208,17 +201,13 @@ or a sentence in an old ADR.
 - **Label-graph proximity bonus** — deferred indefinitely. ADR-0010 is
   speculative — no graph exists, no bonus is applied. See
   [decisions/0010-label-graph.md](decisions/0010-label-graph.md).
-- **Genre exact-match bonus** — `genre` arrives on candidates from
-  Cosine, is merged across sources, and is persisted on `Track`, but
-  `aggregateTracks` never reads it.
 - **Camelot key compatibility scoring** — ADR-0005 frames key as a
   "soft signal" but nothing in `aggregateTracks` references the field.
-  The `key` column is populated and displayed only. See
-  [decisions/0005-key-as-soft-signal.md](decisions/0005-key-as-soft-signal.md).
+  See [decisions/0005-key-as-soft-signal.md](decisions/0005-key-as-soft-signal.md).
 - **Liked-feedback signal** — the prior hand-rolled liked-centroid
-  blend was removed in cleanup pre-Stage-B. It will be reintroduced in
-  Stage D as a learned feature inside a logistic regression rather than
-  a hand-tuned blend, which is the right shape for it.
+  blend was removed in cleanup pre-Stage-B. Stage D would have
+  reintroduced it as a learned feature; Stage D was cancelled in
+  Stage F (ADR-0019).
 - **Cosine `score` as a ranking signal** — used only as a confidence
   gate (0.5 threshold) and per-track inclusion filter. `rrfFuse` uses
   rank position, not the underlying scores.
@@ -226,8 +215,7 @@ or a sentence in an old ADR.
   field, so no signal exists to act on.
 - **Artist co-release / sibling-artist signal** — the Discogs adapter
   exists ([discogs.py](../../python-service/app/adapters/discogs.py))
-  but is not invoked by `/similar`. Stage C2's Discogs feature-fill
-  populates `CandidateFeatures.yearProximity` and `artistCorelease` for
-  Stage D, not for `/similar` ranking.
-- **Learned weights** — all constants above are hand-tuned baselines.
-  Stage D introduces a learned ranking layer.
+  but is not invoked by `/similar`. After Stage H (ADR-0019), it is
+  scoped to the `/discography` and `/labels` page routes only.
+- **Learned weights** — Stage D was cancelled (ADR-0019). All
+  ranking is rank-fusion with no learned layer.

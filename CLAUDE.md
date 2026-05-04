@@ -48,8 +48,8 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 
 ### Python service (`python-service/app`)
 
-- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `suggestions`, `discogs`, `ytm_playlist`, `features`).
-- `adapters/` — one module per external source (`bandcamp`, `cosine_club`, `discogs`, `lastfm`, `trackidnet`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (single `find_similar(query, limit)` method). Add a new source by implementing this interface and registering it where routes aggregate adapters.
+- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `suggestions`, `discogs`, `ytm_playlist`).
+- `adapters/` — one module per external source (`bandcamp`, `cosine_club`, `discogs`, `lastfm`, `trackidnet`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (single `find_similar(query, limit)` method). Add a new source by implementing this interface and registering it where routes aggregate adapters. The Discogs adapter is scoped to the `/discography` and `/labels` page routes only — it does not feed `/similar` (see ADR-0019).
 - `core/models.py` defines the shared `TrackMeta` Pydantic model returned to web.
 - `config.py` uses `pydantic-settings` reading the repo-root `.env`; holds tokens for Cosine.club, Discogs, Yandex.Music, Last.fm. `extra="ignore"` so shared web/db env vars in the same file don't break validation.
 
@@ -57,8 +57,8 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 
 - App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
 - `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
-- `lib/aggregator.ts` — RRF fusion across per-source ranks; embed-bonus tiebreaker; artist diversification (max 2 consecutive). No BPM/key filter, no artist-level dislike penalty. Runs in Node, not Python.
-- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
+- `lib/aggregator.ts` — RRF fusion across per-source ranks plus artist diversification (max 2 consecutive). No BPM/key filter, no genre filter, no embed bonus, no artist-level dislike penalty. Runs in Node, not Python.
+- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
 
 ### Data flow for a similarity search
@@ -66,7 +66,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 1. User query hits `web/app/api/search/route.ts`.
 2. Web persists a `SearchQuery` via Prisma, then calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar`.
 3. Python route fans out to enabled adapters, each returning `TrackMeta[]`.
-4. Web filters out tracks whose `(artistKey, titleKey)` identity is in `DislikedTrack`, hydrates metadata from Postgres `Track` rows, fuses with `lib/aggregator.ts` (RRF + embed bonus + artist diversification), persists tracks + results, and returns the search-id to the client (work runs as a fire-and-forget background task).
+4. Web filters out tracks whose `(artistKey, titleKey)` identity is in `DislikedTrack`, fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front).
 
 ## Project-specific gotchas
 
@@ -83,4 +83,4 @@ Three tiers, all opt-in beyond the default:
 - **Smoke** (`-m smoke` / `pnpm test:smoke`): hits real upstream APIs and the local dev stack. Per-adapter live-result sanity, `/similar` and `/api/search` end-to-end, dislike CRUD + filter behavior, aggregator integration. Adapters skip when their API key is unset; integration tests skip if dev servers aren't running. Flaky upstream is the signal — don't retry to mask it.
 - **Speed** (`-m speed` / `pnpm test:speed`): per-adapter, per-endpoint, and aggregator P95 over 5–100 sequential runs with hard thresholds. Includes 10-concurrent `/similar`. Must run sequentially (web side enforces `fileParallelism: false` + `maxWorkers: 1`). Threshold rationale lives next to each test; tighten if observed P95 stays well below the line, document if you loosen.
 
-ADR-0018 documents this strategy. CI integration is deferred to Stage H.
+ADR-0018 documents this strategy. CI integration is deferred.
