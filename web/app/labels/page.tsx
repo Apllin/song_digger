@@ -8,9 +8,8 @@ import { useDebounce } from "@/lib/use-debounce";
 import { labelsAtom, type Label, type LabelRelease } from "@/lib/atoms/labels";
 
 const POPULAR_LABELS = [
-  "Tresor", "Ostgut Ton", "Kompakt", "Drumcode", "Cocoon Recordings",
-  "Plus 8", "Soma Records", "Token Records", "Underground Resistance",
-  "Clone Records", "Dekmantel", "R&S Records", "Warp Records", "Mute", "Fabric",
+  "Tresor", "Ostgut Ton", "трип", "Lotus Parable",
+  "Hypnus Records", "Another Psyde Records", "SK_Eleven",
 ];
 
 const PAGE_SIZE = 15;

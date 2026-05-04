@@ -24,6 +24,13 @@ export async function GET(
   return Response.json({
     id: searchQuery.id,
     status: searchQuery.status,
-    tracks: searchQuery.results.map((r) => ({ ...r.track, score: r.score })),
+    tracks: searchQuery.results.map((r) => ({
+      ...r.track,
+      score: r.score,
+      // Multiple adapter sources can surface the same identity; the chip-row
+      // in the UI renders one chip per entry. Old SearchResult rows from
+      // before this column existed default to [] — UI falls back to [source].
+      sources: r.sources.length ? r.sources : [r.track.source],
+    })),
   });
 }

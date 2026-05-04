@@ -517,8 +517,9 @@ async def test_track_with_null_slug_skipped(_enabled):
     assert {t.artist for t in results} == {"Valid"}
 
 
-async def test_audiostream_uses_latest_non_empty_process(_enabled):
-    """Latest endDate process is empty → fall back to earlier non-empty."""
+async def test_audiostream_falls_back_when_latest_process_is_empty(_enabled):
+    """Latest endDate process is empty → fall back to earlier process
+    that contains the seed."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -548,6 +549,120 @@ async def test_audiostream_uses_latest_non_empty_process(_enabled):
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
     assert {t.artist for t in results} == {"B", "A"}
+
+
+async def test_audiostream_skips_non_empty_process_that_lost_seed(_enabled):
+    """Real-world trackid.net case: a later reprocess succeeds with a
+    non-empty result that simply doesn't include the seed track. The
+    older (lower endDate) process *does* contain the seed.
+
+    Old behavior (latest non-empty): picked the seedless process →
+    contributed 0 candidates → entire popular playlists were silently
+    dropped.
+
+    New behavior: pick the latest process that contains the seed.
+    """
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = {"result": {"detectionProcesses": [
+        {
+            "endDate": "2026-01-27T10:39:10Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "before", "artist": "B", "title": "T",
+                 "referenceCount": 1},
+                {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                 "referenceCount": 50},
+                {"slug": "after", "artist": "A", "title": "T",
+                 "referenceCount": 1},
+            ],
+        },
+        {
+            "endDate": "2026-01-28T04:29:09Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "wrong-1", "artist": "Wrong1", "title": "T",
+                 "referenceCount": 1},
+                {"slug": "wrong-2", "artist": "Wrong2", "title": "T",
+                 "referenceCount": 1},
+            ],
+        },
+    ]}}
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert {t.artist for t in results} == {"B", "A"}
+
+
+async def test_audiostream_picks_latest_process_among_those_with_seed(_enabled):
+    """Multiple processes contain the seed; tiebreak by latest endDate."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = {"result": {"detectionProcesses": [
+        {
+            "endDate": "2025-01-01T00:00:00Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "old-neighbor", "artist": "Old", "title": "T",
+                 "referenceCount": 1},
+                {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                 "referenceCount": 50},
+            ],
+        },
+        {
+            "endDate": "2026-05-01T00:00:00Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "new-neighbor", "artist": "New", "title": "T",
+                 "referenceCount": 1},
+                {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                 "referenceCount": 50},
+            ],
+        },
+    ]}}
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert {t.artist for t in results} == {"New"}
+
+
+async def test_no_process_contains_seed_returns_empty(_enabled):
+    """Every detection process is non-empty but none contain the seed
+    slug → playlist contributes nothing."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = {"result": {"detectionProcesses": [
+        {
+            "endDate": "2026-01-27T10:00:00Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "x", "artist": "X", "title": "T", "referenceCount": 1},
+            ],
+        },
+        {
+            "endDate": "2026-01-28T10:00:00Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "y", "artist": "Y", "title": "T", "referenceCount": 1},
+            ],
+        },
+    ]}}
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert results == []
 
 
 async def test_empty_detection_processes_returns_empty_pool(_enabled):
