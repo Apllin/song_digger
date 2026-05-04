@@ -16,7 +16,7 @@ export function Nav() {
     <nav className="border-b border-zinc-800 bg-zinc-950">
       <div className="max-w-6xl mx-auto px-4 flex items-center gap-1 h-12">
         <span className="text-sm font-bold text-zinc-400 mr-4 tracking-tight">
-          Song Digger
+          Track Digger
         </span>
         {TABS.map((tab) => (
           <Link

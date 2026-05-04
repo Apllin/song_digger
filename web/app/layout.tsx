@@ -15,8 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Song Digger",
-  description: "Find similar techno tracks across YouTube Music, Bandcamp, and Cosine.club",
+  title: "Track Digger",
 };
 
 export default function RootLayout({

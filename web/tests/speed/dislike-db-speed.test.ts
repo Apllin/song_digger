@@ -59,6 +59,7 @@ describe("DislikedTrack query speed", () => {
     // Seed 200 rows (createMany in one round-trip)
     await p.dislikedTrack.createMany({
       data: Array.from({ length: SEED_ROWS }, (_, i) => ({
+        userId: "admin_seed_account_id",
         artistKey: `${TEST_TAG}artist${i}`,
         titleKey: `${TEST_TAG}title${i}`,
         artist: `Speed Test Artist ${i}`,

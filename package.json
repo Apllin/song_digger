@@ -1,5 +1,5 @@
 {
-  "name": "song-digger",
+  "name": "track-digger",
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.33.2",
@@ -9,7 +9,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "setup": "turbo run setup",
-    "eval": "pnpm --filter @song-digger/python-service eval"
+    "eval": "pnpm --filter @track-digger/python-service eval"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",

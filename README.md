@@ -1,4 +1,4 @@
-# song_digger
+# track_digger
 
 Monorepo containing:
 
@@ -70,7 +70,7 @@ Target a single package:
 
 ```bash
 pnpm turbo run dev --filter=web
-pnpm turbo run test --filter=@song-digger/python-service
+pnpm turbo run test --filter=@track-digger/python-service
 ```
 
 Only run tasks for packages affected by changes since the default branch:
@@ -90,7 +90,7 @@ pnpm turbo run build --force
 [python-service/package.json](python-service/package.json) is a shim — it has no JS dependencies but defines `scripts` that invoke the venv binaries (`.venv/bin/uvicorn`, `.venv/bin/pytest`). Turborepo treats it like any other workspace package:
 
 - **Caching** — `turbo run test` hashes every tracked file in the package (`*.py`, `requirements.txt`, `pytest.ini`). Unchanged inputs → cache hit → execution is skipped and stdout is replayed from cache.
-- **Filtering** — `--filter=@song-digger/python-service` or `--affected` includes or excludes Python work based on what changed.
+- **Filtering** — `--filter=@track-digger/python-service` or `--affected` includes or excludes Python work based on what changed.
 - **Parallelism** — `pnpm dev` runs Next.js and FastAPI concurrently.
 
 `.venv/` is gitignored and **not** cached by Turborepo. It's a local dev artifact; `pnpm setup` recreates it from `requirements.txt`.
@@ -127,7 +127,7 @@ Copy [.env.example](.env.example) to `.env` and fill in values. Key variables:
 ## Project structure
 
 ```
-song_digger/
+track_digger/
 ├── package.json              root — pins pnpm, delegates to turbo
 ├── pnpm-workspace.yaml       workspace list
 ├── turbo.json                task pipeline
@@ -161,7 +161,7 @@ pnpm --filter web add -D <package>    # dev dep
 Edit [python-service/requirements.txt](python-service/requirements.txt), then:
 
 ```bash
-pnpm --filter @song-digger/python-service run setup
+pnpm --filter @track-digger/python-service run setup
 ```
 
 ## Approving package build scripts
