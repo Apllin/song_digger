@@ -33,9 +33,6 @@ export interface SourceList {
 export interface SimilarResponse {
   source_lists: SourceList[];
   source_artist: string | null;
-  source_bpm: number | null;
-  source_key: string | null;
-  source_energy: number | null;
   source_label: string | null;
   source_genre: string | null;
 }

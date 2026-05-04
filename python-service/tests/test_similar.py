@@ -4,7 +4,7 @@ from app.api.routes.similar import (
     _normalize,
     _normalize_title,
     _same_artist,
-    _extract_source_meta,
+    _cosine_is_confident,
     _extract_source_label_genre,
 )
 from app.core.models import TrackMeta
@@ -162,53 +162,25 @@ def test_same_artist_different():
     assert _same_artist("Oscar Mulero", "Ancient Methods") is False
 
 
-# ── _extract_source_meta ──────────────────────────────────────────────────────
+# ── _cosine_is_confident ──────────────────────────────────────────────────────
 
-def test_extract_source_meta_returns_median_bpm():
-    tracks = [
-        make_track(bpm=138.0, key="8A", score=0.9),
-        make_track(bpm=140.0, key="8A", score=0.85),
-        make_track(bpm=142.0, key="9A", score=0.8),
-    ]
-    bpm, key, energy, confident = _extract_source_meta(tracks)
-    assert bpm == 140.0  # median of [138, 140, 142]
+def test_cosine_is_confident_above_threshold():
+    tracks = [make_track(score=0.9)]
+    assert _cosine_is_confident(tracks) is True
 
 
-def test_extract_source_meta_returns_most_common_key():
-    tracks = [
-        make_track(bpm=140.0, key="8A", score=0.9),
-        make_track(bpm=140.0, key="8A", score=0.85),
-        make_track(bpm=140.0, key="9A", score=0.8),
-    ]
-    _, key, _energy, _ = _extract_source_meta(tracks)
-    assert key == "8A"
+def test_cosine_is_confident_below_threshold():
+    tracks = [make_track(score=0.3)]
+    assert _cosine_is_confident(tracks) is False
 
 
-def test_extract_source_meta_confident_above_threshold():
-    tracks = [make_track(bpm=140.0, key="8A", score=0.9)]
-    _, _, _energy, confident = _extract_source_meta(tracks)
-    assert confident is True
+def test_cosine_is_confident_empty():
+    assert _cosine_is_confident([]) is False
 
 
-def test_extract_source_meta_not_confident_below_threshold():
-    tracks = [make_track(bpm=140.0, key="8A", score=0.3)]
-    _, _, _energy, confident = _extract_source_meta(tracks)
-    assert confident is False
-
-
-def test_extract_source_meta_no_bpm():
-    tracks = [make_track(bpm=None, key=None, score=0.9)]
-    bpm, key, _energy, _ = _extract_source_meta(tracks)
-    assert bpm is None
-    assert key is None
-
-
-def test_extract_source_meta_empty():
-    bpm, key, energy, confident = _extract_source_meta([])
-    assert bpm is None
-    assert key is None
-    assert energy is None
-    assert confident is False
+def test_cosine_is_confident_no_scores():
+    tracks = [make_track(score=None)]
+    assert _cosine_is_confident(tracks) is False
 
 
 # ── _extract_source_label_genre ───────────────────────────────────────────────

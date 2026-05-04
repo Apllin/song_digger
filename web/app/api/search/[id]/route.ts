@@ -24,8 +24,6 @@ export async function GET(
   return Response.json({
     id: searchQuery.id,
     status: searchQuery.status,
-    sourceBpm: searchQuery.sourceBpm,
-    sourceKey: searchQuery.sourceKey,
     tracks: searchQuery.results.map((r) => ({ ...r.track, score: r.score })),
   });
 }

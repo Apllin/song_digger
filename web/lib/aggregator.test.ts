@@ -173,27 +173,6 @@ describe("aggregateTracks — basic pipeline", () => {
   });
 });
 
-describe("aggregateTracks — hard filters", () => {
-  it("drops tracks outside bpmMin/bpmMax range", () => {
-    const tracks = [
-      makeTrack({ sourceUrl: "u1", artist: "A", bpm: 100 }),
-      makeTrack({ sourceUrl: "u2", artist: "B", bpm: 130 }),
-      makeTrack({ sourceUrl: "u3", artist: "C", bpm: 160 }),
-    ];
-    const result = aggregateTracks([listOf("ytm", ...tracks)], { bpmMin: 120, bpmMax: 140 });
-    expect(result.map((t) => t.bpm)).toEqual([130]);
-  });
-
-  it("keeps tracks with missing BPM even when range filter set (metadata gap → keep)", () => {
-    const tracks = [
-      makeTrack({ sourceUrl: "u1", artist: "A" }), // bpm omitted
-      makeTrack({ sourceUrl: "u2", artist: "B", bpm: 100 }),
-    ];
-    const result = aggregateTracks([listOf("ytm", ...tracks)], { bpmMin: 120, bpmMax: 140 });
-    expect(result.map((t) => t.sourceUrl)).toEqual(["u1"]);
-  });
-});
-
 describe("aggregateTracks — feedback", () => {
   it("disliked-artist penalty pushes those tracks down", () => {
     // Both at rank 1 in their source → tied RRF score. Penalty flips it.

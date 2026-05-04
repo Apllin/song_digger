@@ -144,30 +144,15 @@ def _normalize_title(s: str) -> str:
 
 COSINE_CONFIDENCE_THRESHOLD = 0.5
 
-def _extract_source_meta(
-    cosine_tracks: list[TrackMeta],
-) -> tuple[float | None, str | None, float | None, bool]:
+def _cosine_is_confident(cosine_tracks: list[TrackMeta]) -> bool:
     """
-    Infer the source track's BPM, key, and energy from the top Cosine.club results.
-    Uses median BPM/energy and most common key of the first 5 results.
-
-    Also returns a confidence flag: False when the average Cosine score is
-    below COSINE_CONFIDENCE_THRESHOLD, meaning Cosine likely doesn't know
-    the track and the metadata inference is unreliable.
+    True when the average Cosine score over the top 5 results is at or above
+    COSINE_CONFIDENCE_THRESHOLD. False means Cosine likely doesn't know the
+    seed and Phase 2 reversed-query / artist-fallback should run.
     """
     top = cosine_tracks[:5]
-
     scores = [t.score for t in top if t.score is not None]
-    confident = bool(scores) and (sum(scores) / len(scores)) >= COSINE_CONFIDENCE_THRESHOLD
-
-    bpms = sorted(t.bpm for t in top if t.bpm is not None)
-    keys = [t.key for t in top if t.key is not None]
-    energies = sorted(t.energy for t in top if t.energy is not None)
-
-    source_bpm = bpms[len(bpms) // 2] if bpms else None
-    source_key = Counter(keys).most_common(1)[0][0] if keys else None
-    source_energy = energies[len(energies) // 2] if energies else None
-    return source_bpm, source_key, source_energy, confident
+    return bool(scores) and (sum(scores) / len(scores)) >= COSINE_CONFIDENCE_THRESHOLD
 
 
 def _extract_source_label_genre(
@@ -200,7 +185,7 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
 
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
-) -> tuple[list[SourceList], str | None, float | None, str | None, float | None, str | None, str | None]:
+) -> tuple[list[SourceList], str | None, str | None, str | None]:
     full_query = f"{artist} - {track}"
     # Users sometimes type queries as "Track - Artist" instead of "Artist - Track".
     # Try both orderings for Cosine so we hit its catalog regardless of input order.
@@ -245,7 +230,7 @@ async def _find_by_artist_and_track(
         if artists_list:
             ytm_source_artist = artists_list[0].get("name") or None
 
-    source_bpm, source_key, source_energy, cosine_confident = _extract_source_meta(cosine_tracks)
+    cosine_confident = _cosine_is_confident(cosine_tracks)
 
     # Phase 2 (slow path): all fallbacks run in parallel so sequential waits collapse.
     artist_cosine: list[TrackMeta] = []
@@ -275,10 +260,10 @@ async def _find_by_artist_and_track(
         bandcamp_fallback = bandcamp_fallback_raw if isinstance(bandcamp_fallback_raw, list) else []
 
         if reversed_cosine:
-            rev_bpm, rev_key, rev_energy, rev_confident = _extract_source_meta(reversed_cosine)
+            rev_confident = _cosine_is_confident(reversed_cosine)
             if rev_confident or len(reversed_cosine) > len(cosine_tracks):
                 cosine_tracks = reversed_cosine
-                source_bpm, source_key, source_energy, cosine_confident = rev_bpm, rev_key, rev_energy, rev_confident
+                cosine_confident = rev_confident
 
         # Cosine artist fallback: style-adjacent tracks for the artist.
         # No score filter here — artist search often returns score=None (text-matched
@@ -327,12 +312,12 @@ async def _find_by_artist_and_track(
     # (after the reversed-query swap and the artist-fallback append).
     source_label, source_genre = _extract_source_label_genre(cosine_tracks)
 
-    return source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre
+    return source_lists, source_artist, source_label, source_genre
 
 
 async def _find_by_artist_only(
     artist: str, limit: int
-) -> tuple[list[SourceList], str | None, float | None, str | None, float | None, str | None, str | None]:
+) -> tuple[list[SourceList], str | None, str | None, str | None]:
     """
     Artist-only mode: Cosine + YTM artist playlist + Yandex similar, all in parallel.
     If Cosine returns few results, seeds a second query with the artist's top track.
@@ -357,7 +342,6 @@ async def _find_by_artist_only(
             if isinstance(seeded, list) and len(seeded) > len(cosine_tracks):
                 cosine_tracks = seeded
 
-    source_bpm, source_key, source_energy, _ = _extract_source_meta(cosine_tracks)
     source_label, source_genre = _extract_source_label_genre(cosine_tracks)
 
     def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
@@ -369,26 +353,23 @@ async def _find_by_artist_only(
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
     ]
 
-    return source_lists, artist, source_bpm, source_key, source_energy, source_label, source_genre
+    return source_lists, artist, source_label, source_genre
 
 
 @router.post("/similar", response_model=SimilarResponse)
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
-        source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre = await _find_by_artist_and_track(
+        source_lists, source_artist, source_label, source_genre = await _find_by_artist_and_track(
             req.artist, req.track, req.limit_per_source
         )
     else:
-        source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre = await _find_by_artist_only(
+        source_lists, source_artist, source_label, source_genre = await _find_by_artist_only(
             req.artist, req.limit_per_source
         )
 
     return SimilarResponse(
         source_lists=source_lists,
         source_artist=source_artist,
-        source_bpm=source_bpm,
-        source_key=source_key,
-        source_energy=source_energy,
         source_label=source_label,
         source_genre=source_genre,
     )

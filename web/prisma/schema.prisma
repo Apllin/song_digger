@@ -27,7 +27,6 @@ model Track {
   candidateFeatures CandidateFeatures[]
 
   @@index([source])
-  @@index([bpm])
 }
 
 model SearchQuery {
@@ -36,8 +35,6 @@ model SearchQuery {
   status            String              @default("pending")
   filters           Json?
   createdAt         DateTime            @default(now())
-  sourceBpm         Float?
-  sourceKey         String?
   results           SearchResult[]
   candidateFeatures CandidateFeatures[]
 }

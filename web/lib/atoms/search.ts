@@ -28,8 +28,6 @@ interface SearchState {
   status: SearchStatus;
   errorMsg: string;
   displayCount: number;
-  sourceBpm: number | null;
-  sourceKey: string | null;
 }
 
 export const searchAtom = atom<SearchState>({
@@ -39,6 +37,4 @@ export const searchAtom = atom<SearchState>({
   status: "idle",
   errorMsg: "",
   displayCount: 10,
-  sourceBpm: null,
-  sourceKey: null,
 });

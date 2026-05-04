@@ -48,9 +48,6 @@ const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
   filters: z
     .object({
-      bpmMin: z.number().optional(),
-      bpmMax: z.number().optional(),
-      key: z.string().optional(),
       genre: z.string().optional(),
     })
     .optional(),
@@ -271,9 +268,9 @@ function postExtractFeatures(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       search_query_id: searchId,
-      seed_bpm: pythonResult.source_bpm,
-      seed_key: pythonResult.source_key,
-      seed_energy: pythonResult.source_energy,
+      seed_bpm: null,
+      seed_key: null,
+      seed_energy: null,
       seed_label: pythonResult.source_label,
       seed_genre: pythonResult.source_genre,
       candidates,
@@ -306,9 +303,6 @@ async function runSearch(
     return null;
   });
 
-  let sourceBpm: number | null = null;
-  let sourceKey: string | null = null;
-
   if (!pythonResult) {
     await prisma.searchQuery.update({
       where: { id: searchId },
@@ -316,9 +310,6 @@ async function runSearch(
     });
     return;
   }
-
-  sourceBpm = pythonResult.source_bpm;
-  sourceKey = pythonResult.source_key;
 
   // Hydrate each source list's tracks from cache before fusion so RRF can
   // merge metadata across sources with the freshest values available.
@@ -344,10 +335,6 @@ async function runSearch(
 
   await prisma.searchQuery.update({
     where: { id: searchId },
-    data: {
-      status: "done",
-      sourceBpm: sourceBpm ?? undefined,
-      sourceKey: sourceKey ?? undefined,
-    },
+    data: { status: "done" },
   });
 }

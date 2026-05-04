@@ -78,8 +78,6 @@ function HomeContent() {
             return {
               ...prev,
               tracks: nextTracks,
-              ...(data.sourceBpm != null ? { sourceBpm: data.sourceBpm } : {}),
-              ...(data.sourceKey != null ? { sourceKey: data.sourceKey } : {}),
               ...(data.status === "done" || data.status === "error"
                 ? {
                     status: data.status === "done" ? "done" : "error",
@@ -113,16 +111,11 @@ function HomeContent() {
         errorMsg: "",
         status: "running",
         displayCount: 20,
-        sourceBpm: null,
-        sourceKey: null,
       }));
 
       const payload: Record<string, unknown> = { input: q.trim() };
       const f = search.filters;
       const activeFilters: Record<string, unknown> = {};
-      if (f.bpmMin) activeFilters.bpmMin = parseFloat(f.bpmMin);
-      if (f.bpmMax) activeFilters.bpmMax = parseFloat(f.bpmMax);
-      if (f.key) activeFilters.key = f.key;
       if (f.genre) activeFilters.genre = f.genre;
       if (Object.keys(activeFilters).length) payload.filters = activeFilters;
 
@@ -164,9 +157,6 @@ function HomeContent() {
     const payload: Record<string, unknown> = { input: q };
     const f = search.filters;
     const activeFilters: Record<string, unknown> = {};
-    if (f.bpmMin) activeFilters.bpmMin = parseFloat(f.bpmMin);
-    if (f.bpmMax) activeFilters.bpmMax = parseFloat(f.bpmMax);
-    if (f.key) activeFilters.key = f.key;
     if (f.genre) activeFilters.genre = f.genre;
     if (Object.keys(activeFilters).length) payload.filters = activeFilters;
 
@@ -300,7 +290,7 @@ function HomeContent() {
   // Cleanup on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const { query, filters, tracks, status, errorMsg, displayCount, sourceBpm, sourceKey } = search;
+  const { query, filters, tracks, status, errorMsg, displayCount } = search;
   const isLoading = status === "running";
 
   return (
@@ -323,26 +313,6 @@ function HomeContent() {
             onRandom={handleRandom}
             loading={isLoading}
           />
-
-          {(sourceBpm != null || sourceKey != null) && (
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-[11px] text-zinc-600 uppercase tracking-wide">Source</span>
-              {sourceBpm != null && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400">
-                  <svg className="w-3 h-3 text-zinc-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                  </svg>
-                  {Math.round(sourceBpm)} BPM
-                </span>
-              )}
-              {sourceKey != null && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-emerald-400 font-mono">
-                  {sourceKey}
-                </span>
-              )}
-              <span className="text-[11px] text-zinc-700">· used for scoring</span>
-            </div>
-          )}
 
           <FilterPanel
             filters={filters}

@@ -3,9 +3,6 @@ import type { SourceList, TrackMeta } from "@/lib/python-client";
 export type { SourceList } from "@/lib/python-client";
 
 export interface SearchFilters {
-  bpmMin?: number;
-  bpmMax?: number;
-  key?: string; // Camelot notation e.g. "8A"
   genre?: string;
 }
 
@@ -148,31 +145,18 @@ function diversifyArtists(
 // ── Main aggregation ─────────────────────────────────────────────────────────
 export function aggregateTracks(
   sourceLists: SourceList[],
-  filters: SearchFilters,
+  _filters: SearchFilters,
   feedback?: TrackFeedback,
 ): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 
-  // 2. Hard BPM range filter — drop tracks outside the user's range. Tracks
-  //    with no BPM are kept (metadata gap should not silently exclude).
-  const filtered = fused.filter((t) => {
-    if (
-      filters.bpmMin !== undefined &&
-      filters.bpmMax !== undefined &&
-      t.bpm != null
-    ) {
-      if (t.bpm < filters.bpmMin || t.bpm > filters.bpmMax) return false;
-    }
-    return true;
-  });
-
-  // 3. Post-RRF nudges: dislike penalty, embed bonus.
+  // 2. Post-RRF nudges: dislike penalty, embed bonus.
   const dislikedArtists = feedback?.disliked.length
     ? new Set(feedback.disliked.map((t) => normalizeArtist(t.artist)))
     : undefined;
 
-  for (const t of filtered) {
+  for (const t of fused) {
     if (dislikedArtists?.has(normalizeArtist(t.artist))) {
       t.rrfScore -= DISLIKED_ARTIST_PENALTY;
     }
@@ -181,13 +165,13 @@ export function aggregateTracks(
     }
   }
 
-  // 4. Re-sort after nudges. Surface the rrfScore on `score` so existing
+  // 3. Re-sort after nudges. Surface the rrfScore on `score` so existing
   //    consumers (DB persistence, UI) keep working.
-  filtered.sort((a, b) => b.rrfScore - a.rrfScore);
-  for (const t of filtered) {
+  fused.sort((a, b) => b.rrfScore - a.rrfScore);
+  for (const t of fused) {
     t.score = t.rrfScore;
   }
 
-  // 5. Artist diversification — stops 3+ consecutive same-artist tracks.
-  return diversifyArtists(filtered);
+  // 4. Artist diversification — stops 3+ consecutive same-artist tracks.
+  return diversifyArtists(fused);
 }
