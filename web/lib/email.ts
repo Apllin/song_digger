@@ -1,0 +1,49 @@
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+
+export async function sendVerificationCode(
+  email: string,
+  code: string,
+): Promise<void> {
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: "Your Song Digger verification code",
+    html: `
+      <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
+        <h2>Verify your email</h2>
+        <p>Your verification code is:</p>
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 4px; text-align: center; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+          ${code}
+        </p>
+        <p style="color: #666; font-size: 14px;">This code expires in 15 minutes.</p>
+      </div>
+    `,
+  });
+}
+
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+): Promise<void> {
+  const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: "Reset your Song Digger password",
+    html: `
+      <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
+        <h2>Password reset request</h2>
+        <p>Click the link to reset your password:</p>
+        <p style="margin: 20px 0;">
+          <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+            Reset password
+          </a>
+        </p>
+        <p style="color: #666; font-size: 14px;">This link expires in 1 hour. If you didn't request this, ignore this email.</p>
+      </div>
+    `,
+  });
+}
