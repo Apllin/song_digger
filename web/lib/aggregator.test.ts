@@ -172,19 +172,6 @@ describe("aggregateTracks — basic pipeline", () => {
   });
 });
 
-describe("aggregateTracks — embed bonus", () => {
-  it("breaks ties in favor of tracks with embedUrl", () => {
-    const noEmbed = makeTrack({ sourceUrl: "u1", artist: "A" });
-    const withEmbed = makeTrack({ sourceUrl: "u2", artist: "B", embedUrl: "https://embed/x" });
-    // Both at rank 1 in their respective lists → identical RRF base score.
-    const result = aggregateTracks(
-      [listOf("cosine_club", noEmbed), listOf("youtube_music", withEmbed)],
-      {},
-    );
-    expect(result[0].sourceUrl).toBe("u2");
-  });
-});
-
 describe("aggregateTracks — artist diversity", () => {
   it("breaks up runs of >2 consecutive same-artist tracks", () => {
     // Three Surgeon tracks fused at the top of cosine — without diversification

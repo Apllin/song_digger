@@ -12,10 +12,6 @@ export interface SearchFilters {
 // sharper.
 const RRF_K = 60;
 
-// Post-RRF nudge. RRF scores are tiny (~0.016 per top-rank appearance), so
-// EMBED_BONUS is calibrated to that scale.
-const EMBED_BONUS = 0.0008;
-
 export interface FusedCandidate extends TrackMeta {
   rrfScore: number;
   appearances: { source: string; rank: number }[];
@@ -144,20 +140,12 @@ export function aggregateTracks(
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 
-  // 2. Embed bonus — break ties in favor of inline-playable tracks.
-  for (const t of fused) {
-    if (t.embedUrl) {
-      t.rrfScore += EMBED_BONUS;
-    }
-  }
-
-  // 3. Re-sort after the bonus. Surface rrfScore on `score` so existing
-  //    consumers (DB persistence, UI) keep working.
-  fused.sort((a, b) => b.rrfScore - a.rrfScore);
+  // 2. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
+  //    keep working.
   for (const t of fused) {
     t.score = t.rrfScore;
   }
 
-  // 4. Artist diversification — stops 3+ consecutive same-artist tracks.
+  // 3. Artist diversification — stops 3+ consecutive same-artist tracks.
   return diversifyArtists(fused);
 }

@@ -1,7 +1,7 @@
 /**
  * Aggregator smoke tests — pure compute, no network or DB.
  *
- * These verify the post-Stage-F aggregator (RRF + embed bonus + artist
+ * These verify the post-Stage-F aggregator (RRF + artist
  * diversification) on crafted source lists. The dislike filter lives
  * upstream in app/api/search/route.ts (filtering source lists before
  * `aggregateTracks` runs); the dislike-CRUD smoke covers it end-to-end.
@@ -96,33 +96,6 @@ describe("aggregator smoke — artist diversification", () => {
     // i.e. with maxConsecutive=2, three of the same in a row is the failure
     // signal. So we assert ≤ 2 consecutive.
     expect(maxConsecutive).toBeLessThanOrEqual(2);
-  });
-});
-
-describe("aggregator smoke — embed bonus tiebreaker", () => {
-  it("embed-playable track edges out non-embed when RRF is tied", () => {
-    // Two distinct identities, each at rank 1 of one source — same RRF.
-    // Only one has an embedUrl. After embed bonus, that one wins.
-    const noEmbed = track({
-      title: "NoEmbed",
-      artist: "X",
-      source: "lastfm",
-      embedUrl: undefined,
-    });
-    const withEmbed = track({
-      title: "WithEmbed",
-      artist: "Y",
-      source: "youtube_music",
-      embedUrl: "https://www.youtube.com/embed/abc?origin=http://localhost:3000",
-    });
-
-    const lists: SourceList[] = [
-      { source: "lastfm", tracks: [noEmbed] },
-      { source: "youtube_music", tracks: [withEmbed] },
-    ];
-
-    const result = aggregateTracks(lists, {});
-    expect(result[0].title).toBe("WithEmbed");
   });
 });
 
