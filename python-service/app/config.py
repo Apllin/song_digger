@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     # Postgres connection string — shared with web (Prisma). Empty in test
     # environments; the trackid cache helpers soft-degrade when unset.
     database_url: str = ""
-    # Disabled by default — flip to True in .env once the parser is verified
-    # against the live trackid.net markup. Cache, scraper, and route wiring
-    # stay in place so re-enabling is a one-config change.
-    trackidnet_enabled: bool = False
+    # Trackid.net rewrite verified 2026-05-04. JSON API confirmed working
+    # (no auth, no Cloudflare cookie); tests cover the full flow.
+    # Enable by default — see ADR-0014.
+    trackidnet_enabled: bool = True
     # Last.fm artist-similar fallback: when track.getSimilar returns 0 results
     # (common for underground techno seeds), expand via artist.getSimilar →
     # artist.getTopTracks. Default off until eval confirms it doesn't bleed
