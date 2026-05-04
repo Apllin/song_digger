@@ -46,8 +46,24 @@ Run from the repo root — all scripts delegate to `turbo run`:
 ```bash
 pnpm dev      # web (next dev :3000) + python-service (uvicorn :8000) in parallel
 pnpm build    # next build
-pnpm test     # pytest in python-service
+pnpm test     # default unit tests (pytest in python-service)
 pnpm lint     # eslint in web
+```
+
+Three test tiers — unit by default, smoke + speed opt-in. See [ADR-0018](web/docs/decisions/0018-test-coverage-strategy.md) for the strategy.
+
+```bash
+# default — fast, offline
+pnpm test                                       # python unit tests
+pnpm --filter web test                          # web vitest unit tests
+
+# smoke — hits live upstreams + dev servers (start with `pnpm dev`)
+cd python-service && .venv/bin/pytest -m smoke
+pnpm --filter web test:smoke
+
+# speed — latency thresholds; sequential (don't parallelize)
+cd python-service && .venv/bin/pytest -m speed
+pnpm --filter web test:speed
 ```
 
 Target a single package:

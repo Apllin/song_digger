@@ -21,17 +21,23 @@ pnpm setup                      # creates python-service/.venv and installs requ
 pnpm dev                        # runs web + python-service together (turbo, persistent)
 pnpm build                      # next build (web only)
 pnpm lint                       # eslint in web
-pnpm test                       # pytest in python-service
+pnpm test                       # pytest in python-service (default unit tests only)
 
 # Python service, targeted
 cd python-service
 .venv/bin/pytest tests/test_similar.py           # one file
 .venv/bin/pytest -k bandcamp                     # by keyword
+.venv/bin/pytest -m smoke                        # live-network smoke (opt-in)
+.venv/bin/pytest -m speed                        # latency tests (opt-in, sequential)
 .venv/bin/uvicorn app.main:app --reload          # run service standalone
 
 # Web, targeted
 cd web
 pnpm dev                        # next dev on :3000
+pnpm test                       # vitest unit tests (default)
+pnpm test:smoke                 # /api/search + dislike + aggregator smoke (needs dev servers)
+pnpm test:speed                 # latency thresholds (needs dev servers + Postgres)
+pnpm test:all                   # unit + smoke + speed in sequence
 pnpm exec prisma migrate dev    # apply migrations against DATABASE_URL
 pnpm exec prisma generate       # regenerate client into app/generated/prisma
 ```
@@ -68,3 +74,13 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - **Prisma 7** (also newer than training data in many cases) — generated client lives at `web/app/generated/prisma`, not the default `node_modules/@prisma/client` location. Use `@prisma/adapter-pg` (Prisma + node-postgres driver adapter), not the default engine.
 - Python tests use `asyncio_mode = auto` — don't manually decorate with `@pytest.mark.asyncio`.
 - The service assumes the frontend origin is `http://localhost:3000` in two places: FastAPI CORS and YouTube embed URLs (`settings.frontend_origin`). Change both together if the port moves.
+
+## Testing
+
+Three tiers, all opt-in beyond the default:
+
+- **Default unit tests**: `pnpm test` (web) and `cd python-service && .venv/bin/pytest`. Fast, offline, no live network. The Python config excludes `smoke` and `speed` markers via `pytest.ini` `addopts`; the web config excludes `tests/smoke/` and `tests/speed/` from `vitest.config.ts`.
+- **Smoke** (`-m smoke` / `pnpm test:smoke`): hits real upstream APIs and the local dev stack. Per-adapter live-result sanity, `/similar` and `/api/search` end-to-end, dislike CRUD + filter behavior, aggregator integration. Adapters skip when their API key is unset; integration tests skip if dev servers aren't running. Flaky upstream is the signal — don't retry to mask it.
+- **Speed** (`-m speed` / `pnpm test:speed`): per-adapter, per-endpoint, and aggregator P95 over 5–100 sequential runs with hard thresholds. Includes 10-concurrent `/similar`. Must run sequentially (web side enforces `fileParallelism: false` + `maxWorkers: 1`). Threshold rationale lives next to each test; tighten if observed P95 stays well below the line, document if you loosen.
+
+ADR-0018 documents this strategy. CI integration is deferred to Stage H.
