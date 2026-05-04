@@ -1,0 +1,43 @@
+# Repo-root .dockerignore — used by both Dockerfile.python and Dockerfile.web.
+
+.git
+.DS_Store
+.idea
+.vscode
+.turbo
+
+# Node / Next
+**/node_modules
+web/.next
+web/app/generated
+web/tsconfig.tsbuildinfo
+
+# Python
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.venv
+**/venv
+python-service/eval/runs
+python-service/song-digger-stages
+
+# Env / secrets
+**/.env
+**/.env.*
+
+# Tests (not needed in production image)
+**/tests
+web/vitest.*.ts
+
+# Docs / working notes
+*.md
+**/AGENTS.md
+**/CLAUDE.md
+web/docs
+web/AUDIT_REPORT.md
+web/Track Search Improvement.md
+BACKLOG.md
+AUDIT_REPORT.md
+
+# Misc
+**/*.log

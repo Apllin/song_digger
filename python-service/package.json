@@ -6,6 +6,7 @@
     "with-env": "dotenv -e ../.env --",
     "setup": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
     "dev": "pnpm run with-env .venv/bin/uvicorn app.main:app --reload",
+    "start": "sh start.sh",
     "test": "pnpm run with-env .venv/bin/pytest",
     "eval": "pnpm run with-env .venv/bin/python -m eval.runner"
   }
