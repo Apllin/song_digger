@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.similar import router as similar_router
-from app.api.routes.enrich import router as enrich_router
 from app.api.routes.random import router as random_router
 from app.api.routes.suggestions import router as suggestions_router
 from app.api.routes.discogs import router as discogs_router
@@ -19,7 +18,6 @@ app.add_middleware(
 )
 
 app.include_router(similar_router)
-app.include_router(enrich_router)
 app.include_router(random_router)
 app.include_router(suggestions_router)
 app.include_router(discogs_router)

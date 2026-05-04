@@ -6,7 +6,6 @@ from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
-from app.adapters.beatport import BeatportAdapter
 from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
@@ -16,7 +15,6 @@ router = APIRouter()
 
 _ytm = YouTubeMusicAdapter()
 _cosine = CosineClubAdapter()
-_beatport = BeatportAdapter()
 _bandcamp = BandcampAdapter()
 _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
@@ -56,12 +54,6 @@ async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
     except Exception as e:
         print(f"[Trackidnet] error: {e}")
         return []
-
-# Beatport inline enrichment: top results visible on first paint. The rest are
-# enriched in the background via /enrich (see web/lib/enrichment-queue.ts).
-INLINE_BUDGET = 6
-ENRICH_CONCURRENCY = 8
-
 
 def _normalize(s: str) -> str:
     # NFKD-decompose so accented forms split into base + combining marks,
@@ -270,19 +262,16 @@ async def _find_by_artist_and_track(
 
         (
             reversed_cosine_raw,
-            beatport_results_raw,
             artist_cosine_raw,
             bandcamp_fallback_raw,
         ) = await asyncio.gather(
             reversed_coro,
-            _beatport.find_similar(full_query, limit=3),
             _cosine.find_similar(artist, limit),
             bandcamp_fallback_coro,
             return_exceptions=True,
         )
 
         reversed_cosine = reversed_cosine_raw if isinstance(reversed_cosine_raw, list) else []
-        beatport_results = beatport_results_raw if isinstance(beatport_results_raw, list) else []
         bandcamp_fallback = bandcamp_fallback_raw if isinstance(bandcamp_fallback_raw, list) else []
 
         if reversed_cosine:
@@ -290,17 +279,6 @@ async def _find_by_artist_and_track(
             if rev_confident or len(reversed_cosine) > len(cosine_tracks):
                 cosine_tracks = reversed_cosine
                 source_bpm, source_key, source_energy, cosine_confident = rev_bpm, rev_key, rev_energy, rev_confident
-
-        # Use Beatport for source BPM/key if Cosine is still not confident.
-        if not cosine_confident:
-            title_lower = track.lower()
-            artist_lower = artist.lower()
-            for t in beatport_results:
-                if t.bpm and t.key:
-                    if artist_lower[:6] in t.artist.lower() or title_lower[:6] in t.title.lower():
-                        source_bpm = t.bpm
-                        source_key = t.key
-                        break
 
         # Cosine artist fallback: style-adjacent tracks for the artist.
         # No score filter here — artist search often returns score=None (text-matched
@@ -404,28 +382,6 @@ async def find_similar(req: SimilarRequest) -> SimilarResponse:
         source_lists, source_artist, source_bpm, source_key, source_energy, source_label, source_genre = await _find_by_artist_only(
             req.artist, req.limit_per_source
         )
-
-    # Inline enrichment: pick the first INLINE_BUDGET unique tracks lacking
-    # BPM/key across all sources, then write the enriched values back into
-    # whichever source-list rows reference the same sourceUrl.
-    seen_urls: set[str] = set()
-    to_enrich: list[TrackMeta] = []
-    for sl in source_lists:
-        for t in sl.tracks:
-            if t.sourceUrl in seen_urls:
-                continue
-            seen_urls.add(t.sourceUrl)
-            if t.bpm is None or t.key is None:
-                to_enrich.append(t)
-                if len(to_enrich) >= INLINE_BUDGET:
-                    break
-        if len(to_enrich) >= INLINE_BUDGET:
-            break
-
-    if to_enrich:
-        enriched_map = await _beatport.enrich_tracks(to_enrich, max_concurrent=ENRICH_CONCURRENCY)
-        for sl in source_lists:
-            sl.tracks = [enriched_map.get(t.sourceUrl, t) for t in sl.tracks]
 
     return SimilarResponse(
         source_lists=source_lists,

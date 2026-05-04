@@ -4,15 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
 import { aggregateTracks, type FusedCandidate, type SearchFilters, type TrackFeedback } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
-import { enqueueBackgroundEnrich } from "@/lib/enrichment-queue";
 import type { SimilarResponse, SourceList, TrackMeta } from "@/lib/python-client";
 
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
-
-// Must match python-service INLINE_BUDGET — tracks beyond this index were
-// not enriched inline and become candidates for the background queue.
-const INLINE_BUDGET = 6;
 
 /**
  * For each Python track, fill BPM/key/energy/genre/label from the Track row
@@ -355,16 +350,4 @@ async function runSearch(
       sourceKey: sourceKey ?? undefined,
     },
   });
-
-  // Background fill: tracks beyond the inline budget that still lack BPM/key.
-  // Persists into Track so the next search hits the cache instead of Beatport.
-  const toEnrich = aggregated
-    .slice(INLINE_BUDGET)
-    .filter((t) => t.bpm == null || t.key == null);
-
-  if (toEnrich.length) {
-    void enqueueBackgroundEnrich(toEnrich).catch((err) => {
-      console.error(`[Search] background enrichment failed for ${searchId}:`, err);
-    });
-  }
 }

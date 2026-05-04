@@ -24,7 +24,7 @@ class YandexMusicAdapter(AbstractAdapter):
     Yandex.Music adapter via MarshalX/yandex-music-api (reverse-engineered).
 
     Provides catalog + cover art + similar-track recommendations. Does NOT
-    return BPM/key/energy — those still come from Cosine.club / Beatport.
+    return BPM/key/energy.
     Token must be set as YANDEX_MUSIC_TOKEN in the environment; without it
     the adapter no-ops (returns empty lists / None).
     """

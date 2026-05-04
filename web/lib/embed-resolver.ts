@@ -1,6 +1,6 @@
 /**
  * Tries to find an embeddable player for a track.
- * Priority: Cosine.club → YTM → Bandcamp → Beatport (no embed)
+ * Priority: Cosine.club → YTM → Bandcamp.
  * Returns embedUrl or null.
  */
 

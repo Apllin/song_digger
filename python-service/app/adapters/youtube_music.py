@@ -47,7 +47,7 @@ TECHNO_QUERIES = [
 class YouTubeMusicAdapter(AbstractAdapter):
     """
     Uses unofficial ytmusicapi to find related tracks via get_watch_playlist.
-    Does NOT return BPM/key — audio features come from Cosine.club or Beatport scraping.
+    Does NOT return BPM/key.
 
     Docs: https://ytmusicapi.readthedocs.io/en/stable/
     """

@@ -15,7 +15,6 @@ const SOURCE_LABELS: Record<string, string> = {
   youtube_music: "YouTube Music",
   bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
-  beatport: "Beatport",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────

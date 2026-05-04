@@ -14,7 +14,7 @@ class CosineClubAdapter(AbstractAdapter):
     The public Track schema exposes only: id, artist, track, name,
     video_id, video_uri, external_link, source, score. There are NO
     BPM/key/energy/label/genre/cover_url fields — those are derived
-    elsewhere (Beatport enrichment for BPM/key, YouTube thumbnail for cover).
+    elsewhere (YouTube thumbnail for cover).
 
     There is also no /random endpoint, so random_techno_track() is a no-op.
     """
@@ -77,7 +77,7 @@ class CosineClubAdapter(AbstractAdapter):
 
     async def random_techno_track(self) -> TrackMeta | None:
         # The new Cosine.club public API has no /random endpoint. Random tracks
-        # come from other adapters (Beatport / YTM / Yandex).
+        # come from other adapters (YTM / Yandex).
         return None
 
     async def _search_first_id(self, query: str) -> str | None:
