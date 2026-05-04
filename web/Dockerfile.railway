@@ -15,6 +15,20 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build-time env. Railway service variables are NOT auto-exposed to the Docker
+# build phase — declare them as ARG here and pass via Railway "Build Variables"
+# (Service Settings → Variables → toggle "Available at build time"), or via
+# `--build-arg` if building locally.
+#
+# DATABASE_URL is needed because lib/prisma.ts instantiates the Prisma client
+# at module-load time, and `next build` evaluates server modules during the
+# route-collection / static-analysis pass. We don't connect to the DB during
+# build (no migrations run here), but the var must be defined.
+# A throwaway placeholder works if the real URL isn't safe to expose at build.
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+
 # Generated client lands at app/generated/prisma (see prisma/schema.prisma).
 RUN pnpm exec prisma generate
 RUN pnpm exec next build
