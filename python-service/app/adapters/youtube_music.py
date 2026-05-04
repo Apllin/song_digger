@@ -1,4 +1,3 @@
-import random
 import asyncio
 from ytmusicapi import YTMusic
 from app.adapters.base import AbstractAdapter
@@ -33,15 +32,6 @@ def _parse_ytm_track(t: dict) -> TrackMeta | None:
         embedUrl=_yt_embed_url(vid),
         coverUrl=cover_url,
     )
-
-
-TECHNO_QUERIES = [
-    "techno mix",
-    "dark techno",
-    "dub techno",
-    "industrial techno",
-    "minimal techno",
-]
 
 
 class YouTubeMusicAdapter(AbstractAdapter):
@@ -154,33 +144,3 @@ class YouTubeMusicAdapter(AbstractAdapter):
             print(f"[YouTubeMusic] get_suggestions error: {e}")
             return []
 
-    async def random_techno_track(self) -> TrackMeta | None:
-        try:
-            query = random.choice(TECHNO_QUERIES)
-            results = await asyncio.to_thread(
-                lambda: _ytm.search(query, filter="songs", limit=20)
-            )
-            if not results:
-                return None
-
-            t = random.choice(results)
-            vid = t.get("videoId")
-            if not vid:
-                return None
-
-            artists = t.get("artists") or []
-            artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
-            thumbnails = t.get("thumbnails") or []
-            cover_url = thumbnails[-1].get("url") if thumbnails else None
-
-            return TrackMeta(
-                title=t.get("title", "Unknown"),
-                artist=artist,
-                source="youtube_music",
-                sourceUrl=f"https://music.youtube.com/watch?v={vid}",
-                embedUrl=_yt_embed_url(vid),
-                coverUrl=cover_url,
-            )
-        except Exception as e:
-            print(f"[YouTubeMusic] random_techno_track error: {e}")
-            return None

@@ -1,4 +1,3 @@
-import random
 from typing import Any
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
@@ -10,13 +9,6 @@ try:
 except ImportError:
     ClientAsync = None  # type: ignore[assignment,misc]
     YandexMusicError = Exception  # type: ignore[assignment,misc]
-
-
-TECHNO_STATIONS = [
-    "genre:techno",
-    "genre:industrial",
-    "genre:dnb",
-]
 
 
 class YandexMusicAdapter(AbstractAdapter):
@@ -74,25 +66,6 @@ class YandexMusicAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[YandexMusic] find_similar unexpected error: {e}")
             return []
-
-    async def random_techno_track(self) -> TrackMeta | None:
-        client = await self._get_client()
-        if client is None:
-            return None
-        try:
-            station = random.choice(TECHNO_STATIONS)
-            station_tracks = await client.rotor_station_tracks(station)
-            sequence = (station_tracks.sequence if station_tracks else None) or []
-            picks = [s.track for s in sequence if getattr(s, "track", None)]
-            if not picks:
-                return None
-            return self._parse(random.choice(picks))
-        except YandexMusicError as e:
-            print(f"[YandexMusic] random_techno_track error: {e}")
-            return None
-        except Exception as e:
-            print(f"[YandexMusic] random_techno_track unexpected error: {e}")
-            return None
 
     def _parse(self, t: Any) -> TrackMeta | None:
         if t is None or not getattr(t, "id", None):

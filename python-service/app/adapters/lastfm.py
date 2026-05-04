@@ -15,9 +15,6 @@ aggregated over the top-N similar artists. Artist similars are cached in
 Postgres (LastfmArtistSimilars, 30-day TTL) because artist relationships
 move slowly; top-tracks are not cached because they are cheap and need to
 reflect new releases.
-
-No `random_techno_track` — Last.fm has no concept of "give me a random
-track in genre X" that doesn't degrade to scraping their tag pages.
 """
 import asyncio
 
@@ -76,9 +73,6 @@ class LastfmAdapter(AbstractAdapter):
             return []
 
         return await self._artist_fallback(api_key, artist, limit)
-
-    async def random_techno_track(self) -> TrackMeta | None:
-        return None
 
     # ── track.getSimilar (Stage A) ────────────────────────────────────────────
 

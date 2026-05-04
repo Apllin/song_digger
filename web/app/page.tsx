@@ -190,23 +190,6 @@ function HomeContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleRandom = useCallback(async () => {
-    try {
-      const res = await fetch("/api/random");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const track = await res.json();
-      const q = `${track.artist} - ${track.title}`;
-      setSearch((prev) => ({ ...prev, query: q }));
-      startSearch(q);
-    } catch {
-      setSearch((prev) => ({
-        ...prev,
-        status: "error",
-        errorMsg: "Could not fetch a random track.",
-      }));
-    }
-  }, [startSearch, setSearch]);
-
   const toggleFavorite = useCallback(
     async (trackId: string) => {
       const isFav = fav.ids.has(trackId);
@@ -310,7 +293,6 @@ function HomeContent() {
             value={query}
             onChange={(v) => setSearch((prev) => ({ ...prev, query: v }))}
             onSubmit={handleSearch}
-            onRandom={handleRandom}
             loading={isLoading}
           />
 

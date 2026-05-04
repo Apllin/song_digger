@@ -12,8 +12,3 @@ class AbstractAdapter(ABC):
     async def find_similar(self, query: str, limit: int) -> list[TrackMeta]:
         """Return tracks similar to `query` (track name or URL)."""
         ...
-
-    @abstractmethod
-    async def random_techno_track(self) -> TrackMeta | None:
-        """Return a random techno track from this source."""
-        ...

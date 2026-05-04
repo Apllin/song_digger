@@ -8,7 +8,6 @@ interface SearchBarProps {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
-  onRandom: () => void;
   loading: boolean;
 }
 
@@ -61,7 +60,6 @@ export function SearchBar({
   value,
   onChange,
   onSubmit,
-  onRandom,
   loading,
 }: SearchBarProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -270,17 +268,6 @@ export function SearchBar({
         ) : (
           "Search"
         )}
-      </button>
-
-      <button
-        onClick={onRandom}
-        disabled={loading}
-        title="Random techno track"
-        className="px-4 py-3 bg-zinc-800 text-zinc-300 rounded-xl text-sm hover:bg-zinc-700 disabled:opacity-40 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l4 0M4 4l0 4M20 4l-4 0M20 4l0 4M4 20l4 0M4 20l0-4M20 20l-4 0M20 20l0-4M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0" />
-        </svg>
       </button>
     </div>
   );

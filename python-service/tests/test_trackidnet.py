@@ -742,9 +742,3 @@ async def test_trackmeta_fields_populated_correctly(_enabled):
     assert track.source == "trackidnet"
     assert track.sourceUrl == "https://trackid.net/musictracks/heliobolus-forest-hunter"
     assert track.bpm is None and track.key is None and track.energy is None
-
-
-# ── random_techno_track ──────────────────────────────────────────────────
-
-async def test_random_techno_track_returns_none():
-    assert await TrackidnetAdapter().random_techno_track() is None

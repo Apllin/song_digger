@@ -2,15 +2,6 @@ import * as cheerio from "cheerio";
 import type { TrackMeta } from "@/lib/python-client";
 import { cachedFetch } from "@/lib/dev-cache";
 
-const TECHNO_TAGS = [
-  "techno",
-  "dark-techno",
-  "dub-techno",
-  "industrial-techno",
-  "ambient-techno",
-  "minimal-techno",
-];
-
 async function fetchHtml(url: string): Promise<string> {
   const res = await cachedFetch(url, {
     headers: {
@@ -112,42 +103,3 @@ export async function extractBandcampAudio(
   }
 }
 
-export async function getRandomTechnoTrack(): Promise<TrackMeta | null> {
-  const tag = TECHNO_TAGS[Math.floor(Math.random() * TECHNO_TAGS.length)];
-  const url = `https://bandcamp.com/tag/${tag}?sort_field=date`;
-
-  try {
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-    const items: TrackMeta[] = [];
-
-    $("li.item").each((_, el) => {
-      const anchor = $(el).find("a.itemurl");
-      const sourceUrl = anchor.attr("href");
-      if (!sourceUrl) return;
-
-      const title = $(el).find(".itemtext").text().trim();
-      const artist = $(el).find(".itemsubtext").text().trim();
-      const coverUrl = $(el).find("img").attr("src");
-      const href = anchor.attr("href") ?? "";
-
-      if (title && artist) {
-        items.push({
-          title,
-          artist,
-          source: "bandcamp",
-          sourceUrl,
-          coverUrl,
-          embedUrl: buildEmbedUrl(href),
-          genre: tag,
-        });
-      }
-    });
-
-    if (items.length === 0) return null;
-    return items[Math.floor(Math.random() * items.length)];
-  } catch (err) {
-    console.error("[Bandcamp] random track error:", err);
-    return null;
-  }
-}

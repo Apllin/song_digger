@@ -153,10 +153,3 @@ async def test_search_suggestions_no_api_key(monkeypatch):
     adapter = CosineClubAdapter()
     adapter._client.get = AsyncMock(side_effect=AssertionError("must not call"))
     assert await adapter.search_suggestions("anything") == []
-
-
-# ── random_techno_track ──────────────────────────────────────────────────────
-
-async def test_random_techno_track_returns_none():
-    """Public API has no /random endpoint; adapter is a no-op."""
-    assert await CosineClubAdapter().random_techno_track() is None

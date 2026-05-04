@@ -15,8 +15,6 @@ class CosineClubAdapter(AbstractAdapter):
     video_id, video_uri, external_link, source, score. There are NO
     BPM/key/energy/label/genre/cover_url fields — those are derived
     elsewhere (YouTube thumbnail for cover).
-
-    There is also no /random endpoint, so random_techno_track() is a no-op.
     """
 
     BASE_URL = "https://cosine.club/api"
@@ -74,11 +72,6 @@ class CosineClubAdapter(AbstractAdapter):
         except httpx.HTTPError as e:
             print(f"[CosineClub] search_suggestions error: {e}")
             return []
-
-    async def random_techno_track(self) -> TrackMeta | None:
-        # The new Cosine.club public API has no /random endpoint. Random tracks
-        # come from other adapters (YTM / Yandex).
-        return None
 
     async def _search_first_id(self, query: str) -> str | None:
         resp = await self._client.get(

@@ -113,9 +113,6 @@ class TrackidnetAdapter(AbstractAdapter):
 
         return [_to_track_meta(r["track"], float(r["count"])) for r in ranked[:limit]]
 
-    async def random_techno_track(self) -> TrackMeta | None:
-        return None
-
 
 # ── helpers ───────────────────────────────────────────────────────────────
 

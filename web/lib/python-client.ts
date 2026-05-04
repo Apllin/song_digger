@@ -56,18 +56,6 @@ export async function fetchSimilarTracks(
   return res.json();
 }
 
-export async function fetchRandomTrack(): Promise<TrackMeta> {
-  const res = await fetch(`${PYTHON_SERVICE_URL}/random`);
-
-  if (!res.ok) {
-    throw new Error(
-      `Python service error: ${res.status} ${await res.text()}`
-    );
-  }
-
-  return res.json();
-}
-
 export async function healthCheck(): Promise<boolean> {
   try {
     const res = await fetch(`${PYTHON_SERVICE_URL}/health`, {

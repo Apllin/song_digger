@@ -211,11 +211,6 @@ async def test_find_similar_swallows_network_errors():
     assert results == []
 
 
-async def test_random_techno_track_returns_none():
-    adapter = LastfmAdapter()
-    assert await adapter.random_techno_track() is None
-
-
 # ── Artist-level fallback ─────────────────────────────────────────────────────
 
 EMPTY_TRACK_SIMILAR = {"similartracks": {"track": []}}

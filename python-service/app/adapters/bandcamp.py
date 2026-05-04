@@ -70,9 +70,6 @@ class BandcampAdapter(AbstractAdapter):
             print(f"[Bandcamp] find_similar error: {e}")
             return []
 
-    async def random_techno_track(self) -> TrackMeta | None:
-        return None
-
     async def _search_track(self, query: str) -> str | None:
         """Resolve the first track-type hit for `query` to a canonical track URL."""
         payload = {
