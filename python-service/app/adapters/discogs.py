@@ -20,7 +20,7 @@ class DiscogsAdapter:
     """
 
     def __init__(self) -> None:
-        headers = {"User-Agent": "SongDigger/1.0"}
+        headers = {"User-Agent": "TrackDigger/1.0"}
         if settings.discogs_token:
             headers["Authorization"] = f"Discogs token={settings.discogs_token}"
         self._client = httpx.AsyncClient(

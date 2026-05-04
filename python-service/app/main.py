@@ -6,7 +6,7 @@ from app.api.routes.discogs import router as discogs_router
 from app.api.routes.ytm_playlist import router as ytm_playlist_router
 from app.api.routes.play_lookup import router as play_lookup_router
 
-app = FastAPI(title="Song Digger — Python Service", version="0.1.0")
+app = FastAPI(title="Track Digger — Python Service", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

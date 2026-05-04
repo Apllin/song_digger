@@ -1,5 +1,5 @@
 {
-  "name": "@song-digger/python-service",
+  "name": "@track-digger/python-service",
   "version": "0.0.0",
   "private": true,
   "scripts": {

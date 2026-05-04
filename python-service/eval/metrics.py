@@ -1,5 +1,5 @@
 """
-nDCG@10 implementation for the song_digger eval harness.
+nDCG@10 implementation for the track_digger eval harness.
 
 Relevance grades:
     relevant      → rel = 2  (boost: result we want at the top)

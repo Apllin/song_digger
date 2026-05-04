@@ -9,7 +9,7 @@ _ytm = YouTubeMusicAdapter()
 
 MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/js/artist"
 MUSICBRAINZ_RECORDING_URL = "https://musicbrainz.org/ws/2/recording"
-MB_HEADERS = {"User-Agent": "SongDigger/1.0 (localhost)"}
+MB_HEADERS = {"User-Agent": "TrackDigger/1.0 (localhost)"}
 
 
 async def _mb_artist_search(query: str) -> list[str]:
