@@ -1,14 +1,14 @@
 """
-Tests for the trackid.net JSON API adapter.
+Tests for the trackid.net JSON API adapter (playlists-list architecture).
 
-The adapter calls two endpoints:
-  - GET /api/public/musictracks?keywords=... → search/seed lookup
-  - GET /api/public/audiostreams/<slug>     → DJ-set tracklist
+The adapter calls three endpoints:
+  - GET /api/public/musictracks?keywords=...           → search/seed lookup
+  - GET /api/public/audiostreams?musicTrackId=<id>     → list of playlists
+  - GET /api/public/audiostreams/<slug>                → DJ-set tracklist
 
-Captured JSON fixtures live in tests/fixtures/trackidnet/ and are pinned
-with the capture date in their filename (re-capture if the upstream
-schema shifts). Smaller scenario-specific shapes are inlined as Python
-dicts in the tests themselves.
+Captured JSON fixtures live in tests/fixtures/trackidnet/ (filename
+includes capture date). Smaller scenario shapes are inlined as Python
+dicts in the tests.
 """
 import json
 from pathlib import Path
@@ -31,7 +31,7 @@ def _load(name: str) -> dict:
 
 
 def _resp(payload: dict, status: int = 200) -> MagicMock:
-    """Mocked httpx Response with a working .json() and .raise_for_status()."""
+    """Mocked httpx Response with .json() and .raise_for_status()."""
     r = MagicMock(spec=httpx.Response)
     r.status_code = status
     r.json = MagicMock(return_value=payload)
@@ -46,14 +46,14 @@ def _resp(payload: dict, status: int = 200) -> MagicMock:
 
 class _ScriptedClient:
     """
-    httpx.AsyncClient stand-in. Routes .get(url, ...) by substring match
-    against (substring, response-or-exception) rules; first match wins.
-    Unmatched URLs raise so missing rules surface in tests.
+    httpx.AsyncClient stand-in. Routes .get(url, params=..., ...) by
+    matching against (matcher_fn-or-substring, response-or-exception)
+    rules; first match wins. Records calls (url, params) for assertions.
     """
 
-    def __init__(self, rules: list[tuple[str, object]]):
+    def __init__(self, rules):
         self._rules = rules
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, dict]] = []
 
     async def __aenter__(self):
         return self
@@ -62,13 +62,15 @@ class _ScriptedClient:
         return None
 
     async def get(self, url: str, *args, **kwargs):
-        self.calls.append(url)
-        for needle, value in self._rules:
-            if needle in url:
+        params = kwargs.get("params") or {}
+        self.calls.append((url, params))
+        for matcher, value in self._rules:
+            ok = matcher(url, params) if callable(matcher) else (matcher in url)
+            if ok:
                 if isinstance(value, Exception):
                     raise value
                 return value
-        raise AssertionError(f"No rule matched URL: {url}")
+        raise AssertionError(f"No rule matched URL: {url} params={params}")
 
 
 def _patch_client(client: _ScriptedClient):
@@ -77,11 +79,64 @@ def _patch_client(client: _ScriptedClient):
     )
 
 
+def _is_search(url, params):
+    return "/musictracks" in url and "keywords" in params
+
+
+def _is_playlists_list(url, params=None):
+    # /audiostreams with musicTrackId param (not /audiostreams/<slug>)
+    if not url.endswith("/audiostreams"):
+        return False
+    return params is not None and "musicTrackId" in params
+
+
+def _is_audiostream_detail(url, params=None):
+    return "/audiostreams/" in url
+
+
 @pytest.fixture
 def _enabled(monkeypatch):
     monkeypatch.setattr(
         "app.adapters.trackidnet.settings.trackidnet_enabled", True
     )
+
+
+def _make_seed_search(seed_id=502601, seed_slug="nina-kraviz-tarde-david-lohlein-amor-mix",
+                     artist="nina kraviz", title="Tarde", play_count=10):
+    return {
+        "result": {
+            "musicTracks": [
+                {
+                    "id": seed_id, "artist": artist, "title": title,
+                    "slug": seed_slug, "playCount": play_count,
+                    "minCreatedSlug": "min-set", "maxCreatedSlug": "max-set",
+                },
+            ]
+        }
+    }
+
+
+def _make_playlists_response(slug_added_pairs):
+    """slug_added_pairs: list of (slug, addedOn_iso) tuples."""
+    return {
+        "result": {
+            "audiostreams": [
+                {"slug": s, "addedOn": a, "id": i + 1}
+                for i, (s, a) in enumerate(slug_added_pairs)
+            ],
+            "rowCount": len(slug_added_pairs),
+        }
+    }
+
+
+def _make_audiostream(tracks, end_date="2025-01-01T00:00:00Z"):
+    return {
+        "result": {
+            "detectionProcesses": [
+                {"endDate": end_date, "detectionProcessMusicTracks": tracks},
+            ]
+        }
+    }
 
 
 # ── _split_query ──────────────────────────────────────────────────────────
@@ -98,10 +153,12 @@ def test_split_query_trailing_separator():
     assert _split_query("Nina Kraviz - ") == ("Nina Kraviz", None)
 
 
-# ── feature flag ──────────────────────────────────────────────────────────
+# ── feature flag + query short-circuits ───────────────────────────────────
 
-async def test_disabled_by_default_returns_empty_without_network():
-    """Default trackidnet_enabled=False short-circuits before any httpx call."""
+async def test_disabled_flag_short_circuits_without_network(monkeypatch):
+    monkeypatch.setattr(
+        "app.adapters.trackidnet.settings.trackidnet_enabled", False
+    )
     adapter = TrackidnetAdapter()
     client = _ScriptedClient([])
     with _patch_client(client):
@@ -109,10 +166,7 @@ async def test_disabled_by_default_returns_empty_without_network():
     assert client.calls == []
 
 
-# ── query shape short-circuit ─────────────────────────────────────────────
-
 async def test_query_without_dash_returns_empty_without_network(_enabled):
-    """An artist-only query has no track to search by — early return."""
     adapter = TrackidnetAdapter()
     client = _ScriptedClient([])
     with _patch_client(client):
@@ -122,58 +176,64 @@ async def test_query_without_dash_returns_empty_without_network(_enabled):
 
 # ── seed picker (/musictracks) ────────────────────────────────────────────
 
-async def test_search_picks_highest_playcount_artist_match(_enabled):
-    """Two nina-kraviz entries (playCount 10 and 4) → picker takes 10."""
+async def test_search_picks_highest_playcount_artist_match_and_uses_id(_enabled):
+    """Two nina-kraviz entries (playCount 10 and 4) → picker takes 10 and
+    uses its `id` to list playlists."""
     adapter = TrackidnetAdapter()
-    rules = [
-        ("/musictracks", _resp(_load("search_nina_kraviz_tarde_2026-05-04.json"))),
-        ("/audiostreams/", _resp({"result": None})),
-    ]
-    client = _ScriptedClient(rules)
-    with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
-    # Two audiostream lookups: minCreatedSlug + maxCreatedSlug of the
-    # playCount=10 entry.
-    audiostream_calls = [c for c in client.calls if "/audiostreams/" in c]
-    assert any("heisss-podcast-015-david-lohlein" in c for c in audiostream_calls)
-    assert any("nina-kraviz-neversea-kapital-2025" in c for c in audiostream_calls)
-
-
-async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled):
-    """No exact artist match → first entry with playCount > 0."""
-    adapter = TrackidnetAdapter()
-    payload = {
+    search = {
         "result": {
             "musicTracks": [
                 {
-                    "id": 1, "artist": "Other Artist", "title": "Track",
-                    "slug": "other-artist-track", "playCount": 5,
-                    "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
+                    "id": 502601, "artist": "nina kraviz", "title": "Tarde (Mix)",
+                    "slug": "nina-kraviz-tarde-mix", "playCount": 10,
+                    "minCreatedSlug": "x", "maxCreatedSlug": "y",
                 },
                 {
-                    "id": 2, "artist": "Yet Another", "title": "Track",
-                    "slug": "yet-another-track", "playCount": 3,
-                    "minCreatedSlug": "set-b", "maxCreatedSlug": "set-b",
+                    "id": 502602, "artist": "nina kraviz", "title": "Tarde",
+                    "slug": "nina-kraviz-tarde", "playCount": 4,
+                    "minCreatedSlug": "a", "maxCreatedSlug": "b",
                 },
             ]
         }
     }
     rules = [
-        ("/musictracks", _resp(payload)),
-        ("/audiostreams/set-a", _resp({"result": None})),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp({"result": {"audiostreams": []}})),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Track")
-    # Picker chose the first nonzero entry; only its set-a was fetched.
-    assert any("/audiostreams/set-a" in c for c in client.calls)
-    assert not any("/audiostreams/set-b" in c for c in client.calls)
+        await adapter.find_similar("Nina Kraviz - Tarde")
+    # Verify musicTrackId=502601 was sent on the playlists call
+    list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
+    assert any(c[1].get("musicTrackId") == 502601 for c in list_calls)
+
+
+async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled):
+    adapter = TrackidnetAdapter()
+    search = {
+        "result": {
+            "musicTracks": [
+                {"id": 1, "artist": "Other", "title": "T", "slug": "other-t",
+                 "playCount": 5, "minCreatedSlug": "a", "maxCreatedSlug": "a"},
+                {"id": 2, "artist": "Yet", "title": "T", "slug": "yet-t",
+                 "playCount": 3, "minCreatedSlug": "b", "maxCreatedSlug": "b"},
+            ]
+        }
+    }
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp({"result": {"audiostreams": []}})),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        await adapter.find_similar("Nina - T")
+    list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
+    assert any(c[1].get("musicTrackId") == 1 for c in list_calls)
 
 
 async def test_search_all_zero_playcount_returns_empty(_enabled):
-    """Catalogue-only entries (no plays) carry no co-occurrence signal."""
     adapter = TrackidnetAdapter()
-    payload = {
+    search = {
         "result": {
             "musicTracks": [
                 {"id": 1, "artist": "Nina Kraviz", "title": "Tarde",
@@ -182,23 +242,24 @@ async def test_search_all_zero_playcount_returns_empty(_enabled):
             ]
         }
     }
-    client = _ScriptedClient([("/musictracks", _resp(payload))])
+    client = _ScriptedClient([(_is_search, _resp(search))])
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
-    assert all("/audiostreams/" not in c for c in client.calls)
+    # No playlists call made
+    assert all(not c[0].endswith("/audiostreams") for c in client.calls)
 
 
 async def test_search_empty_results_returns_empty(_enabled):
     adapter = TrackidnetAdapter()
     payload = {"result": {"musicTracks": [], "rowCount": 0}}
-    client = _ScriptedClient([("/musictracks", _resp(payload))])
+    client = _ScriptedClient([(_is_search, _resp(payload))])
     with _patch_client(client):
         assert await adapter.find_similar("Nobody - Nothing") == []
 
 
 async def test_search_http_error_returns_empty(_enabled, capsys):
     adapter = TrackidnetAdapter()
-    client = _ScriptedClient([("/musictracks", httpx.ConnectError("boom"))])
+    client = _ScriptedClient([(_is_search, httpx.ConnectError("boom"))])
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
     assert "[Trackidnet]" in capsys.readouterr().out
@@ -206,347 +267,476 @@ async def test_search_http_error_returns_empty(_enabled, capsys):
 
 async def test_search_500_returns_empty(_enabled, capsys):
     adapter = TrackidnetAdapter()
-    client = _ScriptedClient([("/musictracks", _resp({}, status=500))])
+    client = _ScriptedClient([(_is_search, _resp({}, status=500))])
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
     assert "[Trackidnet]" in capsys.readouterr().out
 
 
-# ── audiostream / co-occurrence aggregation ───────────────────────────────
+# ── playlists list (/audiostreams?musicTrackId=) ─────────────────────────
 
-async def test_audiostream_uses_latest_detection_process(_enabled):
-    """Fixture has 2 processes; latest endDate (2025-03-31) supplies tracks."""
+async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
+    """14 playlists in fixture → all 14 detail fetches happen."""
     adapter = TrackidnetAdapter()
-    search = _load("search_nina_kraviz_tarde_2026-05-04.json")
-    audiostream = _load("audiostream_val_vashar_2026-05-04.json")
+    search = _make_seed_search()
+    playlists = _load("playlists_list_nina_kraviz_tarde_2026-05-04.json")
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/", _resp(audiostream)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp({"result": None})),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        await adapter.find_similar("Nina Kraviz - Tarde")
+    detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
+    assert len(detail_calls) == 14
+
+
+async def test_playlists_list_capped_at_15(_enabled):
+    """20 playlists returned (page max) → only top 15 (by addedOn desc) fetched."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search()
+    pairs = [(f"slug-{i}", f"2026-01-{i+1:02d}T00:00:00Z") for i in range(20)]
+    playlists = _make_playlists_response(pairs)
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp({"result": None})),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        await adapter.find_similar("Nina Kraviz - Tarde")
+    detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
+    assert len(detail_calls) == 15
+    fetched_slugs = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
+    # Top 15 by addedOn desc → slug-19 down to slug-5
+    assert "slug-19" in fetched_slugs
+    assert "slug-5" in fetched_slugs
+    assert "slug-4" not in fetched_slugs
+
+
+async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):
+    """API returns out-of-order playlists; adapter sorts before capping."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search()
+    pairs = [
+        ("old", "2024-01-01T00:00:00Z"),
+        ("new", "2026-05-01T00:00:00Z"),
+        ("mid", "2025-06-01T00:00:00Z"),
+    ]
+    playlists = _make_playlists_response(pairs)
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp({"result": None})),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        await adapter.find_similar("Nina Kraviz - Tarde")
+    detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
+    fetched_order = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
+    # Issue order doesn't have to be exact (gather is concurrent), but the
+    # set of called slugs should include all three. We check the SORT was
+    # respected by the cap-at-15 contract — here all three pass through.
+    assert set(fetched_order) == {"new", "mid", "old"}
+
+
+async def test_playlists_list_http_error_returns_empty(_enabled, capsys):
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search()
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, httpx.ConnectError("boom")),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+    assert "[Trackidnet] playlists list failed" in capsys.readouterr().out
+
+
+async def test_playlists_list_empty_returns_empty(_enabled):
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search()
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp({"result": {"audiostreams": []}})),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+
+
+# ── window extraction ────────────────────────────────────────────────────
+
+async def test_window_around_seed_in_middle(_enabled):
+    """20-track playlist, seed at index 7 → ±5 window = tracks[2..12], 10
+    candidates (excluding the seed itself)."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [
+        {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}",
+         "referenceCount": 1}
+        for i in range(20)
+    ]
+    tracks[7] = {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                 "referenceCount": 50}
+    audio = _make_audiostream(tracks)
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
     artists = {t.artist for t in results}
-    # Latest process tracks (Reprocessed / Stranger / Newer) — two
-    # audiostreams fetched both return the same fixture, so each appears
-    # twice → co-occurrence count 2 for all three.
-    assert artists == {"Reprocessed", "Stranger", "Newer"}
-    # Earlier-process names must not leak in.
-    assert "Heliobolus" not in artists
-    assert "Cleric" not in artists
-    for t in results:
-        assert t.score == 2.0
+    expected = {f"A{i}" for i in range(2, 13) if i != 7}
+    assert artists == expected
+    assert "Nina Kraviz" not in artists
 
 
-async def test_cooccurrence_count_2_outranks_count_1(_enabled):
-    """Track present in BOTH fetched sets ranks above singletons."""
+async def test_window_seed_at_start_returns_only_after(_enabled):
+    """Seed at index 0 → window has 5 tracks after, none before."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-b",
-            }]
-        }
-    }
-    set_a = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "shared", "artist": "Shared", "title": "Track", "referenceCount": 50},
-            {"slug": "only-a", "artist": "OnlyA", "title": "X", "referenceCount": 1},
-        ],
-    }]}}
-    set_b = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "shared", "artist": "Shared", "title": "Track", "referenceCount": 50},
-            {"slug": "only-b", "artist": "OnlyB", "title": "Y", "referenceCount": 1},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [{"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+               "referenceCount": 50}]
+    tracks += [
+        {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}", "referenceCount": 1}
+        for i in range(10)
+    ]
+    audio = _make_audiostream(tracks)
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(set_a)),
-        ("/audiostreams/set-b", _resp(set_b)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
-    assert results[0].artist == "Shared"
-    assert results[0].score == 2.0
-    assert {t.artist for t in results[1:]} == {"OnlyA", "OnlyB"}
-    for t in results[1:]:
-        assert t.score == 1.0
+    assert len(results) == 5
+    assert {t.artist for t in results} == {f"A{i}" for i in range(5)}
 
 
-async def test_tiebreak_lower_referencecount_wins(_enabled):
-    """Among count=1 candidates: lower referenceCount (less generic) first."""
+async def test_window_seed_at_end_returns_only_before(_enabled):
+    """Seed as last track → window has 5 tracks before, none after."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "generic", "artist": "Generic", "title": "Hit", "referenceCount": 50},
-            {"slug": "rare", "artist": "Rare", "title": "Cut", "referenceCount": 5},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [
+        {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}", "referenceCount": 1}
+        for i in range(10)
+    ]
+    tracks.append({"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                   "referenceCount": 50})
+    audio = _make_audiostream(tracks)
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert len(results) == 5
+    assert {t.artist for t in results} == {f"A{i}" for i in range(5, 10)}
 
-    assert [t.artist for t in results] == ["Rare", "Generic"]
 
-
-async def test_seed_filtered_out_of_candidates(_enabled):
-    """If the seed slug appears in the tracklist, it must NOT be returned."""
+async def test_window_seed_not_in_tracklist_returns_empty(_enabled):
+    """Playlist doesn't contain the seed slug → that playlist contributes 0."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "seed-slug", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 10},
-            {"slug": "other", "artist": "Other", "title": "T", "referenceCount": 5},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [
+        {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}", "referenceCount": 1}
+        for i in range(5)
+    ]
+    audio = _make_audiostream(tracks)
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
-    assert "seed-slug" not in {t.sourceUrl.rsplit("/", 1)[-1] for t in results}
-    assert [t.artist for t in results] == ["Other"]
+    assert results == []
 
 
-async def test_seed_filtered_when_present_multiple_times(_enabled):
-    """A DJ playing the same seed twice — all instances must drop."""
+async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
+    """Seed at indices 3 and 12 — anchor on 3, window [0..8]; ALL seed
+    instances filtered."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "seed-slug", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 10},
-            {"slug": "seed-slug", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 10},
-            {"slug": "good", "artist": "Good", "title": "T", "referenceCount": 5},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = []
+    for i in range(15):
+        if i in (3, 12):
+            tracks.append({"slug": "seed", "artist": "Nina Kraviz",
+                           "title": "Tarde", "referenceCount": 50})
+        else:
+            tracks.append({"slug": f"t-{i}", "artist": f"A{i}",
+                           "title": f"T{i}", "referenceCount": 1})
+    audio = _make_audiostream(tracks)
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
-    assert [t.artist for t in results] == ["Good"]
+    artists = {t.artist for t in results}
+    # Window is tracks[0..8] (anchor=3 ± 5 = [-2..8] clamped to [0..8])
+    # excluding seed at index 3.
+    expected = {f"A{i}" for i in (0, 1, 2, 4, 5, 6, 7, 8)}
+    assert artists == expected
+    assert "Nina Kraviz" not in artists
 
 
 async def test_track_with_null_slug_skipped(_enabled):
-    """Detection entries missing a slug are silently dropped."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": None, "artist": "NoSlug", "title": "Mystery", "referenceCount": 1},
-            {"slug": "valid", "artist": "Valid", "title": "T", "referenceCount": 1},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [
+        {"slug": None, "artist": "NoSlug", "title": "X", "referenceCount": 1},
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 50},
+        {"slug": "valid", "artist": "Valid", "title": "T", "referenceCount": 1},
+    ]
+    audio = _make_audiostream(tracks)
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert {t.artist for t in results} == {"Valid"}
 
-    assert [t.artist for t in results] == ["Valid"]
 
-
-async def test_audiostream_failure_is_soft(_enabled, capsys):
-    """A failing audiostream fetch contributes nothing; partial pool returned."""
+async def test_audiostream_uses_latest_non_empty_process(_enabled):
+    """Latest endDate process is empty → fall back to earlier non-empty."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-b",
-            }]
-        }
-    }
-    set_b_audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "x", "artist": "X", "title": "T", "referenceCount": 1},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = {"result": {"detectionProcesses": [
+        {
+            "endDate": "2024-03-03T08:00:00Z",
+            "detectionProcessMusicTracks": [
+                {"slug": "before", "artist": "B", "title": "T",
+                 "referenceCount": 1},
+                {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                 "referenceCount": 50},
+                {"slug": "after", "artist": "A", "title": "T",
+                 "referenceCount": 1},
+            ],
+        },
+        {
+            "endDate": "2025-10-08T08:00:00Z",
+            "detectionProcessMusicTracks": [],
+        },
+    ]}}
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", httpx.ConnectError("set-a down")),
-        ("/audiostreams/set-b", _resp(set_b_audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
-    assert [t.artist for t in results] == ["X"]
-    assert "[Trackidnet]" in capsys.readouterr().out
+    assert {t.artist for t in results} == {"B", "A"}
 
 
 async def test_empty_detection_processes_returns_empty_pool(_enabled):
-    """Audiostream with no detectionProcesses contributes 0 candidates."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
     audio = {"result": {"detectionProcesses": []}}
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
 
 
-async def test_limit_caps_returned_candidates(_enabled):
-    """30 candidates from the pool, limit=5 → 5 returned."""
+# ── soft-fail per detail fetch ───────────────────────────────────────────
+
+async def test_one_detail_failing_does_not_kill_others(_enabled, capsys):
+    """One playlist's detail fetch raises; the others still contribute."""
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}",
-             "referenceCount": i + 1}
-            for i in range(30)
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([
+        ("set-a", "2025-03-01T00:00:00Z"),
+        ("set-b", "2025-02-01T00:00:00Z"),
+    ])
+    set_b = _make_audiostream([
+        {"slug": "before", "artist": "B", "title": "T", "referenceCount": 1},
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+         "referenceCount": 50},
+    ])
+    def _matcher(url, params):
+        return url.endswith("/audiostreams/set-a")
+    def _matcher_b(url, params):
+        return url.endswith("/audiostreams/set-b")
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
-    ]
-    client = _ScriptedClient(rules)
-    with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde", limit=5)
-
-    assert len(results) == 5
-
-
-async def test_min_max_dedup_when_only_one_play(_enabled):
-    """Track played in one set: min == max, so we fetch only one audiostream."""
-    adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed-slug", "playCount": 1,
-                "minCreatedSlug": "single-set", "maxCreatedSlug": "single-set",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "neighbour", "artist": "N", "title": "T", "referenceCount": 1},
-        ],
-    }]}}
-    rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/single-set", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_matcher, httpx.ConnectError("set-a down")),
+        (_matcher_b, _resp(set_b)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-
-    audiostream_calls = [c for c in client.calls if "/audiostreams/" in c]
-    assert len(audiostream_calls) == 1
-    assert results[0].score == 1.0
+    assert {t.artist for t in results} == {"B"}
+    assert "[Trackidnet] audiostream set-a failed" in capsys.readouterr().out
 
 
-# ── TrackMeta mapping ─────────────────────────────────────────────────────
+# ── concurrency cap ──────────────────────────────────────────────────────
+
+async def test_detail_concurrency_capped_at_5(_enabled):
+    """With 15 playlists to fetch, never more than DETAIL_CONCURRENCY=5
+    requests are in flight at once."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    pairs = [(f"slug-{i}", f"2026-05-{i+1:02d}T00:00:00Z") for i in range(15)]
+    playlists = _make_playlists_response(pairs)
+    audio_payload = _make_audiostream([
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+         "referenceCount": 50},
+        {"slug": "x", "artist": "X", "title": "T", "referenceCount": 1},
+    ])
+
+    import asyncio as _asyncio
+
+    in_flight = 0
+    peak = 0
+
+    class _SlowClient(_ScriptedClient):
+        async def get(self, url, *args, **kwargs):
+            nonlocal in_flight, peak
+            params = kwargs.get("params") or {}
+            if "/audiostreams/" in url:
+                in_flight += 1
+                peak = max(peak, in_flight)
+                # Yield control so other concurrent gets accumulate
+                await _asyncio.sleep(0.01)
+                in_flight -= 1
+            return await super().get(url, *args, **kwargs)
+
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio_payload)),
+    ]
+    client = _SlowClient(rules)
+    with _patch_client(client):
+        await adapter.find_similar("Nina Kraviz - Tarde")
+    assert peak <= 5, f"semaphore did not cap concurrency; peak in-flight = {peak}"
+
+
+# ── aggregation across playlists ─────────────────────────────────────────
+
+async def test_cooccurrence_higher_count_wins(_enabled):
+    """Track in 2 of 2 fetched playlists outranks tracks in 1 of 2."""
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([
+        ("set-a", "2025-02-01T00:00:00Z"),
+        ("set-b", "2025-01-01T00:00:00Z"),
+    ])
+    set_a = _make_audiostream([
+        {"slug": "shared", "artist": "Shared", "title": "T", "referenceCount": 50},
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 50},
+        {"slug": "only-a", "artist": "OnlyA", "title": "X", "referenceCount": 1},
+    ])
+    set_b = _make_audiostream([
+        {"slug": "shared", "artist": "Shared", "title": "T", "referenceCount": 50},
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 50},
+        {"slug": "only-b", "artist": "OnlyB", "title": "Y", "referenceCount": 1},
+    ])
+    def _a(url, p): return url.endswith("/audiostreams/set-a")
+    def _b(url, p): return url.endswith("/audiostreams/set-b")
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_a, _resp(set_a)),
+        (_b, _resp(set_b)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert results[0].artist == "Shared"
+    assert results[0].score == 2.0
+    assert {t.artist for t in results[1:]} == {"OnlyA", "OnlyB"}
+
+
+async def test_tiebreak_lower_referencecount_wins(_enabled):
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = _make_audiostream([
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 50},
+        {"slug": "generic", "artist": "Generic", "title": "Hit", "referenceCount": 50},
+        {"slug": "rare", "artist": "Rare", "title": "Cut", "referenceCount": 5},
+    ])
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde")
+    assert [t.artist for t in results] == ["Rare", "Generic"]
+
+
+async def test_limit_caps_returned_candidates(_enabled):
+    adapter = TrackidnetAdapter()
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    tracks = [
+        {"slug": f"t-{i}", "artist": f"A{i}", "title": f"T{i}",
+         "referenceCount": i + 1}
+        for i in range(8)
+    ]
+    tracks.insert(4, {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                      "referenceCount": 50})
+    audio = _make_audiostream(tracks)
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
+    ]
+    client = _ScriptedClient(rules)
+    with _patch_client(client):
+        results = await adapter.find_similar("Nina Kraviz - Tarde", limit=3)
+    assert len(results) == 3
+
 
 async def test_trackmeta_fields_populated_correctly(_enabled):
     adapter = TrackidnetAdapter()
-    search = {
-        "result": {
-            "musicTracks": [{
-                "id": 1, "artist": "Nina Kraviz", "title": "Tarde",
-                "slug": "seed", "playCount": 2,
-                "minCreatedSlug": "set-a", "maxCreatedSlug": "set-a",
-            }]
-        }
-    }
-    audio = {"result": {"detectionProcesses": [{
-        "endDate": "2025-01-01T00:00:00Z",
-        "detectionProcessMusicTracks": [
-            {"slug": "heliobolus-forest-hunter", "artist": "Heliobolus",
-             "title": "Forest Hunter", "label": "Amniote Editions",
-             "referenceCount": 1},
-        ],
-    }]}}
+    search = _make_seed_search(seed_slug="seed")
+    playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    audio = _make_audiostream([
+        {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde", "referenceCount": 50},
+        {"slug": "heliobolus-forest-hunter", "artist": "Heliobolus",
+         "title": "Forest Hunter", "label": "Amniote Editions",
+         "referenceCount": 1},
+    ])
     rules = [
-        ("/musictracks", _resp(search)),
-        ("/audiostreams/set-a", _resp(audio)),
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp(playlists)),
+        (_is_audiostream_detail, _resp(audio)),
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
         (track,) = await adapter.find_similar("Nina Kraviz - Tarde")
-
     assert track.title == "Forest Hunter"
     assert track.artist == "Heliobolus"
     assert track.source == "trackidnet"

@@ -1,23 +1,40 @@
 """
-trackid.net JSON API adapter.
+trackid.net JSON API adapter — playlists-list architecture.
 
 trackid.net is a tracklist-detection site (their bots auto-identify tracks
 in DJ sets uploaded to SoundCloud / Mixcloud / YouTube). Their data is
 exposed via /api/public/... endpoints — JSON, no auth required, no
 Cloudflare challenges on these paths.
 
-Flow for a seed track:
-  1. /musictracks?keywords=<artist track> → pick the best matching seed
-     (exact-artist match with highest playCount; fall back to first
-     nonzero-playCount entry).
-  2. The seed record carries minCreatedSlug + maxCreatedSlug — the earliest
-     and latest known DJ-set audiostreams that played it.
-  3. /audiostreams/<slug> → tracklist for each of those sets. Use the most
-     recent detectionProcess (sets get reprocessed; later runs supersede).
-  4. Aggregate every non-seed track across both tracklists by slug.
-     Co-occurrence count = number of fetched sets the candidate appears in
-     (1 or 2). Sort by count desc, then by referenceCount asc — tracks
-     that travel with the seed but aren't globally ubiquitous rank first.
+Three endpoints used:
+  GET /api/public/musictracks?keywords=<q>             — search/seed lookup
+  GET /api/public/audiostreams?musicTrackId=<id>       — list ALL playlists
+                                                          where a track played
+                                                          (lightweight, no
+                                                          tracklists in payload)
+  GET /api/public/audiostreams/<slug>                  — full tracklist for
+                                                          one playlist
+
+Flow per seed:
+  1. Search → pick best catalogue entry (exact-artist match w/ highest
+     playCount; fall back to first nonzero-playCount). Capture the seed
+     `id` (numeric, used by step 2) and `slug` (string, used by step 4
+     to anchor the window).
+  2. List playlists for the seed id. Sort by `addedOn` desc and take the
+     first MAX_PLAYLISTS — fresher sets are more representative of the
+     track's current DJ context.
+  3. Fetch each playlist's full tracklist concurrently with a
+     DETAIL_CONCURRENCY-bound semaphore. Soft-fail per fetch.
+  4. For each playlist: pick the most recent NON-EMPTY detection process
+     by endDate (sets get reprocessed; empty reprocesses can mask older
+     real data). Find the seed track in the tracklist by slug; take the
+     ±WINDOW tracks around the first occurrence (5 before, 5 after),
+     excluding every instance of the seed slug.
+  5. Aggregate every non-seed track across all extracted windows by slug.
+     Co-occurrence count = number of playlists the candidate appears in.
+     Sort by count desc, then `referenceCount` asc — globally less-generic
+     tracks win the tiebreak among equal counts.
+  6. Map to TrackMeta and return up to `limit`.
 
 Soft-degrades: any HTTP error, JSON parse error, or missing seed returns [].
 Never raises into the caller (per python-adapter-pattern).
@@ -38,6 +55,10 @@ USER_AGENT = (
 )
 TIMEOUT_SECONDS = 8.0
 SEARCH_PAGE_SIZE = 20
+PLAYLISTS_PAGE_SIZE = 20
+WINDOW = 5
+MAX_PLAYLISTS = 15
+DETAIL_CONCURRENCY = 5
 DEFAULT_LIMIT = 50
 
 
@@ -56,22 +77,26 @@ class TrackidnetAdapter(AbstractAdapter):
 
         async with httpx.AsyncClient(
             timeout=TIMEOUT_SECONDS,
-            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+                "Referer": "https://trackid.net/",
+            },
         ) as client:
             seed = await _find_seed_track(client, artist, track)
-            if not seed:
+            if not seed or seed.get("id") is None:
                 return []
 
-            audiostream_slugs = _collect_audiostream_slugs(seed)
-            if not audiostream_slugs:
+            playlist_slugs = await _list_playlists(client, seed["id"])
+            if not playlist_slugs:
                 return []
 
-            tracklists = await _fetch_tracklists(client, audiostream_slugs)
+            tracklists = await _fetch_tracklists(client, playlist_slugs)
 
         seed_slug = seed.get("slug") or ""
         coocc: dict[str, dict[str, Any]] = {}
         for audiostream in tracklists:
-            for tr in _extract_tracks(audiostream, seed_slug):
+            for tr in _extract_window(audiostream, seed_slug, WINDOW):
                 slug = tr.get("slug")
                 if not slug:
                     continue
@@ -81,9 +106,6 @@ class TrackidnetAdapter(AbstractAdapter):
                 else:
                     rec["count"] += 1
 
-        # Higher co-occurrence first; among ties, prefer lower
-        # referenceCount (less globally generic) — tracks with no
-        # referenceCount at all rank last via the 9999 sentinel.
         ranked = sorted(
             coocc.values(),
             key=lambda r: (-r["count"], r["track"].get("referenceCount") or 9999),
@@ -119,10 +141,13 @@ async def _find_seed_track(
     fall back to the first entry that has any plays at all. Tracks with
     playCount=0 carry no co-occurrence signal and are skipped.
 
-    Caveat (documented in commit message and in the spec): when a query
-    matches both an original and a remix, the picker takes the higher
-    playCount. If the user wanted the remix but the original is more
-    played, candidates will be drawn from the original's sets.
+    Returns the full record so callers can read both `id` (used to list
+    playlists) and `slug` (used to anchor the window inside each tracklist).
+
+    Caveat: when a query matches both an original and a remix, the picker
+    takes the higher playCount. If the user wanted the remix but the
+    original is more played, candidates will be drawn from the original's
+    sets. Acceptable for v1.
     """
     keywords = f"{artist} {track}".strip()
     try:
@@ -162,53 +187,123 @@ async def _find_seed_track(
     return None
 
 
-def _collect_audiostream_slugs(seed: dict) -> list[str]:
-    """Earliest and latest known sets for this seed; deduplicate when the
-    track has only one play (min == max)."""
+async def _list_playlists(
+    client: httpx.AsyncClient, music_track_id: int
+) -> list[str]:
+    """Return up to MAX_PLAYLISTS audiostream slugs for the given music
+    track id, sorted by addedOn descending (freshest first).
+
+    The /audiostreams?musicTrackId= endpoint returns lightweight metadata
+    only (no tracklists in the payload), so this call is cheap. We don't
+    paginate — the first page (pageSize=20) is enough; if a track has more
+    than 20 known sets, the freshest 20 are sufficient context for
+    co-occurrence and we cap at 15 of those anyway.
+    """
+    try:
+        resp = await client.get(
+            f"{API_BASE}/audiostreams",
+            params={
+                "musicTrackId": music_track_id,
+                "pageSize": PLAYLISTS_PAGE_SIZE,
+                "currentPage": 0,
+                "sortField": "",
+                "sortDirection": "",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        print(f"[Trackidnet] playlists list failed for {music_track_id}: {e}")
+        return []
+
+    streams = (data.get("result") or {}).get("audiostreams") or []
+    if not streams:
+        return []
+
+    # Defensive sort — the API tends to return addedOn desc but we
+    # don't want to depend on that contract.
+    streams_sorted = sorted(
+        streams, key=lambda s: s.get("addedOn") or "", reverse=True
+    )
     slugs: list[str] = []
-    for key in ("minCreatedSlug", "maxCreatedSlug"):
-        s = seed.get(key)
-        if s and s not in slugs:
-            slugs.append(s)
+    for s in streams_sorted:
+        slug = s.get("slug")
+        if slug and slug not in slugs:
+            slugs.append(slug)
+        if len(slugs) >= MAX_PLAYLISTS:
+            break
     return slugs
 
 
 async def _fetch_tracklists(
     client: httpx.AsyncClient, slugs: list[str]
 ) -> list[dict]:
-    """Fetch each audiostream concurrently. Failed fetches drop out silently."""
+    """Fetch each /audiostreams/<slug> concurrently, bounded by a
+    semaphore so we don't open MAX_PLAYLISTS sockets at once and look
+    like a scraper from trackid's side. Failed fetches drop out silently.
+    """
+    sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
+
     async def _one(slug: str) -> dict | None:
-        try:
-            resp = await client.get(f"{API_BASE}/audiostreams/{slug}")
-            resp.raise_for_status()
-            return (resp.json() or {}).get("result")
-        except (httpx.HTTPError, ValueError) as e:
-            print(f"[Trackidnet] audiostream {slug} failed: {e}")
-            return None
+        async with sem:
+            try:
+                resp = await client.get(f"{API_BASE}/audiostreams/{slug}")
+                resp.raise_for_status()
+                return (resp.json() or {}).get("result")
+            except (httpx.HTTPError, ValueError) as e:
+                print(f"[Trackidnet] audiostream {slug} failed: {e}")
+                return None
 
     results = await asyncio.gather(*(_one(s) for s in slugs))
     return [r for r in results if r is not None]
 
 
-def _extract_tracks(audiostream: dict, seed_slug: str) -> list[dict]:
-    """Every track from the most-recent detection process, with the seed
-    filtered out (matched by slug, all instances if it appears more than once).
+def _extract_window(
+    audiostream: dict, seed_slug: str, window: int
+) -> list[dict]:
+    """Return up to `window` tracks before and `window` after the first
+    occurrence of `seed_slug` in this playlist's tracklist, excluding
+    every instance of the seed itself.
 
-    Sets get reprocessed over time; later runs may add or correct tracks.
-    Mixing tracks across processes would double-count, so we use only the
-    process with the latest endDate. ISO-8601 timestamps sort correctly
-    lexicographically.
+    Process selection: we use the latest NON-EMPTY detection process by
+    endDate. Sets get reprocessed over time; later runs may add or
+    correct tracks, but in the wild a reprocess can finish with 0 detected
+    tracks (failed rerun, audio quality regression, abort) while an
+    earlier process holds the real data. Strict "latest by endDate"
+    silently loses that data; "latest non-empty" recovers it without
+    reintroducing cross-process double-counting (we still use exactly
+    one process per playlist).
+
+    Edge cases:
+      - Seed not found in tracklist → []
+      - Seed at position 0 → only `window` tracks after (no before)
+      - Seed at last position → only `window` tracks before (no after)
+      - Seed appears multiple times → anchor on first occurrence; all
+        instances of the seed slug are filtered from the returned window
     """
     processes = audiostream.get("detectionProcesses") or []
-    if not processes:
+    non_empty = [
+        p for p in processes
+        if (p.get("detectionProcessMusicTracks") or [])
+    ]
+    if not non_empty:
         return []
 
-    latest = max(processes, key=lambda p: p.get("endDate") or "")
+    latest = max(non_empty, key=lambda p: p.get("endDate") or "")
     tracks = latest.get("detectionProcessMusicTracks") or []
     if not tracks:
         return []
 
-    return [t for t in tracks if t.get("slug") != seed_slug]
+    seed_idx = next(
+        (i for i, t in enumerate(tracks) if t.get("slug") == seed_slug),
+        None,
+    )
+    if seed_idx is None:
+        return []
+
+    start = max(0, seed_idx - window)
+    end = min(len(tracks), seed_idx + window + 1)
+    return [t for t in tracks[start:end] if t.get("slug") != seed_slug]
 
 
 def _to_track_meta(track: dict, score: float) -> TrackMeta:

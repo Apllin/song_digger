@@ -23,10 +23,13 @@ _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 
 BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
-# Trackidnet cold-cache scrape budget is 8s internally; warm cache is sub-second.
-# Hard-cap slightly above the budget so a slow scrape doesn't stall /similar but
-# warm hits aren't penalized.
-TRACKIDNET_TIMEOUT = 9.0
+# Trackidnet does up to 17 sequential-batched HTTP calls per seed (1 search +
+# 1 playlists-list + up to 15 detail fetches with Semaphore(5) inside the
+# adapter — see ADR-0014). Cold-path wall clock is ~8-15s when trackid is
+# responsive, longer when it's slow. Cap above the realistic cold path so we
+# don't silently drop trackid contributions on every fresh search, but still
+# bounded so one slow seed doesn't stall the /similar fan-out.
+TRACKIDNET_TIMEOUT = 25.0
 
 
 async def _bandcamp_safe(query: str) -> list[TrackMeta]:
