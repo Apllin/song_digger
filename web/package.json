@@ -10,8 +10,8 @@
     "lint": "pnpm run with-env eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "test:speed": "vitest run --config vitest.speed.config.ts",
+    "test:smoke": "pnpm run with-env vitest run --config vitest.smoke.config.ts",
+    "test:speed": "pnpm run with-env vitest run --config vitest.speed.config.ts",
     "test:all": "pnpm test && pnpm test:smoke && pnpm test:speed"
   },
   "dependencies": {
