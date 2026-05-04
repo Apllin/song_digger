@@ -60,10 +60,20 @@ model Favorite {
 
 model DislikedTrack {
   id        String   @id @default(cuid())
-  sourceUrl String   @unique
-  title     String
+  // Normalized identity keys for matching against candidate tracks.
+  // Same normalization as web/lib/aggregator.ts:normalizeArtist /
+  // normalizeTitle (NFKD diacritic strip + lowercase + drop
+  // non-alphanumerics for artist; whitelisted suffix-strip + lowercase
+  // for title).
+  artistKey String
+  titleKey  String
+  // Originals retained for UI display.
   artist    String
+  title     String
   createdAt DateTime @default(now())
+
+  @@unique([artistKey, titleKey])
+  @@index([artistKey])
 }
 
 model Playlist {

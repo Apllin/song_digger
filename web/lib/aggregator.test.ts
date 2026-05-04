@@ -5,7 +5,6 @@ import {
   normalizeTitle,
   normalizeArtist,
   type SearchFilters,
-  type TrackFeedback,
 } from "./aggregator";
 import type { SourceList, TrackMeta } from "./python-client";
 
@@ -170,55 +169,6 @@ describe("aggregateTracks — basic pipeline", () => {
       noFilters,
     );
     expect(result[0].title).toBe("Dual");
-  });
-});
-
-describe("aggregateTracks — feedback", () => {
-  it("disliked-artist penalty pushes those tracks down", () => {
-    // Both at rank 1 in their source → tied RRF score. Penalty flips it.
-    const a = makeTrack({ sourceUrl: "u1", artist: "Hated" });
-    const b = makeTrack({ sourceUrl: "u2", artist: "Loved" });
-    const feedback: TrackFeedback = { disliked: [{ artist: "Hated" }] };
-
-    const without = aggregateTracks(
-      [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {},
-    );
-    const with_ = aggregateTracks(
-      [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {}, feedback,
-    );
-
-    // Without feedback the order is RRF-tied → first-inserted wins (Hated).
-    expect(without[0].artist).toBe("Hated");
-    // With feedback the dislike penalty drops Hated below Loved.
-    expect(with_[0].artist).toBe("Loved");
-  });
-
-  it("normalizes artist names when applying disliked penalty (case + punctuation)", () => {
-    const a = makeTrack({ sourceUrl: "u1", artist: "DJ-Stingray!" });
-    const b = makeTrack({ sourceUrl: "u2", artist: "Other" });
-    const feedback: TrackFeedback = {
-      disliked: [{ artist: "dj stingray" }],
-    };
-
-    const result = aggregateTracks(
-      [listOf("cosine_club", a), listOf("youtube_music", b)],
-      {}, feedback,
-    );
-    expect(result[0].artist).toBe("Other");
-  });
-
-  it("undefined feedback behaves identically to no feedback", () => {
-    const tracks = [
-      makeTrack({ sourceUrl: "u1", artist: "A", bpm: 138 }),
-      makeTrack({ sourceUrl: "u2", artist: "B", bpm: 142 }),
-    ];
-    const lists = [listOf("cosine_club", ...tracks)];
-    const a = aggregateTracks(lists, {});
-    const b = aggregateTracks(lists, {}, undefined);
-    expect(a.map((t) => t.sourceUrl)).toEqual(b.map((t) => t.sourceUrl));
-    expect(a.map((t) => t.score)).toEqual(b.map((t) => t.score));
   });
 });
 

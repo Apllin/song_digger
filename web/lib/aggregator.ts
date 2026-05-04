@@ -6,20 +6,14 @@ export interface SearchFilters {
   genre?: string;
 }
 
-export interface TrackFeedback {
-  disliked: Array<{ artist: string }>;
-}
-
 // ── RRF constants ────────────────────────────────────────────────────────────
 // Cormack 2009 default. RRF score = Σ 1 / (k + rank). Larger k flattens the
 // curve (rank-1 vs rank-2 contribute more equally); smaller k makes the head
 // sharper.
 const RRF_K = 60;
 
-// Post-RRF nudges. RRF scores are tiny (~0.016 per top-rank appearance), so
-// these constants are calibrated to that scale, not the old [0,1] weighted-sum
-// scale. Tune via eval.
-const DISLIKED_ARTIST_PENALTY = 0.012;
+// Post-RRF nudge. RRF scores are tiny (~0.016 per top-rank appearance), so
+// EMBED_BONUS is calibrated to that scale.
 const EMBED_BONUS = 0.0008;
 
 export interface FusedCandidate extends TrackMeta {
@@ -146,26 +140,18 @@ function diversifyArtists(
 export function aggregateTracks(
   sourceLists: SourceList[],
   _filters: SearchFilters,
-  feedback?: TrackFeedback,
 ): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 
-  // 2. Post-RRF nudges: dislike penalty, embed bonus.
-  const dislikedArtists = feedback?.disliked.length
-    ? new Set(feedback.disliked.map((t) => normalizeArtist(t.artist)))
-    : undefined;
-
+  // 2. Embed bonus — break ties in favor of inline-playable tracks.
   for (const t of fused) {
-    if (dislikedArtists?.has(normalizeArtist(t.artist))) {
-      t.rrfScore -= DISLIKED_ARTIST_PENALTY;
-    }
     if (t.embedUrl) {
       t.rrfScore += EMBED_BONUS;
     }
   }
 
-  // 3. Re-sort after nudges. Surface the rrfScore on `score` so existing
+  // 3. Re-sort after the bonus. Surface rrfScore on `score` so existing
   //    consumers (DB persistence, UI) keep working.
   fused.sort((a, b) => b.rrfScore - a.rrfScore);
   for (const t of fused) {

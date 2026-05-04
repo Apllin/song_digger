@@ -9,6 +9,7 @@ import { TrackCard } from "@/components/TrackCard";
 import { usePlayer, type PlayerTrack } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
 import { favoritesAtom } from "@/lib/atoms/favorites";
+import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 90_000;
@@ -232,19 +233,25 @@ function HomeContent() {
       .catch(console.error);
 
     fetch("/api/dislikes")
-      .then((r) => (r.ok ? (r.json() as Promise<string[]>) : null))
-      .then((urls) => {
-        if (!urls) return;
-        setFav((prev) => ({ ...prev, dislikedUrls: new Set(urls) }));
+      .then((r) =>
+        r.ok ? (r.json() as Promise<{ artistKey: string; titleKey: string }[]>) : null,
+      )
+      .then((rows) => {
+        if (!rows) return;
+        setFav((prev) => ({
+          ...prev,
+          dislikedKeys: new Set(rows.map((d) => `${d.artistKey}|${d.titleKey}`)),
+        }));
       })
       .catch(console.error);
   }, [setFav]);
 
   const handleDislike = useCallback(
     async (track: { sourceUrl: string; title: string; artist: string }) => {
+      const composite = `${normalizeArtist(track.artist)}|${normalizeTitle(track.title)}`;
       setFav((prev) => ({
         ...prev,
-        dislikedUrls: new Set([...prev.dislikedUrls, track.sourceUrl]),
+        dislikedKeys: new Set([...prev.dislikedKeys, composite]),
       }));
       if (player.track?.sourceUrl === track.sourceUrl) {
         player.close();
@@ -254,16 +261,15 @@ function HomeContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sourceUrl: track.sourceUrl,
-            title: track.title,
             artist: track.artist,
+            title: track.title,
           }),
         });
       } catch {
         setFav((prev) => {
-          const next = new Set(prev.dislikedUrls);
-          next.delete(track.sourceUrl);
-          return { ...prev, dislikedUrls: next };
+          const next = new Set(prev.dislikedKeys);
+          next.delete(composite);
+          return { ...prev, dislikedKeys: next };
         });
       }
     },
@@ -332,7 +338,9 @@ function HomeContent() {
         {/* Results */}
         {tracks.length > 0 && (() => {
           const visibleTracks = tracks.filter(
-            (t) => !fav.dislikedUrls.has(t.sourceUrl) && !fav.ids.has(t.id)
+            (t) =>
+              !fav.dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) &&
+              !fav.ids.has(t.id)
           );
           const shown = visibleTracks.slice(0, displayCount);
 

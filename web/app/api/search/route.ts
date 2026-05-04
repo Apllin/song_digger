@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
-import { aggregateTracks, type FusedCandidate, type SearchFilters, type TrackFeedback } from "@/lib/aggregator";
+import { aggregateTracks, normalizeArtist, normalizeTitle, type FusedCandidate, type SearchFilters } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
 import type { SimilarResponse, SourceList, TrackMeta } from "@/lib/python-client";
 
@@ -51,11 +51,6 @@ const SearchRequestSchema = z.object({
       genre: z.string().optional(),
     })
     .optional(),
-  feedback: z
-    .object({
-      disliked: z.array(z.object({ artist: z.string() })),
-    })
-    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -69,14 +64,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { input, filters, feedback } = parsed.data;
+  const { input, filters } = parsed.data;
   const { artist, track } = parseQuery(input);
 
   const searchQuery = await prisma.searchQuery.create({
     data: { input, status: "running", filters: filters ?? undefined },
   });
 
-  runSearch(searchQuery.id, input, artist, track, filters ?? {}, feedback).catch((err) => {
+  runSearch(searchQuery.id, input, artist, track, filters ?? {}).catch((err) => {
     console.error(`[Search] background error for ${searchQuery.id}:`, err);
     prisma.searchQuery
       .update({ where: { id: searchQuery.id }, data: { status: "error" } })
@@ -288,7 +283,6 @@ async function runSearch(
   artist: string,
   track: string | null,
   filters: SearchFilters,
-  feedback: TrackFeedback | undefined,
 ) {
   // ── Fetch from Python — fan out to all enabled adapters in /similar. ─────
   // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
@@ -311,17 +305,34 @@ async function runSearch(
     return;
   }
 
+  // Server-side dislike filter: drop tracks whose (artistKey, titleKey)
+  // identity is in DislikedTrack before fusion. Filtering at the source-list
+  // level (not post-fusion) means a disliked track from one source can't pull
+  // in RRF contribution from another source's copy.
+  const dislikes = await prisma.dislikedTrack.findMany({
+    select: { artistKey: true, titleKey: true },
+  });
+  const dislikedKeys = new Set(
+    dislikes.map((d) => `${d.artistKey}|${d.titleKey}`),
+  );
+  const filteredSourceLists: SourceList[] = pythonResult.source_lists.map((sl) => ({
+    source: sl.source,
+    tracks: sl.tracks.filter(
+      (t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`),
+    ),
+  }));
+
   // Hydrate each source list's tracks from cache before fusion so RRF can
   // merge metadata across sources with the freshest values available.
-  const allTracks = pythonResult.source_lists.flatMap((sl) => sl.tracks);
+  const allTracks = filteredSourceLists.flatMap((sl) => sl.tracks);
   const hydratedFlat = await hydrateFromCache(allTracks);
   const hydratedByUrl = new Map(hydratedFlat.map((t) => [t.sourceUrl, t]));
-  const hydratedLists: SourceList[] = pythonResult.source_lists.map((sl) => ({
+  const hydratedLists: SourceList[] = filteredSourceLists.map((sl) => ({
     source: sl.source,
     tracks: sl.tracks.map((t) => hydratedByUrl.get(t.sourceUrl) ?? t),
   }));
 
-  const aggregated = aggregateTracks(hydratedLists, filters, feedback);
+  const aggregated = aggregateTracks(hydratedLists, filters);
   const trackIdsByUrl = await saveTracks(searchId, aggregated);
 
   // Fire-and-forget feature extraction. Failures must not block status="done"
