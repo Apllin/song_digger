@@ -45,7 +45,7 @@ async def test_find_by_artist_and_track_survives_cosine_dns_error():
         patch("app.api.routes.similar._bandcamp_safe", new_callable=AsyncMock,
               return_value=[]),
     ):
-        source_lists, _source_artist, _label, _genre = await _find_by_artist_and_track(
+        source_lists, _source_artist = await _find_by_artist_and_track(
             "Surgeon", "Flatliner", limit=5
         )
 
@@ -65,7 +65,7 @@ async def test_find_by_artist_only_survives_cosine_dns_error():
         patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
               return_value=[]),
     ):
-        source_lists, _source_artist, _label, _genre = await _find_by_artist_only(
+        source_lists, _source_artist = await _find_by_artist_only(
             "Oscar Mulero", limit=5
         )
 

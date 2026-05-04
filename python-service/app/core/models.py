@@ -31,5 +31,3 @@ class SourceList(BaseModel):
 class SimilarResponse(BaseModel):
     source_lists: list[SourceList]
     source_artist: str | None = None
-    source_label: str | None = None
-    source_genre: str | None = None

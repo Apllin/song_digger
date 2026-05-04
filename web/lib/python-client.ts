@@ -28,8 +28,6 @@ export interface SourceList {
 export interface SimilarResponse {
   source_lists: SourceList[];
   source_artist: string | null;
-  source_label: string | null;
-  source_genre: string | null;
 }
 
 export async function fetchSimilarTracks(

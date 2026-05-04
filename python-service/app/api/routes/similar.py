@@ -1,7 +1,6 @@
 import re
 import asyncio
 import unicodedata
-from collections import Counter
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
 from app.adapters.youtube_music import YouTubeMusicAdapter
@@ -155,18 +154,6 @@ def _cosine_is_confident(cosine_tracks: list[TrackMeta]) -> bool:
     return bool(scores) and (sum(scores) / len(scores)) >= COSINE_CONFIDENCE_THRESHOLD
 
 
-def _extract_source_label_genre(
-    cosine_tracks: list[TrackMeta],
-) -> tuple[str | None, str | None]:
-    """Most-common label/genre across the top 5 Cosine results, parallel to _extract_source_meta."""
-    top = cosine_tracks[:5]
-    labels = [t.label for t in top if t.label]
-    genres = [t.genre for t in top if t.genre]
-    label = Counter(labels).most_common(1)[0][0] if labels else None
-    genre = Counter(genres).most_common(1)[0][0] if genres else None
-    return label, genre
-
-
 async def _empty_list() -> list:
     return []
 
@@ -185,7 +172,7 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
 
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
-) -> tuple[list[SourceList], str | None, str | None, str | None]:
+) -> tuple[list[SourceList], str | None]:
     full_query = f"{artist} - {track}"
     # Users sometimes type queries as "Track - Artist" instead of "Artist - Track".
     # Try both orderings for Cosine so we hit its catalog regardless of input order.
@@ -308,16 +295,12 @@ async def _find_by_artist_and_track(
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
     ]
 
-    # Derive label/genre from whichever cosine_tracks list we ended up using
-    # (after the reversed-query swap and the artist-fallback append).
-    source_label, source_genre = _extract_source_label_genre(cosine_tracks)
-
-    return source_lists, source_artist, source_label, source_genre
+    return source_lists, source_artist
 
 
 async def _find_by_artist_only(
     artist: str, limit: int
-) -> tuple[list[SourceList], str | None, str | None, str | None]:
+) -> tuple[list[SourceList], str | None]:
     """
     Artist-only mode: Cosine + YTM artist playlist + Yandex similar, all in parallel.
     If Cosine returns few results, seeds a second query with the artist's top track.
@@ -342,8 +325,6 @@ async def _find_by_artist_only(
             if isinstance(seeded, list) and len(seeded) > len(cosine_tracks):
                 cosine_tracks = seeded
 
-    source_label, source_genre = _extract_source_label_genre(cosine_tracks)
-
     def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
         return [t for t in ts if not _same_artist(t.artist, artist)]
 
@@ -353,23 +334,21 @@ async def _find_by_artist_only(
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
     ]
 
-    return source_lists, artist, source_label, source_genre
+    return source_lists, artist
 
 
 @router.post("/similar", response_model=SimilarResponse)
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
-        source_lists, source_artist, source_label, source_genre = await _find_by_artist_and_track(
+        source_lists, source_artist = await _find_by_artist_and_track(
             req.artist, req.track, req.limit_per_source
         )
     else:
-        source_lists, source_artist, source_label, source_genre = await _find_by_artist_only(
+        source_lists, source_artist = await _find_by_artist_only(
             req.artist, req.limit_per_source
         )
 
     return SimilarResponse(
         source_lists=source_lists,
         source_artist=source_artist,
-        source_label=source_label,
-        source_genre=source_genre,
     )

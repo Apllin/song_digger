@@ -2,12 +2,9 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
-import { aggregateTracks, normalizeArtist, normalizeTitle, type FusedCandidate } from "@/lib/aggregator";
+import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
-import type { SimilarResponse, SourceList, TrackMeta } from "@/lib/python-client";
-
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+import type { SourceList, TrackMeta } from "@/lib/python-client";
 
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
@@ -41,11 +38,6 @@ export async function POST(req: NextRequest) {
   return Response.json({ id: searchQuery.id, status: "running" });
 }
 
-/**
- * Batch-upsert tracks and their search-result links.
- * Uses prisma.$transaction([]) which sends all queries in ONE round-trip
- * instead of 2×N sequential round-trips.
- */
 const DB_CHUNK_SIZE = 50;
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -59,11 +51,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
 // the whole search. 30s leaves headroom for slow-DB days without masking real hangs.
 const DB_TXN_TIMEOUT_MS = 30_000;
 
-async function saveTracks(
-  searchId: string,
-  tracks: TrackMeta[],
-): Promise<Map<string, string>> {
-  if (!tracks.length) return new Map();
+async function saveTracks(searchId: string, tracks: TrackMeta[]): Promise<void> {
+  if (!tracks.length) return;
 
   const trackChunks = chunk(tracks, DB_CHUNK_SIZE);
 
@@ -121,112 +110,6 @@ async function saveTracks(
       )
     )
   );
-
-  // Returned for downstream consumers (feature extraction needs Track ids,
-  // which only exist after upsert resolves).
-  return urlToId;
-}
-
-/**
- * Fire-and-forget POST to python-service /features/extract.
- *
- * Builds the per-candidate payload from the post-aggregation list (so
- * `appearances` carries the source-list facts and `score` carries the RRF
- * value) and the just-persisted track-id map. Failures are caught and
- * logged — the search response must not depend on this call succeeding.
- */
-/**
- * Fire-and-forget POST to python-service /features/discogs-fill.
- *
- * Mirrors the C1 /features/extract pattern: never awaited, never thrown,
- * never blocks the user's search response. The Python handler eventually
- * fills `yearProximity` and `artistCorelease` on the same CandidateFeatures
- * rows that /features/extract created. If discogs-fill races ahead and
- * lands first, the UPDATE finds zero rows — the next search re-fires.
- *
- * Per ADR-0013, Discogs is rate-limited and slow; this is the asynchronous
- * leg of Stage C2.
- */
-function postDiscogsFill(
-  searchId: string,
-  aggregated: FusedCandidate[],
-  trackIdsByUrl: Map<string, string>,
-  pythonResult: SimilarResponse,
-): Promise<void> {
-  const candidates = aggregated.flatMap((t) => {
-    const trackId = trackIdsByUrl.get(t.sourceUrl);
-    if (!trackId) return [];
-    return [{
-      trackId,
-      artist: t.artist,
-      title: t.title,
-    }];
-  });
-
-  if (!candidates.length || !pythonResult.source_artist) {
-    return Promise.resolve();
-  }
-
-  return fetch(`${PYTHON_SERVICE_URL}/features/discogs-fill`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      search_query_id: searchId,
-      seed_artist: pythonResult.source_artist,
-      candidates,
-    }),
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.error("[Search] discogs-fill call failed:", err);
-    });
-}
-
-function postExtractFeatures(
-  searchId: string,
-  aggregated: FusedCandidate[],
-  trackIdsByUrl: Map<string, string>,
-  pythonResult: SimilarResponse,
-): Promise<void> {
-  const candidates = aggregated.flatMap((t) => {
-    const trackId = trackIdsByUrl.get(t.sourceUrl);
-    if (!trackId) return []; // saveTracks didn't persist — skip silently
-    const appearances = t.appearances ?? [];
-    return [{
-      trackId,
-      bpm: null,
-      key: null,
-      energy: null,
-      label: null,
-      genre: null,
-      embedUrl: t.embedUrl ?? null,
-      nSources: appearances.length,
-      topRank: appearances.length
-        ? Math.min(...appearances.map((a) => a.rank))
-        : 999,
-      rrfScore: t.score ?? t.rrfScore ?? 0,
-    }];
-  });
-
-  if (!candidates.length) return Promise.resolve();
-
-  return fetch(`${PYTHON_SERVICE_URL}/features/extract`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      search_query_id: searchId,
-      seed_bpm: null,
-      seed_key: null,
-      seed_energy: null,
-      seed_label: pythonResult.source_label,
-      seed_genre: pythonResult.source_genre,
-      candidates,
-    }),
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.error("[Search] feature extraction call failed:", err);
-    });
 }
 
 async function runSearch(
@@ -274,16 +157,7 @@ async function runSearch(
   }));
 
   const aggregated = aggregateTracks(filteredSourceLists);
-  const trackIdsByUrl = await saveTracks(searchId, aggregated);
-
-  // Fire-and-forget feature extraction. Failures must not block status="done"
-  // — features are observability for Stage D, not user-facing state.
-  void postExtractFeatures(searchId, aggregated, trackIdsByUrl, pythonResult);
-
-  // Stage C2: also fire the Discogs fill. Eventually consistent against the
-  // C1 rows /features/extract just created. Both calls are independent of
-  // the user-visible search response.
-  void postDiscogsFill(searchId, aggregated, trackIdsByUrl, pythonResult);
+  await saveTracks(searchId, aggregated);
 
   await prisma.searchQuery.update({
     where: { id: searchId },

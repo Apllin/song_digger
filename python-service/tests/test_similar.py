@@ -5,7 +5,6 @@ from app.api.routes.similar import (
     _normalize_title,
     _same_artist,
     _cosine_is_confident,
-    _extract_source_label_genre,
 )
 from app.core.models import TrackMeta
 
@@ -181,43 +180,3 @@ def test_cosine_is_confident_empty():
 def test_cosine_is_confident_no_scores():
     tracks = [make_track(score=None)]
     assert _cosine_is_confident(tracks) is False
-
-
-# ── _extract_source_label_genre ───────────────────────────────────────────────
-
-def test_extract_source_label_genre_returns_most_common():
-    tracks = [
-        make_track(label="Pole Group", genre="Techno"),
-        make_track(label="Pole Group", genre="Techno"),
-        make_track(label="Tresor", genre="Hard Techno"),
-    ]
-    label, genre = _extract_source_label_genre(tracks)
-    assert label == "Pole Group"
-    assert genre == "Techno"
-
-
-def test_extract_source_label_genre_ignores_missing():
-    tracks = [
-        make_track(label=None, genre=None),
-        make_track(label="Pole Group", genre=None),
-    ]
-    label, genre = _extract_source_label_genre(tracks)
-    assert label == "Pole Group"
-    assert genre is None
-
-
-def test_extract_source_label_genre_uses_top_5_only():
-    # 6th track shouldn't outvote the first 5.
-    tracks = [make_track(label="Pole Group") for _ in range(5)] + [
-        make_track(label="Tresor"),
-        make_track(label="Tresor"),
-        make_track(label="Tresor"),
-    ]
-    label, _ = _extract_source_label_genre(tracks)
-    assert label == "Pole Group"
-
-
-def test_extract_source_label_genre_empty():
-    label, genre = _extract_source_label_genre([])
-    assert label is None
-    assert genre is None

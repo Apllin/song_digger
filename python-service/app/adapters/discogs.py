@@ -4,13 +4,6 @@ from app.config import settings
 
 BASE_URL = "https://api.discogs.com"
 
-# Soft caps on Stage C2's discography traversal. Deep catalogues (Carl Cox,
-# Adam Beyer) can have hundreds of releases; we don't need all of them to
-# decide year proximity or capture the most-frequent collaborators, and the
-# extra requests just chew through Discogs' 60-req/min budget.
-MAX_DISCOGRAPHY_RELEASES = 100
-_DISCOGRAPHY_MAX_PAGES = 2
-
 
 class DiscogsAdapter:
     """
@@ -171,120 +164,6 @@ class DiscogsAdapter:
             "releases": releases,
             "pagination": data.get("pagination", {}),
         }
-
-    async def fetch_artist_discography(
-        self, artist_name: str
-    ) -> list[dict] | None:
-        """
-        Resolve an artist by name and return their release index.
-
-        1. /database/search?type=artist&q=<name> — pick the top hit.
-        2. /artists/<id>/releases (paginated, sorted by year asc) — flatten
-           into a single list capped at MAX_DISCOGRAPHY_RELEASES.
-        3. Map each entry to {releaseId, year, title, label}; drop entries
-           with no releaseId or no year (neither is useful for our features).
-
-        Soft-degrades like the rest of the adapter:
-          - missing token, search returns nothing → None
-          - any error during search/release fetch → None, [Discogs] log
-        Returning [] would be a valid signal "we checked, this artist has
-        nothing in Discogs" — but we only return [] when search succeeds and
-        the releases endpoint genuinely yields zero rows; we never cache an
-        error as "no data".
-        """
-        if not settings.discogs_token:
-            return None
-
-        try:
-            artists = await self.search_artist(artist_name, limit=1)
-        except Exception as e:
-            print(f"[Discogs] artist search error for {artist_name!r}: {e}")
-            return None
-        if not artists:
-            return None
-
-        artist_id = artists[0].get("id")
-        if artist_id is None:
-            return None
-
-        per_page = 100
-        merged: list[dict] = []
-        try:
-            for page in range(1, _DISCOGRAPHY_MAX_PAGES + 1):
-                resp = await self._get(
-                    f"/artists/{artist_id}/releases",
-                    params={
-                        "sort": "year",
-                        "sort_order": "asc",
-                        "page": page,
-                        "per_page": per_page,
-                    },
-                )
-                data = resp.json()
-                releases = data.get("releases", [])
-                for r in releases:
-                    rid = r.get("id")
-                    year = r.get("year")
-                    if rid is None or not year:
-                        continue
-                    merged.append({
-                        "releaseId": str(rid),
-                        "year": int(year),
-                        "title": r.get("title", ""),
-                        "label": r.get("label", ""),
-                    })
-                    if len(merged) >= MAX_DISCOGRAPHY_RELEASES:
-                        break
-                if len(merged) >= MAX_DISCOGRAPHY_RELEASES:
-                    break
-                pagination = data.get("pagination", {})
-                if page >= pagination.get("pages", 1):
-                    break
-        except Exception as e:
-            print(f"[Discogs] discography fetch error for {artist_name!r}: {e}")
-            return None
-
-        return merged
-
-    async def fetch_release_credits(
-        self, release_id: str
-    ) -> list[str] | None:
-        """
-        Fetch a release's full credits — every artist named on the release,
-        not just the primary one. Used to derive co-release collaborator
-        edges in feature_extraction/discogs.py:derive_collaborators.
-
-        Returns the list of raw credit names (the feature module normalizes).
-        Returns None on any error so the caller can distinguish "no data" from
-        "we checked and there are no other collaborators". An empty list is a
-        valid result for solo releases.
-        """
-        if not settings.discogs_token:
-            return None
-
-        try:
-            resp = await self._get(f"/releases/{release_id}")
-            data = resp.json()
-        except Exception as e:
-            print(f"[Discogs] release credits error for {release_id}: {e}")
-            return None
-
-        names: list[str] = []
-        for a in data.get("artists", []) or []:
-            name = (a.get("name") or "").strip()
-            if name:
-                names.append(name)
-        for credit in data.get("extraartists", []) or []:
-            name = (credit.get("name") or "").strip()
-            if name:
-                names.append(name)
-        for track in data.get("tracklist", []) or []:
-            for a in track.get("artists", []) or []:
-                name = (a.get("name") or "").strip()
-                if name:
-                    names.append(name)
-
-        return names
 
     async def get_tracklist(self, release_id: int, release_type: str = "release") -> list[dict]:
         """

@@ -8,29 +8,27 @@ datasource db {
 }
 
 model Track {
-  id                String              @id @default(cuid())
-  title             String
-  artist            String
-  source            String
-  sourceUrl         String              @unique
-  coverUrl          String?
-  embedUrl          String?
-  createdAt         DateTime            @default(now())
-  favorites         Favorite?
-  playlistTracks    PlaylistTrack[]
-  searchResults     SearchResult[]
-  candidateFeatures CandidateFeatures[]
+  id             String          @id @default(cuid())
+  title          String
+  artist         String
+  source         String
+  sourceUrl      String          @unique
+  coverUrl       String?
+  embedUrl       String?
+  createdAt      DateTime        @default(now())
+  favorites      Favorite?
+  playlistTracks PlaylistTrack[]
+  searchResults  SearchResult[]
 
   @@index([source])
 }
 
 model SearchQuery {
-  id                String              @id @default(cuid())
-  input             String
-  status            String              @default("pending")
-  createdAt         DateTime            @default(now())
-  results           SearchResult[]
-  candidateFeatures CandidateFeatures[]
+  id        String         @id @default(cuid())
+  input     String
+  status    String         @default("pending")
+  createdAt DateTime       @default(now())
+  results   SearchResult[]
 }
 
 model SearchResult {
@@ -90,27 +88,6 @@ model PlaylistTrack {
   @@index([playlistId, order])
 }
 
-model TrackidCooccurrence {
-  id            String   @id @default(cuid())
-
-  seedTrackidId String
-  pairTrackidId String
-
-  pairArtist    String
-  pairTitle     String
-
-  setCount      Int      @default(1)
-
-  pairUrl       String
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([seedTrackidId, pairTrackidId])
-  @@index([seedTrackidId])
-  @@index([updatedAt])
-}
-
 model LastfmArtistSimilars {
   id         String   @id @default(cuid())
 
@@ -130,88 +107,3 @@ model LastfmArtistSimilars {
   @@index([updatedAt])
 }
 
-model ArtistDiscography {
-  id              String   @id @default(cuid())
-
-  // Lowercased artist name with diacritics stripped via NFKD + non-alphanumerics
-  // dropped — mirrors web/lib/aggregator.ts:normalizeArtist so the same key
-  // resolves whether the lookup originates from the web side (identityKey) or
-  // python-service.
-  artistName      String   @unique
-
-  // Discogs artist ID. Numeric upstream; stored as String to match the rest of
-  // the ID columns in this schema and to keep the column null-safe when the
-  // search step found nothing.
-  discogsArtistId String?
-
-  // JSON array of releases:
-  //   [{ releaseId: string, year: number, title: string, label: string }, ...]
-  // Sorted by year ascending. Source for both yearProximity lookups and the
-  // collaborator extraction in ArtistCollaborations.
-  releases        Json
-
-  // Year of the artist's earliest known release; cheap to derive at write
-  // time and useful as a Stage D feature on its own ("how long has this
-  // artist been around?") without re-scanning the JSON.
-  debutYear       Int?
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([updatedAt])
-}
-
-model ArtistCollaborations {
-  id            String   @id @default(cuid())
-
-  // Same normalization as ArtistDiscography.artistName.
-  artistName    String   @unique
-
-  // JSON array of collaborator artist names (normalized).
-  // Derived from ArtistDiscography.releases — when artist A appears on a
-  // release with artist B, B ends up in A's collaborators set.
-  collaborators Json
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([updatedAt])
-}
-
-model CandidateFeatures {
-  id String @id @default(cuid())
-
-  searchQueryId String
-  trackId       String
-
-  // C1 features (cheap, computed at search-persistence time)
-  bpmDelta    Float?
-  keyCompat   Float?
-  energyDelta Float?
-  labelMatch  Float?
-  genreMatch  Float?
-  nSources    Int
-  topRank     Int
-  hasEmbed    Int
-  rrfScore    Float
-
-  // C2 features (Discogs, eventually-consistent — populated by background job)
-  yearProximity   Float?
-  artistCorelease Int?
-
-  // C3 features (joined from cache tables once trackid lands enabled)
-  cooccurrenceTrackid Int?
-  appearsInLastfm     Int?
-  appearsInCosine     Int?
-  appearsInYandex     Int?
-
-  createdAt DateTime @default(now())
-
-  searchQuery SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
-  track       Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
-
-  @@unique([searchQueryId, trackId])
-  @@index([searchQueryId])
-  @@index([trackId])
-  @@index([createdAt])
-}
