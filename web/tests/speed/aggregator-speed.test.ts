@@ -67,12 +67,12 @@ describe("aggregator speed", () => {
     expect(totalTracks).toBeGreaterThanOrEqual(180);
 
     // Warm-up — first run can include JIT compile time on V8.
-    aggregateTracks(lists, {});
+    aggregateTracks(lists);
 
     const runs: number[] = [];
     for (let i = 0; i < RUNS; i++) {
       const start = performance.now();
-      aggregateTracks(lists, {});
+      aggregateTracks(lists);
       runs.push(performance.now() - start);
     }
     runs.sort((a, b) => a - b);

@@ -1,7 +1,6 @@
 "use client";
 
 import { atom } from "jotai";
-import { type Filters, DEFAULT_FILTERS } from "@/components/FilterPanel";
 
 export interface Track {
   id: string;
@@ -23,7 +22,6 @@ export type SearchStatus = "idle" | "running" | "done" | "error";
 
 interface SearchState {
   query: string;
-  filters: Filters;
   tracks: Track[];
   status: SearchStatus;
   errorMsg: string;
@@ -32,7 +30,6 @@ interface SearchState {
 
 export const searchAtom = atom<SearchState>({
   query: "",
-  filters: DEFAULT_FILTERS,
   tracks: [],
   status: "idle",
   errorMsg: "",

@@ -49,7 +49,7 @@ describe("aggregator smoke — multi-source agreement boost", () => {
       },
     ];
 
-    const result = aggregateTracks(lists, {});
+    const result = aggregateTracks(lists);
     expect(result[0].title.toLowerCase()).toBe("shared");
     // shared appears in 3 sources, onlyA in 2, onlyB in 1
     const titles = result.map((t) => t.title.toLowerCase());
@@ -78,7 +78,7 @@ describe("aggregator smoke — artist diversification", () => {
       },
     ];
 
-    const result = aggregateTracks(lists, {});
+    const result = aggregateTracks(lists);
     let consecutive = 0;
     let maxConsecutive = 0;
     let prev = "";
@@ -101,8 +101,8 @@ describe("aggregator smoke — artist diversification", () => {
 
 describe("aggregator smoke — empty inputs", () => {
   it("doesn't crash on empty source lists", () => {
-    expect(() => aggregateTracks([], {})).not.toThrow();
-    expect(aggregateTracks([], {})).toEqual([]);
+    expect(() => aggregateTracks([])).not.toThrow();
+    expect(aggregateTracks([])).toEqual([]);
   });
 
   it("doesn't crash when every source list is empty", () => {
@@ -110,7 +110,7 @@ describe("aggregator smoke — empty inputs", () => {
       { source: "cosine_club", tracks: [] },
       { source: "lastfm", tracks: [] },
     ];
-    expect(aggregateTracks(lists, {})).toEqual([]);
+    expect(aggregateTracks(lists)).toEqual([]);
   });
 });
 

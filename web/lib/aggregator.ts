@@ -2,10 +2,6 @@ import type { SourceList, TrackMeta } from "@/lib/python-client";
 
 export type { SourceList } from "@/lib/python-client";
 
-export interface SearchFilters {
-  genre?: string;
-}
-
 // ── RRF constants ────────────────────────────────────────────────────────────
 // Cormack 2009 default. RRF score = Σ 1 / (k + rank). Larger k flattens the
 // curve (rank-1 vs rank-2 contribute more equally); smaller k makes the head
@@ -133,10 +129,7 @@ function diversifyArtists(
 }
 
 // ── Main aggregation ─────────────────────────────────────────────────────────
-export function aggregateTracks(
-  sourceLists: SourceList[],
-  _filters: SearchFilters,
-): FusedCandidate[] {
+export function aggregateTracks(sourceLists: SourceList[]): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists);
 

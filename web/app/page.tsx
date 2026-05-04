@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, Suspense } from "react";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { SearchBar } from "@/components/SearchBar";
-import { FilterPanel, DEFAULT_FILTERS } from "@/components/FilterPanel";
 import { TrackCard } from "@/components/TrackCard";
 import { usePlayer, type PlayerTrack } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
@@ -114,17 +113,11 @@ function HomeContent() {
         displayCount: 20,
       }));
 
-      const payload: Record<string, unknown> = { input: q.trim() };
-      const f = search.filters;
-      const activeFilters: Record<string, unknown> = {};
-      if (f.genre) activeFilters.genre = f.genre;
-      if (Object.keys(activeFilters).length) payload.filters = activeFilters;
-
       try {
         const res = await fetch("/api/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ input: q.trim() }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -138,7 +131,7 @@ function HomeContent() {
         }));
       }
     },
-    [search.status, search.filters, stopPolling, setSearch, pollSearch]
+    [search.status, stopPolling, setSearch, pollSearch]
   );
 
   const handleSearch = useCallback(
@@ -155,17 +148,11 @@ function HomeContent() {
     currentSearchIdRef.current = "";
     setSearch((prev) => ({ ...prev, status: "running", errorMsg: "" }));
 
-    const payload: Record<string, unknown> = { input: q };
-    const f = search.filters;
-    const activeFilters: Record<string, unknown> = {};
-    if (f.genre) activeFilters.genre = f.genre;
-    if (Object.keys(activeFilters).length) payload.filters = activeFilters;
-
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ input: q }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -179,7 +166,7 @@ function HomeContent() {
         errorMsg: "Failed to load more tracks.",
       }));
     }
-  }, [search.query, search.filters, search.status, stopPolling, setSearch, pollSearch]);
+  }, [search.query, search.status, stopPolling, setSearch, pollSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {
@@ -279,7 +266,7 @@ function HomeContent() {
   // Cleanup on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const { query, filters, tracks, status, errorMsg, displayCount } = search;
+  const { query, tracks, status, errorMsg, displayCount } = search;
   const isLoading = status === "running";
 
   return (
@@ -293,21 +280,13 @@ function HomeContent() {
           </p>
         </div>
 
-        {/* Search + Filters */}
-        <div className="flex flex-col gap-4">
-          <SearchBar
-            value={query}
-            onChange={(v) => setSearch((prev) => ({ ...prev, query: v }))}
-            onSubmit={handleSearch}
-            loading={isLoading}
-          />
-
-          <FilterPanel
-            filters={filters}
-            onChange={(f) => setSearch((prev) => ({ ...prev, filters: f }))}
-            onReset={() => setSearch((prev) => ({ ...prev, filters: DEFAULT_FILTERS }))}
-          />
-        </div>
+        {/* Search */}
+        <SearchBar
+          value={query}
+          onChange={(v) => setSearch((prev) => ({ ...prev, query: v }))}
+          onSubmit={handleSearch}
+          loading={isLoading}
+        />
 
         {/* States */}
         {isLoading && tracks.length === 0 && (

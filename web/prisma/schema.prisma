@@ -33,7 +33,6 @@ model SearchQuery {
   id                String              @id @default(cuid())
   input             String
   status            String              @default("pending")
-  filters           Json?
   createdAt         DateTime            @default(now())
   results           SearchResult[]
   candidateFeatures CandidateFeatures[]

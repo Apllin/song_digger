@@ -4,7 +4,6 @@ import {
   rrfFuse,
   normalizeTitle,
   normalizeArtist,
-  type SearchFilters,
 } from "./aggregator";
 import type { SourceList, TrackMeta } from "./python-client";
 
@@ -144,15 +143,13 @@ describe("normalizeArtist", () => {
 });
 
 describe("aggregateTracks — basic pipeline", () => {
-  const noFilters: SearchFilters = {};
-
   it("returns empty for empty input", () => {
-    expect(aggregateTracks([], noFilters)).toEqual([]);
+    expect(aggregateTracks([])).toEqual([]);
   });
 
   it("attaches a numeric score (rrfScore) to every returned track", () => {
     const t = makeTrack();
-    const result = aggregateTracks([listOf("ytm", t)], noFilters);
+    const result = aggregateTracks([listOf("ytm", t)]);
     expect(typeof result[0].score).toBe("number");
     expect(result[0].score).toBeGreaterThan(0);
   });
@@ -160,14 +157,11 @@ describe("aggregateTracks — basic pipeline", () => {
   it("multi-source confirmation outranks single-source top hit", () => {
     const dual = makeTrack({ title: "Dual", artist: "X" });
     const solo = makeTrack({ title: "Solo", artist: "Y" });
-    const result = aggregateTracks(
-      [
-        // Solo is rank-1 in cosine, but Dual appears in two sources.
-        listOf("cosine_club", solo, dual),
-        listOf("youtube_music", dual),
-      ],
-      noFilters,
-    );
+    const result = aggregateTracks([
+      // Solo is rank-1 in cosine, but Dual appears in two sources.
+      listOf("cosine_club", solo, dual),
+      listOf("youtube_music", dual),
+    ]);
     expect(result[0].title).toBe("Dual");
   });
 });
@@ -182,7 +176,7 @@ describe("aggregateTracks — artist diversity", () => {
       makeTrack({ sourceUrl: "a3", artist: "Surgeon", title: "S3" }),
       makeTrack({ sourceUrl: "b1", artist: "Mulero",  title: "M1" }),
     ];
-    const result = aggregateTracks([listOf("cosine_club", ...tracks)], {});
+    const result = aggregateTracks([listOf("cosine_club", ...tracks)]);
     const artists = result.map((t) => t.artist);
     for (let i = 0; i + 2 < artists.length; i++) {
       const run = artists.slice(i, i + 3);

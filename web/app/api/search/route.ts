@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
-import { aggregateTracks, normalizeArtist, normalizeTitle, type FusedCandidate, type SearchFilters } from "@/lib/aggregator";
+import { aggregateTracks, normalizeArtist, normalizeTitle, type FusedCandidate } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
 import type { SimilarResponse, SourceList, TrackMeta } from "@/lib/python-client";
 
@@ -46,11 +46,6 @@ async function hydrateFromCache(tracks: TrackMeta[]): Promise<TrackMeta[]> {
 
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
-  filters: z
-    .object({
-      genre: z.string().optional(),
-    })
-    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -64,14 +59,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { input, filters } = parsed.data;
+  const { input } = parsed.data;
   const { artist, track } = parseQuery(input);
 
   const searchQuery = await prisma.searchQuery.create({
-    data: { input, status: "running", filters: filters ?? undefined },
+    data: { input, status: "running" },
   });
 
-  runSearch(searchQuery.id, input, artist, track, filters ?? {}).catch((err) => {
+  runSearch(searchQuery.id, input, artist, track).catch((err) => {
     console.error(`[Search] background error for ${searchQuery.id}:`, err);
     prisma.searchQuery
       .update({ where: { id: searchQuery.id }, data: { status: "error" } })
@@ -282,7 +277,6 @@ async function runSearch(
   input: string,
   artist: string,
   track: string | null,
-  filters: SearchFilters,
 ) {
   // ── Fetch from Python — fan out to all enabled adapters in /similar. ─────
   // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
@@ -332,7 +326,7 @@ async function runSearch(
     tracks: sl.tracks.map((t) => hydratedByUrl.get(t.sourceUrl) ?? t),
   }));
 
-  const aggregated = aggregateTracks(hydratedLists, filters);
+  const aggregated = aggregateTracks(hydratedLists);
   const trackIdsByUrl = await saveTracks(searchId, aggregated);
 
   // Fire-and-forget feature extraction. Failures must not block status="done"
