@@ -11,6 +11,7 @@ export interface Track {
   coverUrl?: string | null;
   embedUrl?: string | null;
   score?: number | null;
+  sources?: string[] | null;
 }
 
 export type SearchStatus = "idle" | "running" | "done" | "error";

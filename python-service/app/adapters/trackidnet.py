@@ -262,41 +262,39 @@ def _extract_window(
     occurrence of `seed_slug` in this playlist's tracklist, excluding
     every instance of the seed itself.
 
-    Process selection: we use the latest NON-EMPTY detection process by
-    endDate. Sets get reprocessed over time; later runs may add or
-    correct tracks, but in the wild a reprocess can finish with 0 detected
-    tracks (failed rerun, audio quality regression, abort) while an
-    earlier process holds the real data. Strict "latest by endDate"
-    silently loses that data; "latest non-empty" recovers it without
-    reintroducing cross-process double-counting (we still use exactly
-    one process per playlist).
+    Process selection: we pick the latest by endDate among processes
+    THAT CONTAIN THE SEED SLUG. Sets get reprocessed and not all tracks
+    are detected on every pass — the same playlist can have a later
+    non-empty process that simply lost the seed. Picking by "latest
+    non-empty" silently drops these playlists; anchoring on "contains
+    seed" is the only reliable signal that a process is usable for
+    co-occurrence around this seed. If no process contains the seed,
+    the playlist contributes nothing (we cannot place the window).
 
     Edge cases:
-      - Seed not found in tracklist → []
+      - No process contains the seed → []
       - Seed at position 0 → only `window` tracks after (no before)
       - Seed at last position → only `window` tracks before (no after)
-      - Seed appears multiple times → anchor on first occurrence; all
-        instances of the seed slug are filtered from the returned window
+      - Seed appears multiple times in chosen process → anchor on first
+        occurrence; all instances of the seed slug are filtered from
+        the returned window
     """
     processes = audiostream.get("detectionProcesses") or []
-    non_empty = [
+    with_seed = [
         p for p in processes
-        if (p.get("detectionProcessMusicTracks") or [])
+        if any(
+            t.get("slug") == seed_slug
+            for t in (p.get("detectionProcessMusicTracks") or [])
+        )
     ]
-    if not non_empty:
+    if not with_seed:
         return []
 
-    latest = max(non_empty, key=lambda p: p.get("endDate") or "")
-    tracks = latest.get("detectionProcessMusicTracks") or []
-    if not tracks:
-        return []
-
+    chosen = max(with_seed, key=lambda p: p.get("endDate") or "")
+    tracks = chosen.get("detectionProcessMusicTracks") or []
     seed_idx = next(
-        (i for i, t in enumerate(tracks) if t.get("slug") == seed_slug),
-        None,
+        i for i, t in enumerate(tracks) if t.get("slug") == seed_slug
     )
-    if seed_idx is None:
-        return []
 
     start = max(0, seed_idx - window)
     end = min(len(tracks), seed_idx + window + 1)
@@ -305,10 +303,12 @@ def _extract_window(
 
 def _to_track_meta(track: dict, score: float) -> TrackMeta:
     slug = track.get("slug") or ""
+    artwork = (track.get("artworkUrl") or "").strip() or None
     return TrackMeta(
         title=(track.get("title") or "").strip(),
         artist=(track.get("artist") or "").strip(),
         source=TrackidnetAdapter.SOURCE,
         sourceUrl=f"https://trackid.net/musictracks/{slug}" if slug else "",
+        coverUrl=artwork,
         score=score,
     )

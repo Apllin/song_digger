@@ -82,7 +82,6 @@ class YandexMusicAdapter(AbstractAdapter):
             source=self.SOURCE,
             sourceUrl=track_url,
             coverUrl=cover_url,
-            embedUrl=self._embed_url(t),
         )
 
     @staticmethod
@@ -107,14 +106,3 @@ class YandexMusicAdapter(AbstractAdapter):
             return f"https://music.yandex.ru/album/{albums[0].id}/track/{track_id}"
         return f"https://music.yandex.ru/track/{track_id}"
 
-    @staticmethod
-    def _embed_url(t: Any) -> str | None:
-        # Yandex's iframe player requires both album and track id; the
-        # bare-track URL has no embed equivalent, so fall through to None
-        # and let the UI keep the external link.
-        track_id = getattr(t, "id", None)
-        albums = getattr(t, "albums", None) or []
-        album_id = getattr(albums[0], "id", None) if albums else None
-        if not track_id or not album_id:
-            return None
-        return f"https://music.yandex.ru/iframe/#track/{track_id}/{album_id}"

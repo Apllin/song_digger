@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
 import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import type { FusedCandidate } from "@/lib/aggregator";
+import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { parseQuery } from "@/lib/parse-query";
 import type { SourceList } from "@/lib/python-client";
 
@@ -172,6 +173,7 @@ async function runSearch(
   }));
 
   const aggregated = aggregateTracks(filteredSourceLists);
+  await enrichMissingCovers(aggregated);
   await saveTracks(searchId, aggregated);
 
   await prisma.searchQuery.update({

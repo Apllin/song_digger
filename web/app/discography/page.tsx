@@ -218,7 +218,7 @@ function DiscographyContent() {
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                 }
               }}
-              placeholder="Search artist (e.g. Surgeon, Ancient Methods...)"
+              placeholder="Search artist (e.g. Ignez - Aventurine)"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 pr-10 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
             />
             {s.loadingArtists && (
