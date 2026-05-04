@@ -33,8 +33,9 @@ fetches, comes back to web for cache hydration + fusion + persistence:
    adapters in parallel.
 3. **Phase 1** (track-mode): Cosine.club, YouTube Music radio, Bandcamp
    (4 s timeout), Yandex Music, Last.fm `track.getSimilar`, trackid.net
-   (flag-disabled by default — see ADR-0012 for the related 1001TL
-   removal), and a YTM song-lookup all start simultaneously. Source
+   DJ-set co-occurrence (rewritten as JSON API client and enabled in
+   2026-05 — see ADR-0014; ADR-0012 covers the related 1001TL removal),
+   and a YTM song-lookup all start simultaneously. Source
    BPM/key/energy/label/genre are inferred from the median of the top-5
    Cosine results (post-2026-05 Cosine API migration: Cosine no longer
    returns BPM/key/energy/label/genre fields, so this inference now
@@ -84,7 +85,7 @@ and `_dedup_within_source` passes.
 | `bandcamp` | [bandcamp.py](../../python-service/app/adapters/bandcamp.py) | Search → fetch matching track page → parse "you may also like" `data-recommended-from-tralbum` JSON. Hard 4 s timeout. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `yandex_music` | [yandex_music.py](../../python-service/app/adapters/yandex_music.py) | `client.search(...)` → `client.tracks_similar(seed.id)`. No-op without `YANDEX_MUSIC_TOKEN`. | `title`, `artist`, `sourceUrl`, `coverUrl` | No |
 | `lastfm` | [lastfm.py](../../python-service/app/adapters/lastfm.py) | `track.getSimilar` (collaborative-filtering). When that returns empty AND `lastfm_artist_fallback_enabled` (default True), expands via `artist.getSimilar` → top-3 per similar artist, capped at 30 (see Phase 1.5 above). No-op without `LASTFM_API_KEY`. | `title`, `artist`, `sourceUrl`, `coverUrl`, `score` (`match` value or `match × position_decay` in fallback) | Yes (`score` is the Last.fm `match` value or fallback decay product). Used as a noise floor (`MIN_MATCH = 0.05`); not consumed by `rrfFuse`. |
-| `trackidnet` | [trackidnet.py](../../python-service/app/adapters/trackidnet.py) | DJ-set co-occurrence within ±2 positions of the seed. Cache → scrape → persist → return. **Flag-disabled by default** (`trackidnet_enabled = False`) pending parser verification — see TODOs in the adapter. Returns `[]` until enabled. | `title`, `artist`, `sourceUrl`, `score` (`setCount` co-occurrence count) | Yes — but adapter is disabled today. |
+| `trackidnet` | [trackidnet.py](../../python-service/app/adapters/trackidnet.py) | DJ-set co-occurrence via the public JSON API (3 endpoints). `/musictracks` resolves the seed; `/audiostreams?musicTrackId=<id>` lists up to `MAX_PLAYLISTS=15` known sets (sorted by `addedOn` desc); `/audiostreams/<slug>` is fetched for each (concurrent, `Semaphore(DETAIL_CONCURRENCY=5)`). Per playlist: pick latest non-empty detection process, find seed by slug, take the `±WINDOW=5` tracks around the first occurrence (excluding all seed instances). Aggregate across windows by slug; sort by co-occurrence count desc, then `referenceCount` asc. Enabled by default (`trackidnet_enabled = True`) — see ADR-0014. | `title`, `artist`, `sourceUrl`, `score` (co-occurrence count, 1..15) | Yes (`score` = co-occurrence count). Not consumed by `rrfFuse` (rank-based). |
 
 Beatport is **not** an RRF input. It contributes only as: (a) a fallback
 source for inferring the seed's BPM/key when Cosine is unconfident, and
@@ -231,9 +232,15 @@ or a sentence in an old ADR.
   regression rather than a hand-tuned blend, which is the right shape
   for it.
 - **Co-occurrence sources** — Last.fm landed in Stage B
-  (track-similar + artist-fallback), trackid.net is implemented but
-  flag-disabled pending parser verification, 1001tracklists was
-  removed in Stage A.5 v2 (see ADR-0012).
+  (track-similar + artist-fallback). Trackid.net was rewritten as a
+  JSON API client (playlists-list flow over 3 endpoints, ±5 window
+  around the seed in up to 15 fresh sets) and enabled by default in
+  2026-05 (see ADR-0014). It contributes alternative-signal candidates
+  (DJ-set co-occurrence, not similarity confirmation) and is typically
+  unique to its source list, so single-source RRF math keeps its
+  candidates at ranks 12+; the contribution is invisible to nDCG@10
+  but feeds Stage D learned ranking and Stage C3 features.
+  1001tracklists was removed in Stage A.5 v2 (see ADR-0012).
 - **Cosine `score` as a ranking signal** — used only as a confidence
   gate (0.5 threshold) and per-track inclusion filter. `rrfFuse` uses
   rank position, not the underlying scores.

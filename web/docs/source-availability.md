@@ -1,27 +1,31 @@
 # Source Availability
 
 > **Operational snapshot of external source adapter health.**
-> Last verified: 2026-05-03. Re-validate (commands at the bottom) before
+> Last verified: 2026-05-04. Re-validate (commands at the bottom) before
 > trusting this for new work — sources break and recover independently.
 
 ## tl;dr
 
 [scoring.md](scoring.md) describes a multi-source RRF pipeline, and the
-code path is wired exactly that way. **As of 2026-05-03, the active
+code path is wired exactly that way. **As of 2026-05-04, the active
 contributors are: YouTube Music Radio, Bandcamp, Cosine.club (post-API
-migration), and Last.fm.** Cosine.club moved to a new public API at
-`https://cosine.club/api` (the previous `api.cosine.club` host went
-NXDOMAIN — the adapter was rewritten to point at the new endpoint and
-no longer returns BPM/key/energy/label/genre, which now come from
-Beatport enrichment only). Bandcamp uses the public
+migration), Last.fm, and trackid.net.** Cosine.club moved to a new
+public API at `https://cosine.club/api` (the previous `api.cosine.club`
+host went NXDOMAIN — the adapter was rewritten to point at the new
+endpoint and no longer returns BPM/key/energy/label/genre, which now
+come from Beatport enrichment only). Bandcamp uses the public
 `bcsearch_public_api` JSON endpoint and the `<li class="recommended-album">`
 footer format. Last.fm landed in Stage B with a track→artist fallback
-(default-on, gated by `lastfm_artist_fallback_enabled`). Beatport is
+(default-on, gated by `lastfm_artist_fallback_enabled`). Trackid.net
+was rewritten as a JSON API client (playlists-list flow over three
+public endpoints — `/musictracks`, `/audiostreams?musicTrackId=`,
+`/audiostreams/<slug>` — with `±5` window in up to 15 fresh sets) and
+enabled by default — see ADR-0014; the previous HTML-scraping attempt
+failed because trackid.net is a React SPA with no server-rendered
+tracklist HTML. Beatport is
 still anti-bot-blocked for the public scraper but contributes only as
 inline BPM/key enrichment, not as an RRF input. Yandex is still a no-op
-without a token. trackid.net is implemented but flag-disabled
-(`trackidnet_enabled = False`) pending parser verification —
-1001tracklists was removed in Stage A.5 v2 (see ADR-0012).
+without a token. 1001tracklists was removed in Stage A.5 v2 (see ADR-0012).
 
 This is not a code bug. The aggregator and the adapter wiring are
 correct. It's an external-services bill of health.
@@ -35,7 +39,7 @@ correct. It's an external-services bill of health.
 | `bandcamp` | ✓ Works (rewritten 2026-05-01) | Returns 7 album recommendations per seed in 1.4–2.0 s (well inside the 4 s budget in [similar.py](../../python-service/app/api/routes/similar.py)). The previous version was silently returning `[]` because Bandcamp put `/search` behind Imperva's client-challenge AND changed the recommendation footer from `data-recommended-from-tralbum` JSON to `<li class="recommended-album">` blocks. The adapter now hits the public `bcsearch_public_api` JSON endpoint for search and parses the new `<li>` format on the track page. | Watch for `[Bandcamp] track page challenged` or `[Bandcamp] no recs in page` log lines — those indicate Imperva expanded the challenge to track pages or the footer markup changed again. |
 | `yandex_music` | ⚠ No-op without token | `YANDEX_MUSIC_TOKEN` env var is unset; adapter early-returns `[]`. Documented behavior, but the env is empty in the dev `.env`. | Set the token if the developer has a Yandex account. Cheapest single improvement to source diversity. |
 | `lastfm` | ✓ Works (Stage B) | `track.getSimilar` populates the primary list; when empty, the artist-fallback (`artist.getSimilar` → top-3 per similar artist, capped at 30) takes over. Default-on, gated by `lastfm_artist_fallback_enabled = True`. Requires `LASTFM_API_KEY`. Per-artist similars cached in `LastfmArtistSimilars` (30-day TTL). | Watch for `[Lastfm]` log prefixes; nothing user-facing fails when the API key is missing (adapter early-returns `[]`). |
-| `trackidnet` | ⚠ Flag-disabled | `trackidnet_enabled = False` default. Selectors are PLACEHOLDERS pending verification per the TODO in `app/adapters/trackidnet.py`. Returns `[]` until the flag is flipped AND the selectors are validated against live markup. | Verify selectors against `https://www.trackid.net/track/<...>` in DevTools, re-capture fixtures, then flip the flag. |
+| `trackidnet` | ✓ Active (JSON API, playlists-list flow, verified 2026-05-04) | `trackidnet_enabled = True` default. Adapter uses three public JSON endpoints (no auth, no Cloudflare cookie): `/api/public/musictracks?keywords=` (search), `/api/public/audiostreams?musicTrackId=` (lightweight playlists list), `/api/public/audiostreams/<slug>` (per-playlist tracklist). Per-seed flow: search → pick best catalogue entry → list playlists for seed id (cap 15, sorted by `addedOn` desc) → fetch each tracklist concurrently (`Semaphore(5)`) → for each, take ±5 tracks around the seed → aggregate by slug across all windows, sort by count desc then `referenceCount` asc. The previous HTML scraper was abandoned because trackid.net is a React SPA. See ADR-0014. | Watch for `[Trackidnet] search failed`, `[Trackidnet] playlists list failed`, or `[Trackidnet] audiostream <slug> failed` log lines indicating the JSON shape changed or the endpoint moved behind auth. |
 | `youtube_music` | ✓ Works | The most consistently-producing adapter — 10+ results per seed via the YTM Radio playlist. | — |
 
 ## How this was discovered
