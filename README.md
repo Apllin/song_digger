@@ -3,7 +3,7 @@
 Monorepo containing:
 
 - [web/](web/) — Next.js 16 frontend with Prisma + Postgres
-- [python-service/](python-service/) — FastAPI service with adapters for Bandcamp, Beatport, Cosine.club, Discogs, Last.fm, trackid.net, Yandex Music, and YouTube Music
+- [python-service/](python-service/) — FastAPI service with adapters for Bandcamp, Cosine.club, Discogs, Last.fm, trackid.net, Yandex Music, and YouTube Music
 
 Orchestrated by [Turborepo](https://turborepo.com) using [pnpm](https://pnpm.io) workspaces. The Python service is wrapped in a thin `package.json` shim so Turborepo can cache and parallelize its tasks alongside the JS side.
 
@@ -123,7 +123,7 @@ song_digger/
 │   └── package.json
 └── python-service/           FastAPI service
     ├── app/
-    │   ├── adapters/         Bandcamp, Beatport, Discogs, Spotify, YT Music, Cosine Club
+    │   ├── adapters/         Bandcamp, Cosine Club, Discogs, Last.fm, trackid.net, Yandex Music, YouTube Music
     │   ├── api/routes/
     │   └── core/
     ├── tests/
