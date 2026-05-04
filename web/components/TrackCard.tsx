@@ -24,6 +24,7 @@ const SOURCE_LABELS: Record<string, string> = {
   cosine_club: "Cosine.club",
   yandex_music: "Yandex.Music",
   lastfm: "Last.fm",
+  trackidnet: "trackid.net",
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -32,6 +33,7 @@ const SOURCE_COLORS: Record<string, string> = {
   cosine_club: "bg-purple-900/60 text-purple-300",
   yandex_music: "bg-yellow-900/60 text-yellow-300",
   lastfm: "bg-rose-900/60 text-rose-300",
+  trackidnet: "bg-amber-900/60 text-amber-300",
 };
 
 interface TrackCardProps {
