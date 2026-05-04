@@ -1,0 +1,17 @@
+node_modules
+.next
+.turbo
+.env
+.env.*
+*.log
+.DS_Store
+.git
+.gitignore
+README.md
+AGENTS.md
+CLAUDE.md
+docs
+tests
+vitest.*.ts
+tsconfig.tsbuildinfo
+app/generated
