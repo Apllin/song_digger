@@ -275,9 +275,6 @@ function HomeContent() {
         {/* Header */}
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Track Digger</h1>
-          <p className="text-sm text-zinc-500">
-            Find similar techno tracks across YouTube Music, Bandcamp, and Cosine.club
-          </p>
         </div>
 
         {/* Search */}

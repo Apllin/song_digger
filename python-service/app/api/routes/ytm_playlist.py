@@ -1,43 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from ytmusicapi import YTMusic
-import os
 
 router = APIRouter(prefix="/ytm")
-
-OAUTH_FILE = os.path.join(os.path.dirname(__file__), "../../../../oauth.json")
-PLAYLIST_ID_FILE = os.path.join(os.path.dirname(__file__), "../../../../playlist_id.txt")
-
-PLAYLIST_NAME = "Song Digger Likes"
-
-
-def _get_ytm_auth() -> YTMusic:
-    if not os.path.exists(OAUTH_FILE):
-        raise HTTPException(
-            status_code=503,
-            detail="YTM OAuth not configured. Run: ytmusicapi oauth --file oauth.json in python-service/",
-        )
-    return YTMusic(OAUTH_FILE)
-
-
-def _get_or_create_playlist(ytm: YTMusic) -> str:
-    # Cache playlist ID locally
-    if os.path.exists(PLAYLIST_ID_FILE):
-        pid = open(PLAYLIST_ID_FILE).read().strip()
-        if pid:
-            return pid
-
-    # Create new playlist
-    result = ytm.create_playlist(
-        PLAYLIST_NAME,
-        "Tracks saved from Song Digger",
-        privacy_status="PRIVATE",
-    )
-    pid = result if isinstance(result, str) else result.get("playlistId", "")
-    if pid:
-        with open(PLAYLIST_ID_FILE, "w") as f:
-            f.write(pid)
-    return pid
 
 
 @router.get("/search-exact")
@@ -48,7 +12,6 @@ async def search_exact(title: str, artist: str) -> dict:
     Returns { embedUrl, coverUrl } or { embedUrl: null }.
     """
     import asyncio
-    from ytmusicapi import YTMusic
 
     _ytm_client = YTMusic()
 
@@ -99,30 +62,3 @@ async def search_exact(title: str, artist: str) -> dict:
         return {"embedUrl": None, "coverUrl": None}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-class AddToPlaylistRequest(BaseModel):
-    video_id: str  # YouTube videoId
-
-
-@router.post("/add-to-playlist")
-async def add_to_playlist(req: AddToPlaylistRequest) -> dict:
-    try:
-        ytm = _get_ytm_auth()
-        playlist_id = _get_or_create_playlist(ytm)
-        ytm.add_playlist_items(playlist_id, [req.video_id])
-        return {"ok": True, "playlistId": playlist_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/playlist-status")
-async def playlist_status() -> dict:
-    """Check if OAuth is configured."""
-    configured = os.path.exists(OAUTH_FILE)
-    playlist_id = None
-    if os.path.exists(PLAYLIST_ID_FILE):
-        playlist_id = open(PLAYLIST_ID_FILE).read().strip() or None
-    return {"configured": configured, "playlistId": playlist_id}
