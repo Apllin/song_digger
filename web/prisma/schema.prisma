@@ -36,6 +36,12 @@ model SearchResult {
   searchQueryId String
   trackId       String
   score         Float?
+  // All adapter sources that contributed this candidate to THIS search,
+  // captured from the aggregator's `appearances` (RRF fusion). Track.source
+  // stores only the first/primary source — that loses attribution when
+  // multiple sources surface the same identity. The UI renders one chip
+  // per entry.
+  sources       String[]    @default([])
   searchQuery   SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
   track         Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
 

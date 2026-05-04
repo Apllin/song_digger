@@ -1,9 +1,13 @@
 /**
  * /api/search end-to-end latency — web → Python → web → DB → response-ready.
  *
- * Wall-clock here covers more than just upstream fan-out: it includes
- * Postgres SearchQuery + Track + SearchResult upserts plus the
- * dislike-filter and feature-extract hand-offs. Threshold accordingly.
+ * Wall-clock covers Python /similar (~2s) plus saveTracks Postgres writes
+ * (createMany Track + SELECT for id mapping + createMany SearchResult ≈ 3s
+ * against Neon us-east-1) plus dislike-filter. After moving from
+ * upsert-per-row $transaction chunks to bulk createMany (2026-05-04),
+ * observed P95 dropped from ~29s to ~5.5s on a warm DB. Threshold leaves
+ * ~2× headroom over that without masking real regressions — if a future
+ * change reintroduces N×roundtrip patterns, we'll see it land near the cap.
  *
  * Prerequisite: pnpm dev (web on :3000, python-service on :8000) +
  * Postgres reachable. Test skips if web isn't up.
@@ -17,7 +21,7 @@ const POLL_INTERVAL_MS = 250;
 const POLL_TIMEOUT_MS = 60_000;
 
 const RUNS = 5;
-const P95_THRESHOLD_S = 35;
+const P95_THRESHOLD_S = 12;
 
 let serverUp = false;
 

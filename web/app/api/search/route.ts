@@ -3,8 +3,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { fetchSimilarTracks } from "@/lib/python-client";
 import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
+import type { FusedCandidate } from "@/lib/aggregator";
 import { parseQuery } from "@/lib/parse-query";
-import type { SourceList, TrackMeta } from "@/lib/python-client";
+import type { SourceList } from "@/lib/python-client";
 
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
@@ -38,78 +39,88 @@ export async function POST(req: NextRequest) {
   return Response.json({ id: searchQuery.id, status: "running" });
 }
 
-const DB_CHUNK_SIZE = 50;
+// Backfill update has to wait for slow-DB days. Cap loose enough to not mask
+// real hangs but high enough to survive a cold Neon connection.
+const DB_TXN_TIMEOUT_MS = 30_000;
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+function uniqueSources(t: FusedCandidate): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of t.appearances) {
+    if (seen.has(a.source)) continue;
+    seen.add(a.source);
+    out.push(a.source);
+  }
   return out;
 }
 
-// Prisma's default $transaction timeout is 5s. A full 50-row Track upsert chunk
-// (rich techno metadata, fresh DB rows) overshoots that on a cold cache, killing
-// the whole search. 30s leaves headroom for slow-DB days without masking real hangs.
-const DB_TXN_TIMEOUT_MS = 30_000;
-
-async function saveTracks(searchId: string, tracks: TrackMeta[]): Promise<void> {
+async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<void> {
   if (!tracks.length) return;
 
-  const trackChunks = chunk(tracks, DB_CHUNK_SIZE);
+  const urls = tracks.map((t) => t.sourceUrl);
 
-  // 1. Upsert Track records — all chunks in parallel to cut sequential round-trips
-  const chunkResults = await Promise.all(
-    trackChunks.map((ch) =>
-      prisma.$transaction(
-        ch.map((t) =>
-          prisma.track.upsert({
-            where: { sourceUrl: t.sourceUrl },
-            create: {
-              title: t.title,
-              artist: t.artist,
-              source: t.source,
-              sourceUrl: t.sourceUrl,
-              coverUrl: t.coverUrl,
-              embedUrl: t.embedUrl,
-            },
-            update: {
-              // null means the current fetch had no data — don't overwrite a
-              // previously stored value. undefined tells Prisma to skip the field.
-              coverUrl: t.coverUrl ?? undefined,
-              embedUrl: t.embedUrl ?? undefined,
-            },
-            select: { id: true, sourceUrl: true },
-          })
-        ),
-        { timeout: DB_TXN_TIMEOUT_MS }
-      )
-    )
-  );
+  // 1. Bulk insert any new Track rows in a single statement. `skipDuplicates`
+  //    collapses upsert-per-row into one round-trip; existing rows aren't
+  //    touched here — backfill is handled in step 3 only when needed.
+  await prisma.track.createMany({
+    data: tracks.map((t) => ({
+      title: t.title,
+      artist: t.artist,
+      source: t.source,
+      sourceUrl: t.sourceUrl,
+      coverUrl: t.coverUrl,
+      embedUrl: t.embedUrl,
+    })),
+    skipDuplicates: true,
+  });
 
-  // URL→id map is order-safe regardless of how Promise.all resolves chunks
-  const urlToId = new Map(chunkResults.flat().map((s) => [s.sourceUrl, s.id]));
+  // 2. One SELECT to map every sourceUrl → id (covers freshly inserted and
+  //    pre-existing rows alike) and to read current cover/embed for the
+  //    backfill check.
+  const existing = await prisma.track.findMany({
+    where: { sourceUrl: { in: urls } },
+    select: { id: true, sourceUrl: true, coverUrl: true, embedUrl: true },
+  });
+  const urlToRow = new Map(existing.map((r) => [r.sourceUrl, r]));
 
-  // 2. Upsert SearchResult records — all chunks in parallel
-  await Promise.all(
-    trackChunks.map((ch) =>
-      prisma.$transaction(
-        ch.map((t) => {
-          const trackId = urlToId.get(t.sourceUrl)!;
-          return prisma.searchResult.upsert({
-            where: {
-              searchQueryId_trackId: { searchQueryId: searchId, trackId },
-            },
-            create: {
-              searchQueryId: searchId,
-              trackId,
-              score: t.score ?? null,
-            },
-            update: { score: t.score ?? null },
-          });
+  // 3. Backfill cover/embed only when DB stores NULL but the current fetch has
+  //    data — preserves the previous "later adapter fills missing art without
+  //    overwriting good data" behavior. Typically a no-op after the first save.
+  const backfills = tracks.filter((t) => {
+    const row = urlToRow.get(t.sourceUrl);
+    if (!row) return false;
+    return (
+      (row.coverUrl == null && t.coverUrl != null) ||
+      (row.embedUrl == null && t.embedUrl != null)
+    );
+  });
+  if (backfills.length) {
+    await prisma.$transaction(
+      backfills.map((t) =>
+        prisma.track.update({
+          where: { sourceUrl: t.sourceUrl },
+          data: {
+            coverUrl: t.coverUrl ?? undefined,
+            embedUrl: t.embedUrl ?? undefined,
+          },
         }),
-        { timeout: DB_TXN_TIMEOUT_MS }
-      )
-    )
-  );
+      ),
+      { timeout: DB_TXN_TIMEOUT_MS },
+    );
+  }
+
+  // 4. Bulk insert SearchResult rows. (searchQueryId, trackId) is unique and
+  //    score/sources are fixed for that pair within a single search, so
+  //    skipDuplicates is the correct semantics — no UPDATE branch needed.
+  await prisma.searchResult.createMany({
+    data: tracks.map((t) => ({
+      searchQueryId: searchId,
+      trackId: urlToRow.get(t.sourceUrl)!.id,
+      score: t.score ?? null,
+      sources: uniqueSources(t),
+    })),
+    skipDuplicates: true,
+  });
 }
 
 async function runSearch(
@@ -118,18 +129,25 @@ async function runSearch(
   artist: string,
   track: string | null,
 ) {
-  // ── Fetch from Python — fan out to all enabled adapters in /similar. ─────
+  // ── Fetch from Python + load dislikes in parallel. ───────────────────────
   // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
-  // trackid 9s) from blocking the response.
-  const pythonResult = await fetchSimilarTracks({
-    input,
-    artist,
-    track,
-    limit_per_source: 40,
-  }).catch((err) => {
-    console.error("[Search] Python stage failed:", err);
-    return null;
-  });
+  // trackid 9s) from blocking the response. The dislikes query is independent
+  // of Python output, so we kick it off concurrently to save one DB round-trip
+  // worth of wall-clock latency.
+  const [pythonResult, dislikes] = await Promise.all([
+    fetchSimilarTracks({
+      input,
+      artist,
+      track,
+      limit_per_source: 40,
+    }).catch((err) => {
+      console.error("[Search] Python stage failed:", err);
+      return null;
+    }),
+    prisma.dislikedTrack.findMany({
+      select: { artistKey: true, titleKey: true },
+    }),
+  ]);
 
   if (!pythonResult) {
     await prisma.searchQuery.update({
@@ -143,9 +161,6 @@ async function runSearch(
   // identity is in DislikedTrack before fusion. Filtering at the source-list
   // level (not post-fusion) means a disliked track from one source can't pull
   // in RRF contribution from another source's copy.
-  const dislikes = await prisma.dislikedTrack.findMany({
-    select: { artistKey: true, titleKey: true },
-  });
   const dislikedKeys = new Set(
     dislikes.map((d) => `${d.artistKey}|${d.titleKey}`),
   );
