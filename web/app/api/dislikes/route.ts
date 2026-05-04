@@ -2,8 +2,12 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
+// TODO(Stage I, Step 8): replace with requireUser() once Auth.js is wired.
+const ADMIN_SEED_USER_ID = "admin_seed_account_id";
+
 export async function GET() {
   const rows = await prisma.dislikedTrack.findMany({
+    where: { userId: ADMIN_SEED_USER_ID },
     select: { artistKey: true, titleKey: true, artist: true, title: true },
   });
   return Response.json(rows);
@@ -21,8 +25,14 @@ export async function POST(req: NextRequest) {
   const titleKey = normalizeTitle(title);
 
   await prisma.dislikedTrack.upsert({
-    where: { artistKey_titleKey: { artistKey, titleKey } },
-    create: { artistKey, titleKey, artist, title },
+    where: {
+      userId_artistKey_titleKey: {
+        userId: ADMIN_SEED_USER_ID,
+        artistKey,
+        titleKey,
+      },
+    },
+    create: { userId: ADMIN_SEED_USER_ID, artistKey, titleKey, artist, title },
     update: {},
   });
   return Response.json({ ok: true });
@@ -40,7 +50,7 @@ export async function DELETE(req: NextRequest) {
   const titleKey = normalizeTitle(title);
 
   await prisma.dislikedTrack.deleteMany({
-    where: { artistKey, titleKey },
+    where: { userId: ADMIN_SEED_USER_ID, artistKey, titleKey },
   });
   return Response.json({ ok: true });
 }

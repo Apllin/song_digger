@@ -2,8 +2,12 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+// TODO(Stage I, Step 8): replace with requireUser() once Auth.js is wired.
+const ADMIN_SEED_USER_ID = "admin_seed_account_id";
+
 export async function GET() {
   const favorites = await prisma.favorite.findMany({
+    where: { userId: ADMIN_SEED_USER_ID },
     orderBy: { createdAt: "desc" },
     include: { track: true },
   });
@@ -22,7 +26,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await prisma.favorite.create({ data: { trackId: parsed.data.trackId } });
+    await prisma.favorite.create({
+      data: { userId: ADMIN_SEED_USER_ID, trackId: parsed.data.trackId },
+    });
     return Response.json({ ok: true });
   } catch {
     return Response.json({ error: "Already favorited" }, { status: 409 });
@@ -37,6 +43,8 @@ export async function DELETE(req: NextRequest) {
     return Response.json({ error: "trackId required" }, { status: 400 });
   }
 
-  await prisma.favorite.deleteMany({ where: { trackId } });
+  await prisma.favorite.deleteMany({
+    where: { userId: ADMIN_SEED_USER_ID, trackId },
+  });
   return Response.json({ ok: true });
 }
