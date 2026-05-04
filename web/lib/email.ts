@@ -31,7 +31,7 @@ export async function sendVerificationCode(
 ): Promise<void> {
   await send({
     to: email,
-    subject: "Your Song Digger verification code",
+    subject: "Your Track Digger verification code",
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
         <h2>Verify your email</h2>
@@ -52,7 +52,7 @@ export async function sendPasswordResetEmail(
   const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
   await send({
     to: email,
-    subject: "Reset your Song Digger password",
+    subject: "Reset your Track Digger password",
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
         <h2>Password reset request</h2>
