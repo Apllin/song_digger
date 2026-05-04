@@ -128,6 +128,23 @@ describe("registerAction", () => {
     );
   });
 
+  it("does not write to DB if email send fails", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null);
+    sendVerificationCode.mockRejectedValueOnce(
+      new Error("Resend send failed (validation_error): bad sandbox"),
+    );
+
+    const result = await registerAction(
+      fd({ email: "x@example.com", password: "validpassword" }),
+    );
+    expect(result).toEqual({
+      error: "We couldn't send your verification email. Please try again.",
+    });
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.verificationCode.create).not.toHaveBeenCalled();
+  });
+
   it("hashes the verification code before storing", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
     prismaMock.user.create.mockResolvedValueOnce({});

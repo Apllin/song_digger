@@ -3,12 +3,33 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
 
+// Resend SDK returns `{ data, error }` instead of throwing. Discarding
+// the result silently swallows API errors (invalid key, free-tier
+// sandbox limits, unverified `from` domain). Throw so callers can
+// surface a real failure instead of a phantom success.
+async function send(opts: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+  });
+  if (error) {
+    throw new Error(
+      `Resend send failed (${error.name ?? "unknown"}): ${error.message}`,
+    );
+  }
+}
+
 export async function sendVerificationCode(
   email: string,
   code: string,
 ): Promise<void> {
-  await resend.emails.send({
-    from: FROM,
+  await send({
     to: email,
     subject: "Your Song Digger verification code",
     html: `
@@ -29,8 +50,7 @@ export async function sendPasswordResetEmail(
   token: string,
 ): Promise<void> {
   const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
-  await resend.emails.send({
-    from: FROM,
+  await send({
     to: email,
     subject: "Reset your Song Digger password",
     html: `

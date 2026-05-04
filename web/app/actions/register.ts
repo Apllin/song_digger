@@ -34,7 +34,25 @@ export async function registerAction(
     return { error: "Email already registered" };
   }
 
+  // Send email BEFORE writing to DB. Resend can fail (free-tier
+  // sandbox, unverified domain, invalid key) — if we'd already
+  // claimed the admin row or created a fresh user, the next register
+  // attempt would hit "already registered" with no code to verify.
+  // Send-first means failure leaves the DB untouched and the user
+  // can simply retry.
+  const code = generateVerificationCode();
+  try {
+    await sendVerificationCode(email, code);
+  } catch (err) {
+    console.error("[register] email send failed:", err);
+    return {
+      error: "We couldn't send your verification email. Please try again.",
+    };
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
+  const codeHash = await hashCode(code);
+  const expires = new Date(Date.now() + 15 * 60 * 1000);
 
   if (existing) {
     // Pre-existing admin row (passwordHash null) — claim it. Stage I,
@@ -49,16 +67,10 @@ export async function registerAction(
     });
   }
 
-  const code = generateVerificationCode();
-  const codeHash = await hashCode(code);
-  const expires = new Date(Date.now() + 15 * 60 * 1000);
-
   await prisma.verificationCode.deleteMany({ where: { email } });
   await prisma.verificationCode.create({
     data: { email, code: codeHash, expires },
   });
-
-  await sendVerificationCode(email, code);
 
   return { success: true, email };
 }
