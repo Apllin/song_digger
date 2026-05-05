@@ -42,7 +42,7 @@ pnpm exec prisma migrate dev    # apply migrations against DATABASE_URL
 pnpm exec prisma generate       # regenerate client into app/generated/prisma
 ```
 
-Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`. There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
+Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`, plus the Stage I auth env: `AUTH_SECRET` (generate with `openssl rand -base64 32`), `AUTH_URL` (e.g. `http://localhost:3000`), `RESEND_API_KEY` (from resend.com), `EMAIL_FROM` (defaults to `onboarding@resend.dev` for sandbox; set to `auth@<your-verified-domain>` for full sending). There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
 
 ## Architecture
 
@@ -58,15 +58,25 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
 - `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
 - `lib/aggregator.ts` — RRF fusion across per-source ranks plus artist diversification (max 2 consecutive). No BPM/key filter, no genre filter, no embed bonus, no artist-level dislike penalty. Runs in Node, not Python.
-- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
+- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
+
+### Authentication (`web/lib/auth.ts`, ADR-0020)
+
+- Auth.js v5 (`next-auth@beta`) with Credentials provider + JWT sessions, sliding 14-day expiry. Sliding renewal is automatic — every `auth()` call refreshes the cookie expiry; do not add custom rotation logic in callbacks.
+- The five auth flows live in `web/app/actions/`: `register.ts`, `verify-email.ts`, `password-reset.ts`. They are Server Actions (not API routes) for native CSRF + simpler form wiring. Each follows a **send-first-then-DB** ordering — Resend's SDK returns `{ data, error }` rather than throwing, so `lib/email.ts` wraps it in a `send()` helper that throws; if the send fails, the action returns an error before any User / VerificationCode / PasswordResetToken row is written, so retry is clean.
+- Verification codes are 6 digits, generated with `crypto.randomInt`, stored bcrypt-hashed, 15-minute expiry. Reset tokens are 32-byte hex (256 bits), stored plaintext, 1-hour expiry. Both flows have built-in 1-minute resend / re-request rate limits via `createdAt` checks.
+- Email enumeration: `forgot-password` and the verification resend always succeed silently for nonexistent / verified users. `register` does leak existence ("Email already registered") — deliberate UX trade.
+- Auth helpers: `requireUser()` / `getCurrentUser()` in [web/lib/auth-utils.ts](web/lib/auth-utils.ts). `requireUser` throws `Error("UNAUTHORIZED")`; the per-route 401 wrapping is the caller's responsibility.
+- The admin pre-claim pattern: migration `20260504215611_add_authentication_schema` inserts a `User` row with id `admin_seed_account_id` and no passwordHash, and backfills existing favorites / dislikes to it. Registration with that email "claims" the row by setting passwordHash, so the existing data becomes the new user's data. Don't re-litigate this without rereading ADR-0020.
+- Auth UI surface: `/register`, `/login`, `/verify-email`, `/forgot-password`, `/reset-password`, plus `<NavAuthSection />` in the layout. Because the layout calls `auth()`, every route is server-rendered per request — there is no static prerender for the page body.
 
 ### Data flow for a similarity search
 
-1. User query hits `web/app/api/search/route.ts`.
+1. User query hits `web/app/api/search/route.ts`. The route calls `auth()` to capture the current `userId` (or null for anonymous).
 2. Web persists a `SearchQuery` via Prisma, then calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar`.
 3. Python route fans out to enabled adapters, each returning `TrackMeta[]`.
-4. Web filters out tracks whose `(artistKey, titleKey)` identity is in `DislikedTrack`, fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front).
+4. Web filters out tracks whose `(artistKey, titleKey)` identity is in **the current user's** `DislikedTrack` rows (anonymous = empty set, no filter), fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front).
 
 ## Project-specific gotchas
 

@@ -122,7 +122,27 @@ Copy [.env.example](.env.example) to `.env` and fill in values. Key variables:
 | `DATABASE_URL` | web | Prisma connection string |
 | `PYTHON_SERVICE_URL` | web | URL of the FastAPI service (default `http://localhost:8000`) |
 | `COSINE_CLUB_API_KEY` | python-service | Third-party API key for the Cosine Club adapter |
+| `AUTH_SECRET` | web | JWT signing secret. Generate with `openssl rand -base64 32`. Required by Auth.js v5. |
+| `AUTH_URL` | web | Public URL of the web app (e.g. `http://localhost:3000`). Used in password-reset emails and Auth.js callbacks. |
+| `RESEND_API_KEY` | web | API key from [resend.com](https://resend.com). Used to send verification codes and password-reset links. |
+| `EMAIL_FROM` | web | Sender address. Defaults to `onboarding@resend.dev` (Resend sandbox — only delivers to your account email). Set to `auth@<your-verified-domain>` once you've verified a domain in Resend. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | docker-compose | Postgres credentials |
+
+## Authentication
+
+Email/password authentication via [Auth.js v5](https://authjs.dev) with 6-digit code verification and 14-day sliding JWT sessions. See [ADR-0020](web/docs/decisions/0020-authentication-stage-i.md).
+
+Routes:
+
+| Path | Purpose |
+| --- | --- |
+| `/register` | Email + password signup → emails a 6-digit code |
+| `/verify-email?email=...` | Enter the 6-digit code; "Resend" button (1/min limit) |
+| `/login` | Sign in (also lands here as `/login?verified=true` after verify or password reset) |
+| `/forgot-password` | Request a password-reset email |
+| `/reset-password?token=...` | Set a new password from the email link (1h validity) |
+
+Server logic lives in [web/app/actions/](web/app/actions/) (`register.ts`, `verify-email.ts`, `password-reset.ts`). API endpoints are auth-aware: `/api/favorites` and `/api/dislikes` require a session; `/api/search` works for anonymous users (no dislike filter) and authenticated users (filter scoped to their dislikes).
 
 ## Project structure
 
