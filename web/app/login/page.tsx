@@ -4,10 +4,14 @@ import { LoginForm } from "@/components/auth/LoginForm";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ verified?: string | string[] }>;
+  searchParams: Promise<{
+    verified?: string | string[];
+    email?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   const justVerified = params.verified === "true";
+  const initialEmail = typeof params.email === "string" ? params.email : "";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
@@ -20,7 +24,7 @@ export default async function LoginPage({
             Email verified! Sign in to continue.
           </p>
         )}
-        <LoginForm />
+        <LoginForm initialEmail={initialEmail} autoFocusPassword={justVerified} />
       </div>
     </main>
   );

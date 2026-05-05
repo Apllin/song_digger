@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   verifyEmailAction,
   resendVerificationCodeAction,
@@ -12,7 +11,6 @@ export function VerifyEmailForm({ email }: { email: string }) {
   const [resendMsg, setResendMsg] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [resendPending, setResendPending] = useState(false);
-  const router = useRouter();
 
   async function handleSubmit(formData: FormData) {
     setPending(true);
@@ -25,7 +23,14 @@ export function VerifyEmailForm({ email }: { email: string }) {
     if ("error" in result) {
       setError(result.error);
     } else {
-      router.push("/login?verified=true");
+      // Hard navigation (not router.push) so the login page mounts with a
+      // clean DOM — soft navigation leaves browser autofill in a phantom
+      // state where the password field looks filled but the value isn't
+      // actually committed, causing the first sign-in attempt to fail.
+      // Pass the email through so the user only has to type the password.
+      window.location.replace(
+        `/login?verified=true&email=${encodeURIComponent(email)}`,
+      );
     }
   }
 

@@ -1,19 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { TurnstileWidget } from "./TurnstileWidget";
 import { loginPrecheckAction } from "@/app/actions/login-precheck";
 
-export function LoginForm() {
+export function LoginForm({
+  initialEmail = "",
+  autoFocusPassword = false,
+}: {
+  initialEmail?: string;
+  autoFocusPassword?: boolean;
+} = {}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [requireCaptcha, setRequireCaptcha] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const router = useRouter();
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const userTypedRef = useRef(false);
 
   const captchaConfigured = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  // Right after verification, browsers (Chrome especially) may either
+  // phantom-autofill the password field — visually filled but `.value`
+  // still empty — or fill it with a stale saved password from a prior
+  // test account. We clear once on mount and again briefly later to
+  // catch late autofill, but the delayed clear only fires if the user
+  // hasn't started typing — otherwise it would wipe their input.
+  useEffect(() => {
+    if (!autoFocusPassword) return;
+    if (passwordRef.current) passwordRef.current.value = "";
+    const t = setTimeout(() => {
+      if (!userTypedRef.current && passwordRef.current) {
+        passwordRef.current.value = "";
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [autoFocusPassword]);
 
   async function refreshCaptchaRequirement(email: string) {
     if (!captchaConfigured) return;
@@ -34,17 +59,31 @@ export function LoginForm() {
     setError(null);
 
     const formData = new FormData(e.currentTarget);
-    const email = String(formData.get("email") ?? "");
+    const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "");
-    const honeypot = String(formData.get("website") ?? "");
+    // Honeypot is a hidden checkbox: a checkbox is only present in
+    // FormData when checked. Real users can't see or reach it, but
+    // bots that blindly fill / tick every field will trip it. We
+    // use a checkbox instead of a text input because Chrome's
+    // autofill heuristic readily fills text fields with names like
+    // "nickname"/"website" from the user's profile, which produced
+    // false positives on legitimate logins.
+    const honeypotTripped = formData.has("hp_check");
 
-    // Honeypot: real users can't reach this field (off-screen, no
-    // tab stop, aria-hidden). Pretend to log them in so the bot
-    // sees no signal it was detected, but skip signIn() entirely
-    // — no row in LoginAttempt, no auth cookie, no redirect.
-    if (honeypot.length > 0) {
+    if (honeypotTripped) {
       setPending(false);
       setError("Invalid email or password, or email not verified");
+      return;
+    }
+
+    // Distinguish the empty-field case from the wrong-credentials
+    // case so the user gets a clear signal instead of a misleading
+    // "Invalid email or password". This catches phantom-autofill
+    // (visible value, empty `.value`) on the password field too.
+    if (!email || !password) {
+      setPending(false);
+      setError("Please enter your email and password.");
+      passwordRef.current?.focus();
       return;
     }
 
@@ -54,13 +93,25 @@ export function LoginForm() {
       return;
     }
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      turnstileToken,
-      redirect: false,
-    });
-    setPending(false);
+    // try/finally so a thrown signIn (network error, unexpected
+    // server response) always re-enables the submit button — without
+    // this, `pending` stays true and the form looks frozen.
+    let result: Awaited<ReturnType<typeof signIn>> | undefined;
+    try {
+      result = await signIn("credentials", {
+        email,
+        password,
+        turnstileToken,
+        redirect: false,
+      });
+    } catch {
+      setError("Could not reach the sign-in service. Please try again.");
+      setTurnstileToken("");
+      setPending(false);
+      return;
+    } finally {
+      setPending(false);
+    }
 
     if (!result || result.error) {
       const code = result?.code ?? "";
@@ -88,10 +139,15 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Honeypot — see RegisterForm for rationale. */}
+      {/* Honeypot — checkbox form. Chrome's autofill heuristic does
+          not tick arbitrary hidden checkboxes, so this avoids the
+          false positive we hit when this field was a text input
+          named "hp_nickname" / "website" (Chrome would autofill it
+          with the user's profile nickname and short-circuit login).
+          Bots that blindly tick all checkboxes still trip it. */}
       <input
-        type="text"
-        name="website"
+        type="checkbox"
+        name="hp_check"
         tabIndex={-1}
         autoComplete="off"
         aria-hidden="true"
@@ -107,6 +163,7 @@ export function LoginForm() {
           name="email"
           required
           autoComplete="email"
+          defaultValue={initialEmail}
           onBlur={(e) => refreshCaptchaRequirement(e.currentTarget.value)}
           className="w-full rounded-md bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm"
         />
@@ -116,11 +173,19 @@ export function LoginForm() {
           Password
         </label>
         <input
+          ref={passwordRef}
           type="password"
           id="password"
           name="password"
           required
-          autoComplete="current-password"
+          // After verification, suppress autofill of saved passwords —
+          // the browser frequently fills with a stale value from prior
+          // test accounts, and the user has to type fresh anyway.
+          autoComplete={autoFocusPassword ? "off" : "current-password"}
+          autoFocus={autoFocusPassword}
+          onInput={() => {
+            userTypedRef.current = true;
+          }}
           className="w-full rounded-md bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm"
         />
       </div>
