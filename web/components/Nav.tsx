@@ -9,7 +9,7 @@ const TABS = [
   { href: "/labels", label: "Labels" },
 ];
 
-export function Nav() {
+export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
@@ -31,6 +31,7 @@ export function Nav() {
             {tab.label}
           </Link>
         ))}
+        {rightSlot && <div className="ml-auto">{rightSlot}</div>}
       </div>
     </nav>
   );

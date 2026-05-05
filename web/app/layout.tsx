@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
+import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
 import "./globals.css";
 
@@ -30,7 +31,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-zinc-950">
         <PlayerProvider>
-          <Nav />
+          <Nav rightSlot={<NavAuthSection />} />
           {children}
         </PlayerProvider>
       </body>
