@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
+import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,6 +34,7 @@ export default function RootLayout({
         <PlayerProvider>
           <Nav rightSlot={<NavAuthSection />} />
           {children}
+          <AnonymousLimitModalHost />
         </PlayerProvider>
       </body>
     </html>

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, Suspense } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { useSearchHistory } from "@/lib/use-search-history";
 import { useDebounce } from "@/lib/use-debounce";
 import { labelsAtom, type Label, type LabelRelease } from "@/lib/atoms/labels";
+import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
+import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
 
 const POPULAR_LABELS = [
   "Tresor", "Ostgut Ton", "трип", "Lotus Parable",
@@ -56,11 +58,14 @@ export default function LabelsPage() {
 
 function LabelsContent() {
   const [s, setS] = useAtom(labelsAtom);
+  const setShowRegisterPrompt = useSetAtom(showRegisterPromptAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const autocompleteAbortRef = useRef<AbortController | null>(null);
   const { history, addToHistory } = useSearchHistory("labels-history");
+
+  const onAnonLimit = () => setShowRegisterPrompt(true);
 
   function selectLabel(label: Label) {
     setS((prev) => ({
@@ -93,10 +98,14 @@ function LabelsContent() {
       loadingLabels: true,
     }));
     addToHistory(name);
-    fetch(`/api/discography/label/search?q=${encodeURIComponent(name)}`, { signal: ac.signal })
-      .then((r) => r.json())
-      .then((data: Label[]) => {
-        if (ac.signal.aborted) return;
+    fetchWithAnonGate(
+      `/api/discography/label/search?q=${encodeURIComponent(name)}`,
+      { signal: ac.signal },
+      onAnonLimit,
+    )
+      .then((r) => (r ? r.json() : null))
+      .then((data: Label[] | null) => {
+        if (ac.signal.aborted || !data) return;
         const exact = data.find((l) => l.name.toLowerCase() === name.toLowerCase());
         const pick = exact ?? data[0];
         if (pick) selectLabel(pick);
@@ -118,12 +127,14 @@ function LabelsContent() {
     const ac = new AbortController();
     autocompleteAbortRef.current = ac;
     setS((prev) => ({ ...prev, loadingLabels: true }));
-    fetch(`/api/discography/label/search?q=${encodeURIComponent(debouncedQuery)}`, {
-      signal: ac.signal,
-    })
-      .then((r) => r.json())
-      .then((data: Label[]) => {
-        if (ac.signal.aborted) return;
+    fetchWithAnonGate(
+      `/api/discography/label/search?q=${encodeURIComponent(debouncedQuery)}`,
+      { signal: ac.signal },
+      onAnonLimit,
+    )
+      .then((r) => (r ? r.json() : null))
+      .then((data: Label[] | null) => {
+        if (ac.signal.aborted || !data) return;
         setS((prev) => ({ ...prev, suggestions: data, showSuggestions: true }));
       })
       .catch(() => {
@@ -132,6 +143,7 @@ function LabelsContent() {
       .finally(() => {
         if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingLabels: false }));
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, s.selectedLabel, s.query, setS]);
 
   // Close on outside click

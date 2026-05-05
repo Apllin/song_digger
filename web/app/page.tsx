@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, Suspense } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
@@ -9,6 +9,7 @@ import { TrackCard } from "@/components/TrackCard";
 import { usePlayer, type PlayerTrack } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
 import { favoritesAtom } from "@/lib/atoms/favorites";
+import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
 const POLL_INTERVAL_MS = 600;
@@ -27,6 +28,7 @@ function HomeContent() {
   const player = usePlayer();
   const [search, setSearch] = useAtom(searchAtom);
   const [fav, setFav] = useAtom(favoritesAtom);
+  const setShowRegisterPrompt = useSetAtom(showRegisterPromptAtom);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -136,6 +138,14 @@ function HomeContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ input: q.trim() }),
         });
+        if (res.status === 429) {
+          const body = await res.json().catch(() => ({}));
+          if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
+            setShowRegisterPrompt(true);
+            setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
+            return;
+          }
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         pollSearch(data.id);
@@ -148,7 +158,7 @@ function HomeContent() {
         }));
       }
     },
-    [search.status, stopPolling, setSearch, pollSearch]
+    [search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch]
   );
 
   const handleSearch = useCallback(
@@ -171,6 +181,15 @@ function HomeContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: q }),
       });
+      if (res.status === 429) {
+        const body = await res.json().catch(() => ({}));
+        if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
+          setShowRegisterPrompt(true);
+          appendModeRef.current = false;
+          setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
+          return;
+        }
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       pollSearch(data.id);
@@ -183,7 +202,7 @@ function HomeContent() {
         errorMsg: "Failed to load more tracks.",
       }));
     }
-  }, [search.query, search.status, stopPolling, setSearch, pollSearch]);
+  }, [search.query, search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {
