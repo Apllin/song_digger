@@ -9,7 +9,9 @@ const cspDirectives = [
   // Next.js App Router emits inline scripts for hydration and uses
   // eval-style transforms in dev — 'unsafe-inline' / 'unsafe-eval'
   // are unavoidable. Cloudflare Turnstile loads from challenges.cloudflare.com.
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
+  // www.youtube.com hosts the IFrame Player API script that BottomPlayer /
+  // EmbedPlayer inject at runtime — without it the player hangs on "loading".
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://www.youtube.com",
 
   // Inline styles come from Tailwind's hashed classes plus framework
   // injected styles; can't be tightened without a code change.
