@@ -126,6 +126,8 @@ Copy [.env.example](.env.example) to `.env` and fill in values. Key variables:
 | `AUTH_URL` | web | Public URL of the web app (e.g. `http://localhost:3000`). Used in password-reset emails and Auth.js callbacks. |
 | `RESEND_API_KEY` | web | API key from [resend.com](https://resend.com). Used to send verification codes and password-reset links. |
 | `EMAIL_FROM` | web | Sender address. Defaults to `onboarding@resend.dev` (Resend sandbox — only delivers to your account email). Set to `auth@<your-verified-domain>` once you've verified a domain in Resend. |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | web | Cloudflare Turnstile public site key. Test key `1x00000000000000000000AA` always passes; real keys from [dash.cloudflare.com](https://dash.cloudflare.com) → Turnstile. |
+| `TURNSTILE_SECRET_KEY` | web | Cloudflare Turnstile secret. Test key `1x0000000000000000000000000000000AA` always passes. Production deployment requires real keys. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | docker-compose | Postgres credentials |
 
 ## Authentication
@@ -143,6 +145,17 @@ Routes:
 | `/reset-password?token=...` | Set a new password from the email link (1h validity) |
 
 Server logic lives in [web/app/actions/](web/app/actions/) (`register.ts`, `verify-email.ts`, `password-reset.ts`). API endpoints are auth-aware: `/api/favorites` and `/api/dislikes` require a session; `/api/search` works for anonymous users (no dislike filter) and authenticated users (filter scoped to their dislikes).
+
+## Security (Stage J)
+
+Stage J ([ADR-0021](web/docs/decisions/0021-anonymous-limits-and-security.md)) hardens the surface before public launch:
+
+- **Anonymous request limit** — 10 free requests per IP across `/api/search`, `/api/discography/search`, `/api/discography/label/search`. After that a register prompt blocks further use; signing up clears the gate.
+- **Cloudflare Turnstile CAPTCHA** — required on registration, and on login after 3 failed attempts on the same email.
+- **Brute-force protection** — per-IP rate limit (10 failures / 15 min), per-email exponential backoff (1s/4s/16s/64s), and a security email at 5+ failed attempts on an existing account.
+- **Strict CSP + security headers** — HSTS (production), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, and a Content-Security-Policy with explicit allowlists for embeds (YouTube, Bandcamp, Turnstile).
+- **Honeypot fields** on register and login; bots that auto-fill every input get a fake-success and never reach the DB.
+- **Zod-validated inputs** on every API entry point.
 
 ## Project structure
 

@@ -42,7 +42,7 @@ pnpm exec prisma migrate dev    # apply migrations against DATABASE_URL
 pnpm exec prisma generate       # regenerate client into app/generated/prisma
 ```
 
-Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`, plus the Stage I auth env: `AUTH_SECRET` (generate with `openssl rand -base64 32`), `AUTH_URL` (e.g. `http://localhost:3000`), `RESEND_API_KEY` (from resend.com), `EMAIL_FROM` (defaults to `onboarding@resend.dev` for sandbox; set to `auth@<your-verified-domain>` for full sending). There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
+Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`, plus the Stage I auth env: `AUTH_SECRET` (generate with `openssl rand -base64 32`), `AUTH_URL` (e.g. `http://localhost:3000`), `RESEND_API_KEY` (from resend.com), `EMAIL_FROM` (defaults to `onboarding@resend.dev` for sandbox; set to `auth@<your-verified-domain>` for full sending), plus the Stage J Turnstile env: `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (test keys `1x00...AA` work in dev; production keys from https://dash.cloudflare.com → Turnstile). There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
 - `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
 - `lib/aggregator.ts` — RRF fusion across per-source ranks plus artist diversification (max 2 consecutive). No BPM/key filter, no genre filter, no embed bonus, no artist-level dislike penalty. Runs in Node, not Python.
-- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
+- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020; plus the Stage J security tables: AnonymousRequest, LoginAttempt — see ADR-0021). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
 
 ### Authentication (`web/lib/auth.ts`, ADR-0020)
@@ -70,6 +70,21 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - Auth helpers: `requireUser()` / `getCurrentUser()` in [web/lib/auth-utils.ts](web/lib/auth-utils.ts). `requireUser` throws `Error("UNAUTHORIZED")`; the per-route 401 wrapping is the caller's responsibility.
 - The admin pre-claim pattern: migration `20260504215611_add_authentication_schema` inserts a `User` row with id `admin_seed_account_id` and no passwordHash, and backfills existing favorites / dislikes to it. Registration with that email "claims" the row by setting passwordHash, so the existing data becomes the new user's data. Don't re-litigate this without rereading ADR-0020.
 - Auth UI surface: `/register`, `/login`, `/verify-email`, `/forgot-password`, `/reset-password`, plus `<NavAuthSection />` in the layout. Because the layout calls `auth()`, every route is server-rendered per request — there is no static prerender for the page body.
+
+### Security (`web/lib/{anonymous-counter,brute-force,turnstile}.ts`, `next.config.ts`, ADR-0021)
+
+- **Anonymous limit**: per-IP counter (`AnonymousRequest`) gates `/api/search`, `/api/discography/search`, `/api/discography/label/search`. 10 free requests pooled across them; 11th returns `429 ANONYMOUS_LIMIT_REACHED`. Authenticated users bypass. Client uses `fetchWithAnonGate` to detect 429 and toggle the shared `showRegisterPromptAtom`, which `<AnonymousLimitModalHost />` (mounted in the root layout) reads. Don't add the gate to follow-up calls (releases / tracklist / embed) — it's intended for the typed-search entry points only.
+- **Cloudflare Turnstile**: `lib/turnstile.ts` calls `siteverify` and **fails closed** on missing secret, network errors, non-2xx, or empty token. Don't add fail-open paths — bypassing CAPTCHA on infra failure is the attack vector. The api.js script is loaded once at the layout level via `next/script`. Test keys are `1x00...AA` (always-pass) and `2x...AB` (always-fail) — publicly documented, safe to commit.
+- **Brute-force layers** (in `authorize()` in `lib/auth.ts`, ordered cheapest-first):
+  1. Per-IP rate limit — 10 failed attempts in 15 min throws `RateLimitError` (CredentialsSignin subclass with `code: "RATE_LIMIT"`).
+  2. CAPTCHA gate — required after 3 failed attempts on the email; verified before the bcrypt compare.
+  3. Per-email exponential backoff — 0/0/1s/4s/16s/64s. Sleeps inside `authorize()`. **Vercel free tier (10s function timeout) will time out** at the 64s tier — production deployments need 90s+.
+  4. Email warning at 5+ failed attempts (only for accounts that exist).
+  Successful login calls `clearFailedAttempts(email)`; the per-IP counter is unaffected.
+- **Login form** asks the server (`loginPrecheckAction`) on email blur whether CAPTCHA is required; the server is the source of truth. Constants live in `BRUTE_FORCE_CONSTANTS` in `lib/brute-force.ts` — change them there, not inline.
+- **CSP**: strict allowlists in `next.config.ts`. Adding a new iframe source means adding its host to `frame-src`. CSP violations show up in DevTools Console — check there before assuming a feature is broken. `'unsafe-inline'` / `'unsafe-eval'` on `script-src` are unavoidable due to Next.js inline hydration scripts.
+- **Honeypot fields**: hidden `website` input on register and login. When non-empty, the action returns fake success without DB writes — bot sees no signal it was detected.
+- **Input validation**: every API entry point that reads user input passes through Zod with length caps. When adding a new route, add a schema (don't trust strings).
 
 ### Data flow for a similarity search
 
