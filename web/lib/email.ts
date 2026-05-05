@@ -1,7 +1,24 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+// Lazy singleton. Constructing `new Resend(undefined)` throws — we
+// don't want module load to crash during `next build` when the key
+// isn't injected into the build environment (Railway, Vercel preview
+// without secret, etc.). Resolve the key on first send instead, so
+// the build collects page data without a real Resend account.
+let resendInstance: Resend | null = null;
+
+function getResend(): Resend {
+  if (!resendInstance) {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) {
+      throw new Error(
+        "RESEND_API_KEY is not set — email sending is disabled in this environment",
+      );
+    }
+    resendInstance = new Resend(key);
+  }
+  return resendInstance;
+}
 
 // Resend SDK returns `{ data, error }` instead of throwing. Discarding
 // the result silently swallows API errors (invalid key, free-tier
@@ -12,7 +29,8 @@ async function send(opts: {
   subject: string;
   html: string;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const { error } = await getResend().emails.send({
     from: FROM,
     to: opts.to,
     subject: opts.subject,
