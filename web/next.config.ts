@@ -24,6 +24,12 @@ const cspDirectives = [
 
   "font-src 'self' data:",
 
+  // Bandcamp serves the mp3 stream from its CDN subdomains (typically
+  // t4.bcbits.com); the BottomPlayer <audio> element loads it directly.
+  // Without a media-src directive the browser falls back to default-src
+  // and blocks the stream.
+  "media-src 'self' https://*.bcbits.com",
+
   // Outgoing fetch destinations: same-origin API + Cloudflare's
   // Turnstile challenge domain (the widget posts back to it).
   "connect-src 'self' https://challenges.cloudflare.com",
