@@ -7,6 +7,7 @@ import type { FusedCandidate } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { parseQuery } from "@/lib/parse-query";
 import type { SourceList } from "@/lib/python-client";
+import { auth } from "@/lib/auth";
 
 const SearchRequestSchema = z.object({
   input: z.string().min(1).max(500),
@@ -26,11 +27,17 @@ export async function POST(req: NextRequest) {
   const { input } = parsed.data;
   const { artist, track } = parseQuery(input);
 
+  // Capture the user at request time. runSearch is fire-and-forget on
+  // a background task, so we resolve the session here and pass userId
+  // through. Anonymous users get an empty dislike set (no filtering).
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
+
   const searchQuery = await prisma.searchQuery.create({
     data: { input, status: "running" },
   });
 
-  runSearch(searchQuery.id, input, artist, track).catch((err) => {
+  runSearch(searchQuery.id, input, artist, track, userId).catch((err) => {
     console.error(`[Search] background error for ${searchQuery.id}:`, err);
     prisma.searchQuery
       .update({ where: { id: searchQuery.id }, data: { status: "error" } })
@@ -129,6 +136,7 @@ async function runSearch(
   input: string,
   artist: string,
   track: string | null,
+  userId: string | null,
 ) {
   // ── Fetch from Python + load dislikes in parallel. ───────────────────────
   // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
@@ -145,9 +153,12 @@ async function runSearch(
       console.error("[Search] Python stage failed:", err);
       return null;
     }),
-    prisma.dislikedTrack.findMany({
-      select: { artistKey: true, titleKey: true },
-    }),
+    userId
+      ? prisma.dislikedTrack.findMany({
+          where: { userId },
+          select: { artistKey: true, titleKey: true },
+        })
+      : Promise.resolve([] as { artistKey: string; titleKey: string }[]),
   ]);
 
   if (!pythonResult) {

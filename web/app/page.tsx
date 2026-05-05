@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, Suspense } from "react";
+import { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
+import { getSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
 import { TrackCard } from "@/components/TrackCard";
 import { usePlayer, type PlayerTrack } from "@/lib/atoms/player";
@@ -26,11 +27,27 @@ function HomeContent() {
   const player = usePlayer();
   const [search, setSearch] = useAtom(searchAtom);
   const [fav, setFav] = useAtom(favoritesAtom);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
   const currentSearchIdRef = useRef<string>("");
   const appendModeRef = useRef<boolean>(false);
+
+  // One-shot fetch of session state — gates favorite/dislike controls.
+  // SessionProvider isn't wired site-wide; getSession does its own /api
+  // call which is fine for a single read.
+  useEffect(() => {
+    let cancelled = false;
+    getSession()
+      .then((s) => {
+        if (!cancelled) setIsAuthenticated(!!s?.user);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -350,8 +367,14 @@ function HomeContent() {
                       playlist={playlist}
                       trackIndex={playlistIndex}
                       isFavorite={fav.ids.has(track.id)}
-                      onFavoriteToggle={toggleFavorite}
-                      onDislike={() => handleDislike(track)}
+                      onFavoriteToggle={
+                        isAuthenticated ? toggleFavorite : undefined
+                      }
+                      onDislike={
+                        isAuthenticated
+                          ? () => handleDislike(track)
+                          : undefined
+                      }
                     />
                   );
                 })}

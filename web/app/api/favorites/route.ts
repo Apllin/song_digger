@@ -1,13 +1,18 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-
-// TODO(Stage I, Step 8): replace with requireUser() once Auth.js is wired.
-const ADMIN_SEED_USER_ID = "admin_seed_account_id";
+import { requireUser } from "@/lib/auth-utils";
 
 export async function GET() {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const favorites = await prisma.favorite.findMany({
-    where: { userId: ADMIN_SEED_USER_ID },
+    where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     include: { track: true },
   });
@@ -18,6 +23,13 @@ export async function GET() {
 const FavoriteSchema = z.object({ trackId: z.string().min(1) });
 
 export async function POST(req: NextRequest) {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = FavoriteSchema.safeParse(body);
 
@@ -27,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await prisma.favorite.create({
-      data: { userId: ADMIN_SEED_USER_ID, trackId: parsed.data.trackId },
+      data: { userId: user.id, trackId: parsed.data.trackId },
     });
     return Response.json({ ok: true });
   } catch {
@@ -36,6 +48,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const trackId = searchParams.get("trackId");
 
@@ -44,7 +63,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   await prisma.favorite.deleteMany({
-    where: { userId: ADMIN_SEED_USER_ID, trackId },
+    where: { userId: user.id, trackId },
   });
   return Response.json({ ok: true });
 }
