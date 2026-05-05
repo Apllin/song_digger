@@ -5,10 +5,16 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode, hashCode } from "@/lib/auth-tokens";
 import { sendVerificationCode } from "@/lib/email";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+import { getRequestIp } from "@/lib/anonymous-counter";
 
 const RegisterSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(8).max(128),
+  // Optional in the schema so dev environments without
+  // NEXT_PUBLIC_TURNSTILE_SITE_KEY can still register. The action body
+  // enforces presence whenever the secret is configured.
+  turnstileToken: z.string().optional(),
 });
 
 type RegisterResult =
@@ -21,13 +27,29 @@ export async function registerAction(
   const parsed = RegisterSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
+    turnstileToken: formData.get("turnstileToken") ?? undefined,
   });
 
   if (!parsed.success) {
     return { error: "Invalid email or password format" };
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, turnstileToken } = parsed.data;
+
+  // CAPTCHA gate — runs before the existence check, the password
+  // hash, the email send, and any DB writes. Skipped only when the
+  // server is not configured for Turnstile (TURNSTILE_SECRET_KEY
+  // unset). Production deployment requires the secret.
+  if (process.env.TURNSTILE_SECRET_KEY) {
+    const ip = await getRequestIp();
+    const ok = await verifyTurnstileToken(turnstileToken, {
+      remoteIp: ip === "unknown" ? undefined : ip,
+    });
+    if (!ok) {
+      return { error: "CAPTCHA verification failed. Please try again." };
+    }
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
 
   if (existing && existing.passwordHash) {

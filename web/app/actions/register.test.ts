@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const prismaMock = {
   user: {
@@ -13,9 +13,16 @@ const prismaMock = {
 };
 
 const sendVerificationCode = vi.fn();
+const verifyTurnstileToken = vi.fn();
+const getRequestIp = vi.fn(async () => "unknown");
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendVerificationCode }));
+vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken }));
+vi.mock("@/lib/anonymous-counter", () => ({ getRequestIp }));
+
+// Default to no Turnstile env so the existing tests stay valid.
+delete process.env.TURNSTILE_SECRET_KEY;
 
 const { registerAction } = await import("./register");
 
@@ -143,6 +150,63 @@ describe("registerAction", () => {
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(prismaMock.user.update).not.toHaveBeenCalled();
     expect(prismaMock.verificationCode.create).not.toHaveBeenCalled();
+  });
+
+  describe("CAPTCHA gate", () => {
+    beforeEach(() => {
+      process.env.TURNSTILE_SECRET_KEY = "test-secret";
+    });
+
+    afterEach(() => {
+      delete process.env.TURNSTILE_SECRET_KEY;
+    });
+
+    it("rejects when Turnstile verification fails", async () => {
+      verifyTurnstileToken.mockResolvedValueOnce(false);
+      const result = await registerAction(
+        fd({
+          email: "user@example.com",
+          password: "validpassword",
+          turnstileToken: "bad",
+        }),
+      );
+      expect(result).toEqual({
+        error: "CAPTCHA verification failed. Please try again.",
+      });
+      expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+      expect(sendVerificationCode).not.toHaveBeenCalled();
+    });
+
+    it("proceeds when Turnstile verification passes", async () => {
+      verifyTurnstileToken.mockResolvedValueOnce(true);
+      prismaMock.user.findUnique.mockResolvedValueOnce(null);
+      prismaMock.user.create.mockResolvedValueOnce({});
+      prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
+      prismaMock.verificationCode.create.mockResolvedValueOnce({});
+      sendVerificationCode.mockResolvedValueOnce(undefined);
+
+      const result = await registerAction(
+        fd({
+          email: "user@example.com",
+          password: "validpassword",
+          turnstileToken: "good",
+        }),
+      );
+      expect(result).toEqual({ success: true, email: "user@example.com" });
+      expect(verifyTurnstileToken).toHaveBeenCalledWith("good", expect.any(Object));
+    });
+
+    it("fails CAPTCHA gate before checking existence (no enumeration)", async () => {
+      verifyTurnstileToken.mockResolvedValueOnce(false);
+      await registerAction(
+        fd({
+          email: "taken@example.com",
+          password: "validpassword",
+          turnstileToken: "bad",
+        }),
+      );
+      expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    });
   });
 
   it("hashes the verification code before storing", async () => {

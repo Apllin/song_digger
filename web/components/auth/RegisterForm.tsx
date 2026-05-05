@@ -3,20 +3,39 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { registerAction } from "@/app/actions/register";
+import { TurnstileWidget } from "./TurnstileWidget";
 
 export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const router = useRouter();
+
+  // Shows the widget only when the site key is configured. In dev with
+  // unset keys the form still works, mirroring how every other env var
+  // in this repo is treated. Production deployment requires both keys.
+  const captchaConfigured = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   async function handleSubmit(formData: FormData) {
     setPending(true);
     setError(null);
+
+    if (captchaConfigured && !turnstileToken) {
+      setPending(false);
+      setError("Please complete the CAPTCHA before submitting.");
+      return;
+    }
+
+    formData.set("turnstileToken", turnstileToken);
     const result = await registerAction(formData);
     setPending(false);
 
     if ("error" in result) {
       setError(result.error);
+      // Token is single-use; force a fresh one before retry. Re-mount
+      // by clearing the local copy — the widget calls onVerify again
+      // when Cloudflare auto-resets.
+      setTurnstileToken("");
     } else {
       router.push(`/verify-email?email=${encodeURIComponent(result.email)}`);
     }
@@ -52,6 +71,15 @@ export function RegisterForm() {
         />
         <p className="text-xs text-zinc-500 mt-1">At least 8 characters</p>
       </div>
+      {captchaConfigured && (
+        <TurnstileWidget
+          action="register"
+          theme="dark"
+          onVerify={setTurnstileToken}
+          onExpire={() => setTurnstileToken("")}
+          onError={() => setTurnstileToken("")}
+        />
+      )}
       {error && <p className="text-sm text-red-400">{error}</p>}
       <button
         type="submit"

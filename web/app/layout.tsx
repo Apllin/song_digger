@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
@@ -36,6 +37,15 @@ export default function RootLayout({
           {children}
           <AnonymousLimitModalHost />
         </PlayerProvider>
+        {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout
+            level so any mounted widget can find window.turnstile.
+            Cloudflare requires the script come from this exact URL with
+            no proxy/cache, so we use the Script component but let it
+            ship as a regular external script. ADR-0021. */}
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
