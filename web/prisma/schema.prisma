@@ -186,6 +186,23 @@ model AnonymousRequest {
   lastAt  DateTime @default(now())
 }
 
+// One row per login attempt, kept for as long as the rate-limit and
+// backoff windows need it (15 min for IP, 1 hour for email backoff).
+// Stage K may add a periodic cleanup job — for now the table grows
+// unbounded but stays small in absolute terms. ADR-0021.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  ip        String
+  // null when the submitted email failed Zod parse (still recorded
+  // against IP so the per-IP cap protects against random probing).
+  email     String?
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([email, createdAt])
+}
+
 model LastfmArtistSimilars {
   id String @id @default(cuid())
 

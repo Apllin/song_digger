@@ -3,28 +3,70 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { TurnstileWidget } from "./TurnstileWidget";
+import { loginPrecheckAction } from "@/app/actions/login-precheck";
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [requireCaptcha, setRequireCaptcha] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const router = useRouter();
+
+  const captchaConfigured = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  async function refreshCaptchaRequirement(email: string) {
+    if (!captchaConfigured) return;
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    try {
+      const result = await loginPrecheckAction(trimmed);
+      if (result.requireCaptcha) setRequireCaptcha(true);
+    } catch {
+      // Network glitch — leave requireCaptcha as is. The server still
+      // enforces the threshold; the client check is just UX.
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setPending(true);
     setError(null);
+
     const formData = new FormData(e.currentTarget);
+    const email = String(formData.get("email") ?? "");
+    const password = String(formData.get("password") ?? "");
+
+    if (requireCaptcha && !turnstileToken) {
+      setPending(false);
+      setError("Please complete the CAPTCHA below.");
+      return;
+    }
+
     const result = await signIn("credentials", {
-      email: formData.get("email") as string,
-      password: formData.get("password") as string,
+      email,
+      password,
+      turnstileToken,
       redirect: false,
     });
     setPending(false);
 
-    // Generic error — don't reveal whether the email exists, the password
-    // is wrong, or the email isn't verified.
     if (!result || result.error) {
-      setError("Invalid email or password, or email not verified");
+      const code = result?.code ?? "";
+      if (code === "RATE_LIMIT") {
+        setError("Too many failed attempts from this address. Try again in 15 minutes.");
+      } else if (code === "CAPTCHA_REQUIRED") {
+        setRequireCaptcha(true);
+        setError("Please complete the CAPTCHA below and submit again.");
+      } else {
+        setError("Invalid email or password, or email not verified");
+        // Re-check threshold; this attempt may have just crossed 3
+        // failures. The server check is the source of truth.
+        await refreshCaptchaRequirement(email);
+      }
+      // Tokens are single-use — clear so the next submit grabs a
+      // fresh one (the widget auto-resets on its side).
+      setTurnstileToken("");
       return;
     }
 
@@ -45,6 +87,7 @@ export function LoginForm() {
           name="email"
           required
           autoComplete="email"
+          onBlur={(e) => refreshCaptchaRequirement(e.currentTarget.value)}
           className="w-full rounded-md bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm"
         />
       </div>
@@ -61,6 +104,20 @@ export function LoginForm() {
           className="w-full rounded-md bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm"
         />
       </div>
+      {captchaConfigured && requireCaptcha && (
+        <div>
+          <p className="text-xs text-zinc-500 mb-2">
+            Please verify you&rsquo;re not a robot:
+          </p>
+          <TurnstileWidget
+            action="login"
+            theme="dark"
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken("")}
+            onError={() => setTurnstileToken("")}
+          />
+        </div>
+      )}
       {error && <p className="text-sm text-red-400">{error}</p>}
       <button
         type="submit"

@@ -45,6 +45,30 @@ export async function sendVerificationCode(
   });
 }
 
+export async function sendLoginAttemptsWarning(
+  email: string,
+  ip: string,
+): Promise<void> {
+  const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/forgot-password`;
+  await send({
+    to: email,
+    subject: "Multiple failed login attempts on your Track Digger account",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2>Security alert</h2>
+        <p>We detected 5 or more failed sign-in attempts on your account
+        in the past hour.</p>
+        <p>If this was you and you forgot your password, use the
+        <a href="${resetUrl}">password reset flow</a>.</p>
+        <p>If this wasn&rsquo;t you, your account is still safe &mdash; the
+        attacker couldn&rsquo;t get in. Consider changing your password
+        as a precaution.</p>
+        <p style="color: #666; font-size: 12px;">Attempt source IP: ${ip}</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(
   email: string,
   token: string,
