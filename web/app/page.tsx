@@ -309,9 +309,9 @@ function HomeContent() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-10 pb-28 flex flex-col gap-8">
         {/* Header */}
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Track Digger</h1>
-        </div>
+        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-50">
+          Find your next favourite track
+        </h2>
 
         {/* Search */}
         <SearchBar
@@ -376,7 +376,7 @@ function HomeContent() {
                   {isLoading && " · searching…"}
                 </p>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-7">
                 {shown.map((track) => {
                   const playlistIndex = playlist.findIndex((p) => p.sourceUrl === track.sourceUrl);
                   return (
