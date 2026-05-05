@@ -8,9 +8,10 @@ import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { parseQuery } from "@/lib/parse-query";
 import type { SourceList } from "@/lib/python-client";
 import { auth } from "@/lib/auth";
+import { gateAnonymousRequest } from "@/lib/anonymous-counter";
 
 const SearchRequestSchema = z.object({
-  input: z.string().min(1).max(500),
+  input: z.string().trim().min(1).max(500),
 });
 
 export async function POST(req: NextRequest) {
@@ -32,6 +33,18 @@ export async function POST(req: NextRequest) {
   // through. Anonymous users get an empty dislike set (no filtering).
   const session = await auth();
   const userId = session?.user?.id ?? null;
+
+  // Anonymous users get 10 free requests pooled across search +
+  // discography + labels (ADR-0021). Authenticated users bypass.
+  if (!userId) {
+    const gate = await gateAnonymousRequest();
+    if (!gate.ok) {
+      return Response.json(
+        { error: "ANONYMOUS_LIMIT_REACHED" },
+        { status: 429 },
+      );
+    }
+  }
 
   const searchQuery = await prisma.searchQuery.create({
     data: { input, status: "running" },

@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { auth } from "@/lib/auth";
+import { gateAnonymousRequest } from "@/lib/anonymous-counter";
 
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
@@ -6,6 +8,17 @@ const PYTHON_SERVICE_URL =
 export async function GET(req: NextRequest) {
   const q = new URL(req.url).searchParams.get("q") ?? "";
   if (!q) return Response.json([], { status: 400 });
+
+  const session = await auth();
+  if (!session?.user) {
+    const gate = await gateAnonymousRequest();
+    if (!gate.ok) {
+      return Response.json(
+        { error: "ANONYMOUS_LIMIT_REACHED" },
+        { status: 429 },
+      );
+    }
+  }
 
   const res = await fetch(
     `${PYTHON_SERVICE_URL}/discogs/search?q=${encodeURIComponent(q)}`
