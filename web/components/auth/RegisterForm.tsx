@@ -43,6 +43,18 @@ export function RegisterForm() {
 
   return (
     <form action={handleSubmit} className="space-y-4">
+      {/* Honeypot. Real users won't fill (off-screen, no tab stop,
+          aria-hidden); bots that auto-fill every input will. The
+          server treats a non-empty value as a bot fingerprint and
+          fakes a success response. */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute left-[-9999px] top-[-9999px] h-0 w-0 opacity-0"
+      />
       <div>
         <label className="block text-sm mb-1" htmlFor="email">
           Email

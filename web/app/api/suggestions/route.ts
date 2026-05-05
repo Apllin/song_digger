@@ -1,11 +1,16 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
+const QuerySchema = z.string().trim().min(2).max(200);
+
 export async function GET(req: NextRequest) {
-  const q = new URL(req.url).searchParams.get("q") ?? "";
-  if (q.length < 2) return Response.json([]);
+  const raw = new URL(req.url).searchParams.get("q") ?? "";
+  const parsed = QuerySchema.safeParse(raw);
+  if (!parsed.success) return Response.json([]);
+  const q = parsed.data;
 
   try {
     const res = await fetch(

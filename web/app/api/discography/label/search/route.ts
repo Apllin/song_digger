@@ -1,13 +1,18 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { gateAnonymousRequest } from "@/lib/anonymous-counter";
 
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
+const QuerySchema = z.string().trim().min(1).max(200);
+
 export async function GET(req: NextRequest) {
-  const q = new URL(req.url).searchParams.get("q") ?? "";
-  if (!q) return Response.json([], { status: 400 });
+  const raw = new URL(req.url).searchParams.get("q") ?? "";
+  const parsed = QuerySchema.safeParse(raw);
+  if (!parsed.success) return Response.json([], { status: 400 });
+  const q = parsed.data;
 
   const session = await auth();
   if (!session?.user) {

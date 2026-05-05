@@ -24,6 +24,18 @@ type RegisterResult =
 export async function registerAction(
   formData: FormData,
 ): Promise<RegisterResult> {
+  // Honeypot: real users never fill the off-screen, aria-hidden
+  // "website" field. A non-empty value is a bot fingerprint. Return
+  // a fake success so the bot sees no signal it was detected — they
+  // never get a verified user, just a phantom OK that goes nowhere.
+  const honeypot = formData.get("website");
+  if (typeof honeypot === "string" && honeypot.length > 0) {
+    return {
+      success: true,
+      email: String(formData.get("email") ?? "decoy@example.com"),
+    };
+  }
+
   const parsed = RegisterSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),

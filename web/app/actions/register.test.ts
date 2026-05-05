@@ -152,6 +152,24 @@ describe("registerAction", () => {
     expect(prismaMock.verificationCode.create).not.toHaveBeenCalled();
   });
 
+  describe("honeypot", () => {
+    it("returns fake success and writes nothing when 'website' is filled", async () => {
+      const result = await registerAction(
+        fd({
+          email: "bot@example.com",
+          password: "validpassword",
+          website: "https://spam.example",
+        }),
+      );
+      // Looks like success — bot can't tell it was detected.
+      expect(result).toEqual({ success: true, email: "bot@example.com" });
+      // No DB call, no email send.
+      expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.user.create).not.toHaveBeenCalled();
+      expect(sendVerificationCode).not.toHaveBeenCalled();
+    });
+  });
+
   describe("CAPTCHA gate", () => {
     beforeEach(() => {
       process.env.TURNSTILE_SECRET_KEY = "test-secret";

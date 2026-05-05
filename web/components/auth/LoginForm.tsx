@@ -36,6 +36,17 @@ export function LoginForm() {
     const formData = new FormData(e.currentTarget);
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
+    const honeypot = String(formData.get("website") ?? "");
+
+    // Honeypot: real users can't reach this field (off-screen, no
+    // tab stop, aria-hidden). Pretend to log them in so the bot
+    // sees no signal it was detected, but skip signIn() entirely
+    // — no row in LoginAttempt, no auth cookie, no redirect.
+    if (honeypot.length > 0) {
+      setPending(false);
+      setError("Invalid email or password, or email not verified");
+      return;
+    }
 
     if (requireCaptcha && !turnstileToken) {
       setPending(false);
@@ -77,6 +88,15 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Honeypot — see RegisterForm for rationale. */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute left-[-9999px] top-[-9999px] h-0 w-0 opacity-0"
+      />
       <div>
         <label className="block text-sm mb-1" htmlFor="email">
           Email

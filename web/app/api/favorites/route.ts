@@ -20,7 +20,7 @@ export async function GET() {
   return Response.json(favorites.map((fav) => fav.track));
 }
 
-const FavoriteSchema = z.object({ trackId: z.string().min(1) });
+const FavoriteSchema = z.object({ trackId: z.string().min(1).max(64) });
 
 export async function POST(req: NextRequest) {
   let user;
@@ -56,14 +56,15 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const trackId = searchParams.get("trackId");
-
-  if (!trackId) {
+  const parsed = FavoriteSchema.shape.trackId.safeParse(
+    searchParams.get("trackId"),
+  );
+  if (!parsed.success) {
     return Response.json({ error: "trackId required" }, { status: 400 });
   }
 
   await prisma.favorite.deleteMany({
-    where: { userId: user.id, trackId },
+    where: { userId: user.id, trackId: parsed.data },
   });
   return Response.json({ ok: true });
 }
