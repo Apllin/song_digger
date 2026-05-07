@@ -1,7 +1,64 @@
+import re
+import unicodedata
+
 import httpx
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
 from app.config import settings
+
+
+# Number of search hits to scan when resolving the seed. Cosine.club's /v1/search
+# is fuzzy: a query with no exact match still returns the closest text-similar
+# track, which leads to wildly off-genre similars (e.g. "Ignez - A Love Dream"
+# resolved to a 1972 soul record because no Ignez track exists in the catalog).
+# We scan a few hits and pick the first that actually matches the query's
+# artist+title; if none match, we return [] rather than a phantom seed.
+_SEED_CANDIDATES = 5
+
+
+def _normalize(s: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", s)
+    stripped = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    return stripped.lower().strip()
+
+
+_COLLAB_SPLIT = re.compile(
+    r"[,&]|\s+(?:vs\.?|x|feat\.?|ft\.?|featuring|with)\s+", re.IGNORECASE
+)
+
+
+def _artist_tokens(s: str) -> set[str]:
+    s = _COLLAB_SPLIT.sub(" ", _normalize(s))
+    return set(s.split())
+
+
+def _title_signature(s: str) -> str:
+    s = _normalize(s)
+    s = re.sub(r"[\(\[].*?[\)\]]", "", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
+
+
+def _query_matches(query: str, cand_artist: str, cand_title: str) -> bool:
+    """True if the candidate's artist+title plausibly matches an 'Artist - Title' query.
+
+    Free-form queries (no ' - ' separator) are accepted unconditionally — we
+    have no way to validate them and the typeahead-driven UI almost always
+    sends the canonical form anyway.
+    """
+    if " - " not in query:
+        return True
+    q_artist, q_title = (p.strip() for p in query.split(" - ", 1))
+    qa, ca = _artist_tokens(q_artist), _artist_tokens(cand_artist)
+    if not qa or not ca:
+        return False
+    shorter, longer = (qa, ca) if len(qa) <= len(ca) else (ca, qa)
+    if not shorter.issubset(longer):
+        return False
+    qt, ct = _title_signature(q_title), _title_signature(cand_title)
+    if not qt or not ct:
+        return False
+    return qt == ct or qt in ct or ct in qt
 
 
 class CosineClubAdapter(AbstractAdapter):
@@ -29,12 +86,12 @@ class CosineClubAdapter(AbstractAdapter):
     async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:
         """
         Two-step: search for the query, then fetch similar by track id.
-        Returns [] if the search has no hits or any step fails.
+        Returns [] if the search has no relevant hit or any step fails.
         """
         if not settings.cosine_club_api_key:
             return []
         try:
-            seed_id = await self._search_first_id(query)
+            seed_id = await self._search_seed_id(query)
             if not seed_id:
                 return []
             resp = await self._client.get(
@@ -73,16 +130,37 @@ class CosineClubAdapter(AbstractAdapter):
             print(f"[CosineClub] search_suggestions error: {e}")
             return []
 
-    async def _search_first_id(self, query: str) -> str | None:
+    async def _search_seed_id(self, query: str) -> str | None:
+        """Resolve the query to a seed track id, validating relevance.
+
+        Cosine.club's `/v1/search` is fuzzy and returns *something* for almost
+        any input. Without validation we end up using an off-genre track as the
+        seed and the recommendations are nonsense. Scan up to `_SEED_CANDIDATES`
+        hits and return the first whose artist+title actually matches the query.
+        """
         resp = await self._client.get(
             "/v1/search",
-            params={"q": query, "limit": 1},
+            params={"q": query, "limit": _SEED_CANDIDATES},
         )
         resp.raise_for_status()
         data = resp.json().get("data") or []
         if not data:
             return None
-        return data[0].get("id")
+        for cand in data:
+            cand_artist = cand.get("artist") or ""
+            cand_title = cand.get("track") or cand.get("name") or ""
+            if _query_matches(query, cand_artist, cand_title):
+                print(
+                    f"[CosineClub] seed for {query!r} -> "
+                    f"{cand_artist} - {cand_title} (id={cand.get('id')})"
+                )
+                return cand.get("id")
+        rejected = ", ".join(
+            f"{c.get('artist')!r} - {c.get('track') or c.get('name')!r}"
+            for c in data[:_SEED_CANDIDATES]
+        )
+        print(f"[CosineClub] no seed matched query {query!r}; rejected: {rejected}")
+        return None
 
     def _parse(self, data: dict) -> TrackMeta:
         video_id = data.get("video_id")
