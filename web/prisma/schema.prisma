@@ -182,6 +182,55 @@ model LoginAttempt {
   @@index([email, createdAt])
 }
 
+// Embed-URL cache keyed by normalized (artistKey, titleKey). Populated lazily
+// by /api/discography/embed (and warmed by search saveTracks). Positive hits
+// (embedUrl != null) never expire — YouTube videoIds and Bandcamp track-ids
+// are stable. Negative hits (embedUrl == null) expire after 7 days so newly
+// uploaded tracks eventually become discoverable. Lazy invalidation on player
+// error is in the backlog.
+model TrackEmbed {
+  id String @id @default(cuid())
+
+  // Same normalization convention as DislikedTrack: aggregator.ts
+  // normalizeArtist / normalizeTitle.
+  artistKey String
+  titleKey  String
+
+  // null = "we looked and didn't find" (negative cache, 7-day TTL via updatedAt).
+  embedUrl  String?
+  sourceUrl String?
+  source    String? // "youtube_music" | "bandcamp" | null
+  coverUrl  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([artistKey, titleKey])
+  @@index([updatedAt])
+}
+
+// Generic cache for external-API responses (Discogs metadata, iTunes covers,
+// Bandcamp page scrapes, MusicBrainz suggestions, Trackidnet DJ-set tracklists).
+// One row per (source, cacheKey). `payload` is the raw JSON response shape
+// that the caller persisted; readers cast it back to a typed shape themselves.
+//
+// TTL is enforced on the read path by comparing now() - updatedAt against a
+// caller-supplied ttlSeconds (None/undefined = never expires). We don't store
+// the TTL in the row — it's a property of the read site, so the same cached
+// payload can be served with different freshness windows from different
+// callers if needed.
+model ExternalApiCache {
+  id        String   @id @default(cuid())
+  source    String
+  cacheKey  String
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([source, cacheKey])
+  @@index([source, updatedAt])
+}
+
 model LastfmArtistSimilars {
   id String @id @default(cuid())
 

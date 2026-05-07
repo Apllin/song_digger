@@ -10,7 +10,9 @@ no-ops on write, mirroring the project-wide adapter convention.
 """
 import asyncio
 import json
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import asyncpg
 
@@ -126,3 +128,143 @@ async def upsert_lastfm_artist_similars(
             )
     except Exception as e:
         print(f"[Lastfm] artist-similars cache write error: {e}")
+
+
+# ── Generic external-API cache ──────────────────────────────────────────────
+# Mirrors web/lib/external-api-cache.ts. Both modules read/write the same
+# ExternalApiCache table. Discogs/Trackidnet/Bandcamp/MusicBrainz callers in
+# this service use these helpers; iTunes covers (web-only) use the TS twin.
+#
+# Log format is kept identical across both languages so a single grep covers
+# both: `[cache] HIT|MISS|STALE source=X key=Y ...`.
+
+def _log_cache_event(
+    outcome: str,
+    source: str,
+    cache_key: str,
+    extra: dict[str, Any],
+) -> None:
+    parts = [f"outcome={outcome}", f"source={source}", f"key={cache_key}"]
+    parts.extend(f"{k}={v}" for k, v in extra.items())
+    print(f"[cache] {' '.join(parts)}")
+
+
+async def fetch_external_cache(
+    *,
+    source: str,
+    cache_key: str,
+    ttl_seconds: int | None = None,
+) -> Any:
+    """
+    Look up a cached external-API payload.
+
+    Returns the parsed payload on hit (including empty `[]` / `{}` —
+    those are legitimate cache values, not misses). Returns None on:
+      - row not found
+      - row older than ttl_seconds (when ttl_seconds is not None)
+      - DB unavailable / read error
+      - JSON decode error
+
+    `ttl_seconds=None` means "never expires" — used for Discogs tracklist
+    and Bandcamp recommendations.
+
+    Cache outages must never block the caller from making the live external
+    request; we soft-degrade on every error path.
+    """
+    if not source or not cache_key:
+        return None
+
+    pool = await _get_pool()
+    if pool is None:
+        return None
+
+    start = time.monotonic()
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT "payload", "updatedAt"
+                FROM "ExternalApiCache"
+                WHERE "source" = $1 AND "cacheKey" = $2
+                """,
+                source, cache_key,
+            )
+    except Exception as e:
+        print(f"[cache] lookup failed source={source} key={cache_key}: {e}")
+        return None
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+
+    if row is None:
+        _log_cache_event("MISS", source, cache_key, {"latency_ms": latency_ms})
+        return None
+
+    if ttl_seconds is not None:
+        # Prisma writes "updatedAt" as TIMESTAMP(3) WITHOUT TIME ZONE in UTC,
+        # so compare against naive UTC. utcnow() is deprecated in 3.12+ —
+        # use tz-aware now(UTC) and strip the tzinfo so subtraction works
+        # against the naive DB column. (Backlog P2 will sweep the rest of
+        # this file later; new code shouldn't compound the debt.)
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        age_s = int((now_naive - row["updatedAt"]).total_seconds())
+        if age_s > ttl_seconds:
+            _log_cache_event(
+                "STALE", source, cache_key,
+                {"age_s": age_s, "ttl_s": ttl_seconds, "latency_ms": latency_ms},
+            )
+            return None
+        _log_cache_event(
+            "HIT", source, cache_key,
+            {"age_s": age_s, "latency_ms": latency_ms},
+        )
+    else:
+        _log_cache_event("HIT", source, cache_key, {"latency_ms": latency_ms})
+
+    raw = row["payload"]
+    # asyncpg returns JSONB as a str by default (no codec registered).
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception as e:
+            print(f"[cache] decode error source={source} key={cache_key}: {e}")
+            return None
+    return raw
+
+
+async def upsert_external_cache(
+    *,
+    source: str,
+    cache_key: str,
+    payload: Any,
+) -> None:
+    """
+    Persist an external-API payload. Always overwrites prior content for
+    (source, cacheKey) — Postgres' updatedAt-via-trigger isn't on this table,
+    so we set it explicitly on each upsert. That's what the TS twin's
+    @updatedAt-bump produces, and what the staleness check on the read path
+    keys off.
+    """
+    if not source or not cache_key:
+        return
+
+    pool = await _get_pool()
+    if pool is None:
+        return
+
+    serialized = json.dumps(payload)
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO "ExternalApiCache"
+                  (id, "source", "cacheKey", "payload", "createdAt", "updatedAt")
+                VALUES (gen_random_uuid()::text, $1, $2, $3::jsonb, now(), now())
+                ON CONFLICT ("source", "cacheKey") DO UPDATE
+                SET "payload" = EXCLUDED."payload",
+                    "updatedAt" = now()
+                """,
+                source, cache_key, serialized,
+            )
+    except Exception as e:
+        print(f"[cache] upsert failed source={source} key={cache_key}: {e}")
