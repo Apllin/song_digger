@@ -58,7 +58,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
 - `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
 - `lib/aggregator.ts` — RRF fusion across per-source ranks plus artist diversification (max 2 consecutive). No BPM/key filter, no genre filter, no embed bonus, no artist-level dislike penalty. Runs in Node, not Python.
-- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, Playlist, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020; plus the Stage J security tables: AnonymousRequest, LoginAttempt — see ADR-0021). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
+- `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020; plus the Stage J security tables: AnonymousRequest, LoginAttempt — see ADR-0021). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
 
 ### Authentication (`web/lib/auth.ts`, ADR-0020)

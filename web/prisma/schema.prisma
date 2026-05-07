@@ -17,7 +17,6 @@ model Track {
   embedUrl       String?
   createdAt      DateTime        @default(now())
   favorites      Favorite[]
-  playlistTracks PlaylistTrack[]
   searchResults  SearchResult[]
 
   @@index([source])
@@ -152,26 +151,6 @@ model DislikedTrack {
 
   @@unique([userId, artistKey, titleKey])
   @@index([userId, artistKey])
-}
-
-model Playlist {
-  id        String          @id @default(cuid())
-  name      String
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  tracks    PlaylistTrack[]
-}
-
-model PlaylistTrack {
-  id         String   @id @default(cuid())
-  playlistId String
-  trackId    String
-  order      Int
-  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
-
-  @@unique([playlistId, trackId])
-  @@index([playlistId, order])
 }
 
 // Per-IP counter for anonymous (unauthenticated) requests. Pooled across
