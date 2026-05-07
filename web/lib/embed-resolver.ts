@@ -1,6 +1,6 @@
 /**
  * Tries to find an embeddable player for a track.
- * Priority: Cosine.club → YTM → Bandcamp.
+ * Priority: YTM exact-match → Bandcamp.
  * Returns embedUrl or null.
  */
 
@@ -14,15 +14,25 @@ interface EmbedResult {
   coverUrl?: string | null;
 }
 
+/**
+ * Discogs disambiguates duplicate artist names with a trailing " (N)" suffix
+ * (e.g. "Voicex (2)"). YTM and Bandcamp don't share Discogs's artist IDs, so
+ * the suffix is search-time noise — strip it before fan-out.
+ */
+function cleanArtist(artist: string): string {
+  return artist.replace(/\s*\(\d+\)\s*$/, "").trim();
+}
+
 export async function resolveEmbed(
   title: string,
   artist: string
 ): Promise<EmbedResult> {
-  const query = `${artist} - ${title}`;
+  const cleanedArtist = cleanArtist(artist);
+  const query = `${cleanedArtist} - ${title}`;
 
   // Try YTM exact search (matches artist+title precisely)
   try {
-    const params = new URLSearchParams({ title, artist });
+    const params = new URLSearchParams({ title, artist: cleanedArtist });
     const res = await fetch(
       `${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`,
       { signal: AbortSignal.timeout(8000) }
@@ -48,7 +58,7 @@ export async function resolveEmbed(
     const { searchBandcampSimilar } = await import("@/lib/scrapers/bandcamp");
     const tracks = await searchBandcampSimilar(query);
     const titleLower = title.toLowerCase();
-    const artistWords = artist.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const artistWords = cleanedArtist.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
     const match = tracks.find((t) => {
       if (!t.embedUrl) return false;
       const tTitle = t.title.toLowerCase();
