@@ -39,14 +39,16 @@ fetches, comes back to web for dislike filtering, fusion, and persistence:
    2026-05 — see ADR-0014; ADR-0012 covers the related 1001TL removal),
    and a YTM song-lookup all start simultaneously. A `cosine_confident`
    flag is set when the mean top-5 cosine score ≥ 0.5.
-4. **Phase 1.5 — Last.fm artist fallback**: when `track.getSimilar`
-   returned 0 results AND `lastfm_artist_fallback_enabled = True`
-   (default), the Last.fm adapter expands via
-   `artist.getSimilar(seed_artist)` → top-3 tracks per similar artist
-   for the top 10 artists, scored by `match × position_decay`, capped
-   at 30 candidates. Artist similars cached in `LastfmArtistSimilars`
-   with 30-day TTL. This is the highest-yield underground-seed
-   recovery path.
+4. **Phase 1.5 — Last.fm artist path**: the Last.fm adapter expands
+   via `artist.getSimilar(seed_artist)` → top-3 tracks per similar
+   artist for the top 10 artists, scored by `match × position_decay`,
+   capped at 30 candidates, in two cases: (a) `track.getSimilar`
+   returned 0 results for an Artist–Track query, or (b) the query is
+   artist-only with no track component, in which case the adapter
+   skips `track.getSimilar` and goes straight to the artist path.
+   Artist similars cached in `LastfmArtistSimilars` with 30-day TTL.
+   This is the highest-yield underground-seed recovery path. See
+   ADR-0022.
 5. **Phase 2** (only when `cosine_confident == False`): reversed-order
    Cosine query, Cosine artist-only search, Bandcamp artist-only
    search. When still not confident, individual Cosine results below
@@ -78,7 +80,7 @@ and `_dedup_within_source` passes.
 | `youtube_music` | [youtube_music.py](../../python-service/app/adapters/youtube_music.py) | YTM Radio (`playlistId="RDAMVM{videoId}"`); seed itself is skipped. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `bandcamp` | [bandcamp.py](../../python-service/app/adapters/bandcamp.py) | Search → fetch matching track page → parse "you may also like" `<li class="recommended-album">` blocks. Hard 4 s timeout. | `title`, `artist`, `sourceUrl`, `embedUrl`, `coverUrl` | No |
 | `yandex_music` | [yandex_music.py](../../python-service/app/adapters/yandex_music.py) | `client.search(...)` → `client.tracks_similar(seed.id)`. No-op without `YANDEX_MUSIC_TOKEN`. | `title`, `artist`, `sourceUrl`, `coverUrl` | No |
-| `lastfm` | [lastfm.py](../../python-service/app/adapters/lastfm.py) | `track.getSimilar` (collaborative-filtering). When that returns empty AND `lastfm_artist_fallback_enabled` (default True), expands via `artist.getSimilar` → top-3 per similar artist, capped at 30 (see Phase 1.5 above). No-op without `LASTFM_API_KEY`. | `title`, `artist`, `sourceUrl`, `coverUrl`, `score` (`match` value or `match × position_decay` in fallback) | Yes (`score` is the Last.fm `match` value or fallback decay product). Used as a noise floor (`MIN_MATCH = 0.05`); not consumed by `rrfFuse`. |
+| `lastfm` | [lastfm.py](../../python-service/app/adapters/lastfm.py) | `track.getSimilar` (collaborative-filtering) for Artist–Track queries. Falls back to `artist.getSimilar` → top-3 per similar artist (capped at 30) when track-level returns empty, AND for artist-only queries with no track component (see Phase 1.5 above). No-op without `LASTFM_API_KEY`. | `title`, `artist`, `sourceUrl`, `coverUrl`, `score` (`match` value or `match × position_decay` in artist path) | Yes (`score` is the Last.fm `match` value or artist-path decay product). Not consumed by `rrfFuse` and no longer used as a noise floor (ADR-0022). |
 | `trackidnet` | [trackidnet.py](../../python-service/app/adapters/trackidnet.py) | DJ-set co-occurrence via the public JSON API (3 endpoints). `/musictracks` resolves the seed; `/audiostreams?musicTrackId=<id>` lists up to `MAX_PLAYLISTS=15` known sets (sorted by `addedOn` desc); `/audiostreams/<slug>` is fetched for each (concurrent, `Semaphore(DETAIL_CONCURRENCY=5)`). Per playlist: pick latest non-empty detection process, find seed by slug, take the `±WINDOW=5` tracks around the first occurrence (excluding all seed instances). Aggregate across windows by slug; sort by co-occurrence count desc, then `referenceCount` asc. Enabled by default (`trackidnet_enabled = True`) — see ADR-0014. | `title`, `artist`, `sourceUrl`, `score` (co-occurrence count, 1..15) | Yes (`score` = co-occurrence count). Not consumed by `rrfFuse` (rank-based). |
 
 The pipeline trusts each adapter's own ranking. Beatport was removed

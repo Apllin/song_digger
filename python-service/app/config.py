@@ -19,11 +19,6 @@ class Settings(BaseSettings):
     # (no auth, no Cloudflare cookie); tests cover the full flow.
     # Enable by default — see ADR-0014.
     trackidnet_enabled: bool = True
-    # Last.fm artist-similar fallback: when track.getSimilar returns 0 results
-    # (common for underground techno seeds), expand via artist.getSimilar →
-    # artist.getTopTracks. Default off until eval confirms it doesn't bleed
-    # genres on control seeds (Charlotte, Beyer).
-    lastfm_artist_fallback_enabled: bool = True
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 

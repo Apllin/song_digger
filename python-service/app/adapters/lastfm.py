@@ -1,20 +1,17 @@
 """
-Last.fm adapter — track.getSimilar via the public REST API, with an optional
-artist-level fallback for seeds where track-level returns nothing.
+Last.fm adapter — track.getSimilar via the public REST API, with an
+artist-level fallback used both for artist-only queries and for seeds where
+track.getSimilar returns nothing.
 
 Last.fm exposes collaborative-filtering similarity (users who scrobbled
-A also scrobbled B). Coverage is strong for established artists, weak
-for underground (sub-100 listener tracks often return empty or noise).
-The match score is used only as a noise floor; ranking is via list
-position, like all other RRF inputs.
+A also scrobbled B). Ranking is by list position only — we trust Last.fm's
+own ordering and do not apply score floors on our side.
 
-When `track.getSimilar` returns empty AND
-`settings.lastfm_artist_fallback_enabled` is True, the adapter falls back
-to `artist.getSimilar(seed_artist)` → `artist.getTopTracks(similar_artist)`
-aggregated over the top-N similar artists. Artist similars are cached in
-Postgres (LastfmArtistSimilars, 30-day TTL) because artist relationships
-move slowly; top-tracks are not cached because they are cheap and need to
-reflect new releases.
+The artist-level path runs `artist.getSimilar(seed_artist)` →
+`artist.getTopTracks(similar_artist)` aggregated over the top-N similar
+artists. Artist similars are cached in Postgres (LastfmArtistSimilars,
+30-day TTL) because artist relationships move slowly; top-tracks are not
+cached because they are cheap and need to reflect new releases.
 """
 import asyncio
 
@@ -29,13 +26,9 @@ from app.core.db import (
 from app.core.models import TrackMeta
 
 LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
-# Below this match value, Last.fm's similar tracks become genuinely random.
-MIN_MATCH = 0.05
 DEFAULT_LIMIT = 50
 TIMEOUT_SECONDS = 8.0
 
-# Fallback calibration — kept as module constants (not env vars) until eval
-# shows what works. Once tuned, env-configurability is a separate change.
 LASTFM_FALLBACK_ARTIST_CAP = 10  # how many similar artists to expand
 LASTFM_FALLBACK_TRACKS_PER_ARTIST = 3  # tracks fetched per similar artist
 LASTFM_FALLBACK_TOTAL_CAP = 30  # final cap on fallback contribution
@@ -51,26 +44,20 @@ class LastfmAdapter(AbstractAdapter):
     SOURCE = "lastfm"
 
     async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
-        # The project-wide adapter contract is `find_similar(query, limit)` where
-        # query is "Artist - Track" or just "Artist". Last.fm's track.getSimilar
-        # requires BOTH artist and track; without a track we'd need an extra
-        # track.search call. Skip artist-only for now — return empty.
+        # Query is "Artist - Track" or just "Artist". track.getSimilar requires
+        # both, so artist-only queries go straight to the artist-level path.
         artist, track = _split_query(query)
-        if not track:
-            return []
 
         api_key = settings.lastfm_api_key
         if not api_key:
             return []
 
+        if not track:
+            return await self._artist_fallback(api_key, artist, limit)
+
         track_results = await self._fetch_track_similar(api_key, artist, track, limit)
         if track_results:
             return track_results[:limit]
-
-        # Fallback: only when track.getSimilar gave us nothing AND the operator
-        # has flipped the flag. Keeps current behavior unchanged when off.
-        if not settings.lastfm_artist_fallback_enabled:
-            return []
 
         return await self._artist_fallback(api_key, artist, limit)
 
@@ -104,8 +91,6 @@ class LastfmAdapter(AbstractAdapter):
                 match = float(t.get("match", 0))
             except (TypeError, ValueError):
                 match = 0.0
-            if match < MIN_MATCH:
-                continue
 
             title = (t.get("name") or "").strip()
             artist_obj = t.get("artist") or {}

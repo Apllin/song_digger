@@ -8,8 +8,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "setup": "turbo run setup",
-    "eval": "pnpm --filter @track-digger/python-service eval"
+    "setup": "turbo run setup"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",

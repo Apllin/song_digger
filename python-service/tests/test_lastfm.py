@@ -118,7 +118,6 @@ async def test_find_similar_happy_path():
     adapter = LastfmAdapter()
     with patch("app.adapters.lastfm.settings") as mock_settings, _patch_client(_ok_response(SIMILAR_RESPONSE)):
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = False
         results = await adapter.find_similar("Oscar Mulero - Horses")
 
     assert len(results) == 3
@@ -131,6 +130,9 @@ async def test_find_similar_happy_path():
     assert first.score == pytest.approx(0.8421)
     # Tracks without an extralarge image have coverUrl = None
     assert results[1].coverUrl is None
+    # Low-match tracks are NOT filtered out — we trust Last.fm's ordering.
+    assert results[2].title == "Static"
+    assert results[2].score == pytest.approx(0.2710)
 
 
 async def test_find_similar_no_api_key_returns_empty():
@@ -142,58 +144,10 @@ async def test_find_similar_no_api_key_returns_empty():
     with patch("app.adapters.lastfm.settings") as mock_settings, \
          patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
         mock_settings.lastfm_api_key = ""
-        mock_settings.lastfm_artist_fallback_enabled = True  # flag has no effect without key
         results = await adapter.find_similar("Oscar Mulero - Horses")
 
     assert results == []
     mock_client.get.assert_not_called()
-
-
-async def test_find_similar_artist_only_returns_empty():
-    adapter = LastfmAdapter()
-    mock_client = MagicMock()
-    mock_client.get = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-    with patch("app.adapters.lastfm.settings") as mock_settings, \
-         patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
-        mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
-        results = await adapter.find_similar("Oscar Mulero")
-
-    assert results == []
-    mock_client.get.assert_not_called()
-
-
-async def test_find_similar_filters_below_match_floor():
-    payload = {
-        "similartracks": {
-            "track": [
-                {
-                    "name": "Above Floor",
-                    "match": "0.5",
-                    "url": "https://www.last.fm/music/A/_/Above",
-                    "artist": {"name": "A"},
-                    "image": [],
-                },
-                {
-                    "name": "Below Floor",
-                    "match": "0.01",
-                    "url": "https://www.last.fm/music/B/_/Below",
-                    "artist": {"name": "B"},
-                    "image": [],
-                },
-            ]
-        }
-    }
-    adapter = LastfmAdapter()
-    with patch("app.adapters.lastfm.settings") as mock_settings, _patch_client(_ok_response(payload)):
-        mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = False
-        results = await adapter.find_similar("X - Y")
-
-    assert len(results) == 1
-    assert results[0].title == "Above Floor"
 
 
 async def test_find_similar_swallows_network_errors():
@@ -205,7 +159,6 @@ async def test_find_similar_swallows_network_errors():
     with patch("app.adapters.lastfm.settings") as mock_settings, \
          patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = False
         results = await adapter.find_similar("X - Y")
 
     assert results == []
@@ -247,8 +200,8 @@ def _top_tracks_payload(artist: str, titles: list[str]) -> dict:
 
 
 async def test_fallback_not_triggered_when_track_level_returns_results():
-    """Even with the flag on, a non-empty track.getSimilar short-circuits before
-    artist.getSimilar is ever called."""
+    """A non-empty track.getSimilar short-circuits before artist.getSimilar is
+    ever called."""
     adapter = LastfmAdapter()
     mock_client, client_patch = _patch_method_router({
         "track.getsimilar": SIMILAR_RESPONSE,
@@ -257,7 +210,6 @@ async def test_fallback_not_triggered_when_track_level_returns_results():
     })
     with patch("app.adapters.lastfm.settings") as mock_settings, client_patch:
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Oscar Mulero - Horses")
 
     assert len(results) == 3
@@ -266,20 +218,25 @@ async def test_fallback_not_triggered_when_track_level_returns_results():
     assert methods_called == ["track.getsimilar"]
 
 
-async def test_fallback_disabled_returns_empty_when_track_level_empty():
-    """Current behavior preserved: flag off + empty track-level → []."""
+async def test_artist_only_query_goes_straight_to_fallback():
+    """Query without ' - Track' skips track.getSimilar and goes to artist path."""
     adapter = LastfmAdapter()
     mock_client, client_patch = _patch_method_router({
-        "track.getsimilar": EMPTY_TRACK_SIMILAR,
+        "artist.getsimilar": _artist_similar_payload([("Reeko", 0.9)]),
+        "artist.gettoptracks": _top_tracks_payload("Reeko", ["A", "B", "C"]),
     })
-    with patch("app.adapters.lastfm.settings") as mock_settings, client_patch:
+    with patch("app.adapters.lastfm.settings") as mock_settings, \
+         patch("app.adapters.lastfm.fetch_lastfm_artist_similars", AsyncMock(return_value=None)), \
+         patch("app.adapters.lastfm.upsert_lastfm_artist_similars", AsyncMock()), \
+         client_patch:
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = False
-        results = await adapter.find_similar("Underground - Track")
+        results = await adapter.find_similar("Oscar Mulero")
 
-    assert results == []
+    assert results, "artist-only query should produce fallback results"
+    assert all(r.artist == "Reeko" for r in results)
     methods_called = [c.kwargs["params"]["method"] for c in mock_client.get.call_args_list]
-    assert methods_called == ["track.getsimilar"]
+    assert "track.getsimilar" not in methods_called
+    assert "artist.getsimilar" in methods_called
 
 
 async def test_fallback_cache_miss_calls_api_and_writes_cache():
@@ -297,7 +254,6 @@ async def test_fallback_cache_miss_calls_api_and_writes_cache():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", upsert_mock), \
          client_patch:
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     assert results, "fallback should have produced tracks"
@@ -328,7 +284,6 @@ async def test_fallback_cache_hit_skips_artist_getsimilar_api_call():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", upsert_mock), \
          client_patch:
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     assert results
@@ -354,7 +309,6 @@ async def test_fallback_artist_getsimilar_error_returns_empty():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", upsert_mock), \
          client_patch:
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     assert results == []
@@ -393,7 +347,6 @@ async def test_fallback_partial_top_tracks_failure_aggregates_rest():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", AsyncMock()), \
          patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     assert len(results) == 2
@@ -429,7 +382,6 @@ async def test_fallback_caps_total_contribution():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", AsyncMock()), \
          patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     assert len(results) <= LASTFM_FALLBACK_TOTAL_CAP
@@ -464,7 +416,6 @@ async def test_fallback_score_ordering_match_times_decay():
          patch("app.adapters.lastfm.upsert_lastfm_artist_similars", AsyncMock()), \
          patch("app.adapters.lastfm.httpx.AsyncClient", return_value=mock_client):
         mock_settings.lastfm_api_key = "fake-key"
-        mock_settings.lastfm_artist_fallback_enabled = True
         results = await adapter.find_similar("Underground - Track")
 
     ordering = [(r.artist, r.title) for r in results]

@@ -1,7 +1,7 @@
 # 0009 — Eval harness as merge gate for scoring changes
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Superseded by [ADR-0022](0022-trust-adapter-similarity.md) (2026-05-07). The eval harness has been removed.
 
 **Context:**
 Recommendation systems suffer from "subjectively better" syndrome: every
