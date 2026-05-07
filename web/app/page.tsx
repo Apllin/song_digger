@@ -270,13 +270,15 @@ function HomeContent() {
   }, [setFav]);
 
   const handleDislike = useCallback(
-    async (track: { sourceUrl: string; title: string; artist: string }) => {
+    async (track: { id: string; sourceUrl: string; title: string; artist: string }) => {
       const composite = `${normalizeArtist(track.artist)}|${normalizeTitle(track.title)}`;
       setFav((prev) => ({
         ...prev,
         dislikedKeys: new Set([...prev.dislikedKeys, composite]),
       }));
-      if (player.track?.sourceUrl === track.sourceUrl) {
+      // Compare by id — sourceUrl may have been swapped to a resolved
+      // YTM/Bandcamp URL by BottomPlayer for non-YTM/non-bandcamp originals.
+      if (player.track?.id === track.id) {
         player.close();
       }
       try {
@@ -356,17 +358,17 @@ function HomeContent() {
           );
           const shown = visibleTracks.slice(0, displayCount);
 
-          const playlist: PlayerTrack[] = shown
-            .filter((t) => !!t.embedUrl)
-            .map((t) => ({
-              id: t.id,
-              title: t.title,
-              artist: t.artist,
-              source: t.source,
-              sourceUrl: t.sourceUrl,
-              coverUrl: t.coverUrl,
-              embedUrl: t.embedUrl,
-            }));
+          // Every visible track goes into the playlist — non-YTM/non-bandcamp
+          // entries are resolved on demand by BottomPlayer via /api/embed.
+          const playlist: PlayerTrack[] = shown.map((t) => ({
+            id: t.id,
+            title: t.title,
+            artist: t.artist,
+            source: t.source,
+            sourceUrl: t.sourceUrl,
+            coverUrl: t.coverUrl,
+            embedUrl: t.embedUrl,
+          }));
 
           return (
             <div className="flex flex-col gap-3">
@@ -377,14 +379,13 @@ function HomeContent() {
                 </p>
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-7">
-                {shown.map((track) => {
-                  const playlistIndex = playlist.findIndex((p) => p.sourceUrl === track.sourceUrl);
+                {shown.map((track, idx) => {
                   return (
                     <TrackCard
                       key={track.id ?? track.sourceUrl}
                       track={track}
                       playlist={playlist}
-                      trackIndex={playlistIndex}
+                      trackIndex={idx}
                       isFavorite={fav.ids.has(track.id)}
                       onFavoriteToggle={
                         isAuthenticated ? toggleFavorite : undefined

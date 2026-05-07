@@ -46,7 +46,7 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/discography/embed?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(artist)}`
+        `/api/embed?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(artist)}`
       );
       const data: EmbedResult = await res.json();
       setEmbedResult(data);

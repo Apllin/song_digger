@@ -15,11 +15,17 @@ const SOURCE_LABELS: Record<string, string> = {
   youtube_music: "YouTube Music",
   bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
+  unavailable: "No playback available",
 };
+
+// Sources that the BottomPlayer can drive directly. Anything else is sent to
+// /api/embed for YTM/Bandcamp resolution before playback.
+const PLAYABLE_SOURCES = new Set(["youtube_music", "bandcamp"]);
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function BottomPlayer() {
-  const { track, playingIndex, playlist, close, playNext, playPrev } = usePlayer();
+  const { track, playingIndex, playlist, close, playNext, playPrev, swapTrack } = usePlayer();
+  const [resolving, setResolving] = useState(false);
 
   const holderRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -32,6 +38,7 @@ export function BottomPlayer() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(100);
   const [bcAudioUrl, setBcAudioUrl] = useState<string | null>(null);
+  const [coverFailed, setCoverFailed] = useState(false);
 
   const changeVolume = (v: number) => {
     setVolumeState(v);
@@ -123,6 +130,73 @@ export function BottomPlayer() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.sourceUrl, track?.source]);
+
+  // Reset the cover-error guard when the track changes, otherwise one broken
+  // image would suppress every subsequent track's cover.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCoverFailed(false);
+  }, [track?.id]);
+
+  // For tracks whose original source isn't directly playable (trackid, lastfm,
+  // cosine_club, ...), resolve a YTM exact-match or Bandcamp fallback via
+  // /api/embed and swap the active track in place. Cache lives in Postgres
+  // (TrackEmbed) so the second click on the same track is just a DB lookup.
+  // The "unavailable" sentinel marks tracks the resolver couldn't place on
+  // either platform, so this effect doesn't loop.
+  useEffect(() => {
+    if (!track) return;
+    if (PLAYABLE_SOURCES.has(track.source)) return;
+    if (track.source === "unavailable") return;
+
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setResolving(true);
+
+    const params = new URLSearchParams({ title: track.title, artist: track.artist });
+    fetch(`/api/embed?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(
+        (data: {
+          embedUrl: string | null;
+          source: string | null;
+          sourceUrl: string | null;
+          coverUrl: string | null;
+        } | null) => {
+          if (cancelled) return;
+          if (data?.embedUrl && data.source) {
+            // Keep the cover the user already sees on the TrackCard — the
+            // YTM/Bandcamp resolver's thumbnail is often a channel avatar
+            // or a low-res alternate that visibly differs from the original
+            // artwork. Fall back to the resolved cover only when the
+            // original is missing.
+            swapTrack({
+              source: data.source,
+              embedUrl: data.embedUrl,
+              sourceUrl: data.sourceUrl ?? track.sourceUrl,
+              coverUrl: track.coverUrl ?? data.coverUrl,
+            });
+          } else {
+            swapTrack({ source: "unavailable", embedUrl: null });
+          }
+        }
+      )
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[/api/embed] resolve failed:", err);
+        swapTrack({ source: "unavailable", embedUrl: null });
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // swapTrack closes over jotai's setState (stable), so even a stale
+    // closure performs the same write — safe to omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.id, track?.source]);
 
   // Bandcamp: resolve a streamable mp3 from the source page; the <audio>
   // element below drives playback, time, seek, and volume.
@@ -258,11 +332,12 @@ export function BottomPlayer() {
         {/* Main row */}
         <div className="flex items-center gap-3">
           {/* Cover thumbnail */}
-          {coverUrl && (
+          {coverUrl && !coverFailed && (
             <img
               src={coverUrl}
               alt=""
               className="w-10 h-10 rounded object-cover shrink-0"
+              onError={() => setCoverFailed(true)}
             />
           )}
 
@@ -271,7 +346,9 @@ export function BottomPlayer() {
             <p className="text-sm font-medium text-zinc-100 truncate">{track.title}</p>
             <p className="text-xs text-zinc-500 truncate">
               {track.artist}
-              <span className="ml-2 text-zinc-700">{SOURCE_LABELS[track.source] ?? track.source}</span>
+              <span className="ml-2 text-zinc-700">
+                {resolving ? "Finding playable source…" : SOURCE_LABELS[track.source] ?? track.source}
+              </span>
             </p>
           </div>
 

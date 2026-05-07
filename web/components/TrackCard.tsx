@@ -42,7 +42,11 @@ export function TrackCard({
   const player = usePlayer();
   const [imgFailed, setImgFailed] = useState(false);
 
-  const isPlaying = player.track?.sourceUrl === track.sourceUrl;
+  // Compare by id, not sourceUrl — for non-YTM/non-bandcamp tracks the
+  // BottomPlayer swaps `sourceUrl` to a resolved YTM/Bandcamp URL while
+  // keeping `id` stable, so sourceUrl comparison would falsely report
+  // not-playing right after resolution.
+  const isPlaying = player.track?.id === track.id;
 
   const videoId =
     track.source === "youtube_music"
@@ -56,21 +60,24 @@ export function TrackCard({
   const handlePlay = useCallback(() => {
     if (isPlaying) {
       player.close();
-    } else if (track.embedUrl) {
-      player.play(
-        {
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          source: track.source,
-          sourceUrl: track.sourceUrl,
-          coverUrl: track.coverUrl,
-          embedUrl: track.embedUrl,
-        },
-        playlist,
-        trackIndex
-      );
+      return;
     }
+    // Always hand the track to the player — even when there's no embedUrl
+    // and the source isn't directly playable. BottomPlayer resolves a YTM
+    // or Bandcamp embed via /api/embed and swaps the active track.
+    player.play(
+      {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        source: track.source,
+        sourceUrl: track.sourceUrl,
+        coverUrl: track.coverUrl,
+        embedUrl: track.embedUrl,
+      },
+      playlist,
+      trackIndex
+    );
   }, [isPlaying, track, playlist, trackIndex, player]);
 
   const handleFindSimilar = () => {
@@ -107,21 +114,19 @@ export function TrackCard({
           <div className="absolute inset-0 ring-2 ring-indigo-500/60 pointer-events-none rounded-md" />
         )}
 
-        {track.embedUrl && (
-          <button
-            onClick={handlePlay}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label={isPlaying ? "Stop" : "Play"}
-          >
-            <svg className="w-9 h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
-              {isPlaying ? (
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-              ) : (
-                <path d="M8 5v14l11-7z" />
-              )}
-            </svg>
-          </button>
-        )}
+        <button
+          onClick={handlePlay}
+          className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label={isPlaying ? "Stop" : "Play"}
+        >
+          <svg className="w-9 h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
+            {isPlaying ? (
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            ) : (
+              <path d="M8 5v14l11-7z" />
+            )}
+          </svg>
+        </button>
       </div>
 
       {/* Info */}

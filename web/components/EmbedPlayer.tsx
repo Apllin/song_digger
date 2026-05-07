@@ -328,55 +328,107 @@ function YouTubePlayer({
 }
 
 // ─── Bandcamp player ──────────────────────────────────────────────────────────
+// Mirrors BottomPlayer's Bandcamp path: extract a streamable mp3 from the
+// source page via /api/bandcamp-audio and drive playback through a hidden
+// <audio> element so transport / seek / volume live in our PlayerBar.
 function BandcampPlayer({
-  embedUrl,
   title,
   artist,
   sourceUrl,
   onPrev,
   onNext,
 }: Omit<EmbedPlayerProps, "source">) {
-  const [active, setActive] = useState(true);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(80);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!sourceUrl) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAudioUrl(null);
+    setCurrentTime(0);
+    setDuration(0);
+    fetch(`/api/bandcamp-audio?url=${encodeURIComponent(sourceUrl)}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          console.error("[Bandcamp] /api/bandcamp-audio failed:", r.status, await r.text().catch(() => ""));
+          return null;
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (cancelled || !data?.audioUrl) return;
+        setAudioUrl(data.audioUrl as string);
+        if (typeof data.duration === "number") setDuration(data.duration);
+      })
+      .catch((err) => console.error("[Bandcamp] audio fetch error:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceUrl]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch((err) => console.error("[Bandcamp] play() rejected:", err));
+    else a.pause();
+  };
+
+  const seek = (pct: number) => {
+    if (!audioRef.current || duration <= 0) return;
+    const t = pct * duration;
+    audioRef.current.currentTime = t;
+    setCurrentTime(t);
+  };
 
   const handleVolumeChange = (v: number) => {
     setVolume(v);
-    // Bandcamp embedded player listens for postMessage volume commands
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ method: "setvolume", value: v / 100 }),
-      "https://bandcamp.com"
-    );
+    if (audioRef.current) audioRef.current.volume = v / 100;
   };
 
   return (
-    <div className="flex flex-col">
-      <PlayerBar
-        title={title}
-        artist={artist}
-        sourceUrl={sourceUrl}
-        playing={active}
-        ready
-        sourceIcon="bandcamp"
-        currentTime={0}
-        duration={0}
-        onToggle={() => setActive((v) => !v)}
-        onSeek={() => {}}
-        onPrev={onPrev}
-        onNext={onNext}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
-      />
-      {active && (
-        <iframe
-          ref={iframeRef}
-          src={embedUrl}
-          className="w-full border-0 rounded-lg mt-1 h-[42px]"
-          allow="autoplay"
-          title={title}
+    <PlayerBar
+      title={title}
+      artist={artist}
+      sourceUrl={sourceUrl}
+      playing={playing}
+      ready={!!audioUrl}
+      sourceIcon="bandcamp"
+      currentTime={currentTime}
+      duration={duration}
+      onToggle={toggle}
+      onSeek={seek}
+      onPrev={onPrev}
+      onNext={onNext}
+      volume={volume}
+      onVolumeChange={handleVolumeChange}
+    >
+      {audioUrl && (
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          autoPlay
+          onLoadedMetadata={(e) => {
+            const a = e.currentTarget;
+            if (a.duration && isFinite(a.duration)) setDuration(a.duration);
+            a.volume = volume / 100;
+          }}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => onNext?.()}
+          onError={(e) => {
+            const err = e.currentTarget.error;
+            console.error("[Bandcamp] <audio> error:", err?.code, err?.message, "src=", e.currentTarget.src);
+          }}
+          style={{ display: "none" }}
         />
       )}
-    </div>
+    </PlayerBar>
   );
 }
 
