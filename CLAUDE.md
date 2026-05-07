@@ -89,9 +89,9 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 ### Data flow for a similarity search
 
 1. User query hits `web/app/api/search/route.ts`. The route calls `auth()` to capture the current `userId` (or null for anonymous).
-2. Web persists a `SearchQuery` via Prisma, then calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar`.
-3. Python route fans out to enabled adapters, each returning `TrackMeta[]`.
-4. Web filters out tracks whose `(artistKey, titleKey)` identity is in **the current user's** `DislikedTrack` rows (anonymous = empty set, no filter), fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front).
+2. Web persists a `SearchQuery` via Prisma, then looks up the **search response cache** (`ExternalApiCache` row with `source="search_response"`, key versioned by `SEARCH_CACHE_VERSION`, TTL 14 days). On hit, the cached `SimilarResponse` is reused; on miss, web calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar` and writes the result to the cache.
+3. Python route (on cache miss) fans out to enabled adapters, each returning `TrackMeta[]`.
+4. Web filters out tracks whose `(artistKey, titleKey)` identity is in **the current user's** `DislikedTrack` rows (anonymous = empty set, no filter), fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front). RRF, dislike filter, and cover enrichment always run fresh — they are not part of the cache.
 
 ## Project-specific gotchas
 
@@ -99,6 +99,7 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 - **Prisma 7** (also newer than training data in many cases) — generated client lives at `web/app/generated/prisma`, not the default `node_modules/@prisma/client` location. Use `@prisma/adapter-pg` (Prisma + node-postgres driver adapter), not the default engine.
 - Python tests use `asyncio_mode = auto` — don't manually decorate with `@pytest.mark.asyncio`.
 - The service assumes the frontend origin is `http://localhost:3000` in two places: FastAPI CORS and YouTube embed URLs (`settings.frontend_origin`). Change both together if the port moves.
+- **Bump `SEARCH_CACHE_VERSION` whenever you change what `/similar` returns.** [web/app/api/search/route.ts](web/app/api/search/route.ts) caches the Python `/similar` response in `ExternalApiCache` for 14 days, keyed by `${SEARCH_CACHE_VERSION}:${normalizedArtist}|${normalizedTrack}`. If you don't bump the version, up to 14 days of users will silently see results from the previous logic. **Triggers a bump** (anything that changes what Python `/similar` returns): adding/removing an adapter from the `/similar` fan-out, changing filtering or ordering inside `python-service/app/api/routes/similar.py`, modifying any adapter's `find_similar()` shape or ordering, or changing `limit_per_source` / request shape in [web/lib/python-client.ts](web/lib/python-client.ts). **Does NOT trigger a bump** (these run fresh on every request, post-cache): `lib/aggregator.ts` (RRF formula, tiebreaker, artist diversification), the `DislikedTrack` filter, `enrichMissingCovers`, `saveTracks` logic. Bump = change the constant string in `route.ts` (`"v1"` → `"v2"`); old keys are never read again, no SQL flush needed.
 
 ## Testing
 
