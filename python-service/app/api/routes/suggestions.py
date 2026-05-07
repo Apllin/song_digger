@@ -3,6 +3,7 @@ import re
 import httpx
 from fastapi import APIRouter
 from app.adapters.youtube_music import YouTubeMusicAdapter
+from app.core.db import fetch_external_cache, upsert_external_cache
 
 router = APIRouter()
 _ytm = YouTubeMusicAdapter()
@@ -11,9 +12,25 @@ MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/js/artist"
 MUSICBRAINZ_RECORDING_URL = "https://musicbrainz.org/ws/2/recording"
 MB_HEADERS = {"User-Agent": "TrackDigger/1.0 (localhost)"}
 
+# MusicBrainz catalog drifts slowly. 7d is enough freshness for autocomplete
+# while reducing per-keystroke MB load.
+_MB_TTL_SECONDS = 7 * 86400
+
+
+def _normalize_mb_query(q: str) -> str:
+    return " ".join(q.lower().split())
+
 
 async def _mb_artist_search(query: str) -> list[str]:
     """MusicBrainz artist autocomplete — good for artist-only inputs."""
+    cache_key = _normalize_mb_query(query)
+    cached = await fetch_external_cache(
+        source="mb_artist_search",
+        cache_key=cache_key,
+        ttl_seconds=_MB_TTL_SECONDS,
+    )
+    if cached is not None:
+        return cached
     try:
         async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get(
@@ -23,7 +40,7 @@ async def _mb_artist_search(query: str) -> list[str]:
             )
             resp.raise_for_status()
             data = resp.json()
-            return [
+            out = [
                 f"{item['name']} ({item['disambiguation']})"
                 if item.get("disambiguation")
                 else item["name"]
@@ -33,6 +50,12 @@ async def _mb_artist_search(query: str) -> list[str]:
     except Exception as e:
         print(f"[Suggestions] MB artist error: {e}")
         return []
+    await upsert_external_cache(
+        source="mb_artist_search",
+        cache_key=cache_key,
+        payload=out,
+    )
+    return out
 
 
 async def _mb_recording_search(artist: str, title_prefix: str) -> list[str]:
@@ -42,6 +65,14 @@ async def _mb_recording_search(artist: str, title_prefix: str) -> list[str]:
     This ranks exact artist matches at the top, then finds tracks whose
     title starts with / contains the prefix.
     """
+    cache_key = f"{_normalize_mb_query(artist)}|{_normalize_mb_query(title_prefix)}"
+    cached = await fetch_external_cache(
+        source="mb_recording_search",
+        cache_key=cache_key,
+        ttl_seconds=_MB_TTL_SECONDS,
+    )
+    if cached is not None:
+        return cached
     query = f'artist:"{artist}" AND recording:{title_prefix}'
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -61,10 +92,16 @@ async def _mb_recording_search(artist: str, title_prefix: str) -> list[str]:
                 rec_artist = credits[0].get("artist", {}).get("name", "")
                 if rec_artist and title:
                     results.append(f"{rec_artist} - {title}")
-            return results[:10]
+            out = results[:10]
     except Exception as e:
         print(f"[Suggestions] MB recording error: {e}")
         return []
+    await upsert_external_cache(
+        source="mb_recording_search",
+        cache_key=cache_key,
+        payload=out,
+    )
+    return out
 
 
 async def _ytm_song_search(query: str) -> list[str]:

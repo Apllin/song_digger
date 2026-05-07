@@ -6,12 +6,20 @@
 //
 // Returned URLs are `artworkUrl100`; iTunes serves the same artwork at
 // arbitrary sizes by editing the path segment, so we rewrite to 600×600.
+//
+// Caching: positive hits are stored in ExternalApiCache forever (album art
+// doesn't change after publish). Negatives are NOT cached — iTunes-miss is
+// rare enough that retry on next search is cheap, and skipping negatives
+// keeps the cache table small.
 
 import type { FusedCandidate } from "@/lib/aggregator";
+import { lookupCache, upsertCache } from "@/lib/external-api-cache";
+import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
 const ITUNES_ENDPOINT = "https://itunes.apple.com/search";
 const REQUEST_TIMEOUT_MS = 1500;
 const CONCURRENCY = 6;
+const CACHE_SOURCE = "itunes_cover";
 
 interface ITunesResult {
   artworkUrl100?: string;
@@ -21,9 +29,26 @@ interface ITunesResponse {
   results?: ITunesResult[];
 }
 
+interface CachedCover {
+  url: string;
+}
+
+function coverCacheKey(artist: string, title: string): string {
+  return `${normalizeArtist(artist)}|${normalizeTitle(title)}`;
+}
+
 async function lookupOne(artist: string, title: string): Promise<string | null> {
   const term = `${artist} ${title}`.trim();
   if (!term) return null;
+
+  const key = coverCacheKey(artist, title);
+  // Skip cache lookup if normalization yields a degenerate key — those
+  // would collide across unrelated tracks.
+  if (key !== "|") {
+    const cached = await lookupCache<CachedCover>(CACHE_SOURCE, key);
+    if (cached?.url) return cached.url;
+  }
+
   const url = `${ITUNES_ENDPOINT}?term=${encodeURIComponent(term)}&media=music&entity=song&limit=1`;
 
   const ctrl = new AbortController();
@@ -34,7 +59,12 @@ async function lookupOne(artist: string, title: string): Promise<string | null> 
     const data = (await res.json()) as ITunesResponse;
     const art = data.results?.[0]?.artworkUrl100;
     if (!art) return null;
-    return art.replace(/\/\d+x\d+([a-z\-]*)\.(jpg|png)$/i, "/600x600$1.$2");
+    const upscaled = art.replace(/\/\d+x\d+([a-z\-]*)\.(jpg|png)$/i, "/600x600$1.$2");
+    if (key !== "|") {
+      // Best-effort write; failures don't deny the user the cover this round.
+      upsertCache<CachedCover>(CACHE_SOURCE, key, { url: upscaled }).catch(() => {});
+    }
+    return upscaled;
   } catch {
     return null;
   } finally {

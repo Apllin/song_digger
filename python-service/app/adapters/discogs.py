@@ -1,8 +1,22 @@
 import asyncio
 import httpx
 from app.config import settings
+from app.core.db import fetch_external_cache, upsert_external_cache
 
 BASE_URL = "https://api.discogs.com"
+
+# Discogs is a community-edited DB (Wikipedia-style). Tracklists/metadata get
+# corrected after publish — most edits land in the first weeks. 30d catches
+# those, 6mo for tracklists which are even more identity-stable once a release
+# has been around. None of these calls feed /api/search ranking (Discogs is
+# scoped to /discography + /labels per ADR-0019), so caching is risk-free for
+# search quality.
+_TTL_30D = 30 * 86400
+_TTL_6MO = 180 * 86400
+
+
+def _normalize_query(q: str) -> str:
+    return " ".join(q.lower().split())
 
 
 class DiscogsAdapter:
@@ -52,12 +66,20 @@ class DiscogsAdapter:
         """Search for artists by name."""
         if not settings.discogs_token:
             return []
+        cache_key = f"{_normalize_query(query)}|{limit}"
+        cached = await fetch_external_cache(
+            source="discogs_search_artist",
+            cache_key=cache_key,
+            ttl_seconds=_TTL_30D,
+        )
+        if cached is not None:
+            return cached
         resp = await self._get(
             "/database/search",
             params={"q": query, "type": "artist", "per_page": limit},
         )
         results = resp.json().get("results", [])
-        return [
+        out = [
             {
                 "id": r.get("id"),
                 "name": r.get("title"),
@@ -67,6 +89,12 @@ class DiscogsAdapter:
             for r in results
             if r.get("id")
         ]
+        await upsert_external_cache(
+            source="discogs_search_artist",
+            cache_key=cache_key,
+            payload=out,
+        )
+        return out
 
     async def get_releases(
         self, artist_id: int, page: int = 1, per_page: int = 20
@@ -77,6 +105,14 @@ class DiscogsAdapter:
         """
         if not settings.discogs_token:
             return {"releases": [], "pagination": {}}
+        cache_key = f"{artist_id}|{page}|{per_page}"
+        cached = await fetch_external_cache(
+            source="discogs_artist_releases",
+            cache_key=cache_key,
+            ttl_seconds=_TTL_30D,
+        )
+        if cached is not None:
+            return cached
         resp = await self._get(
             f"/artists/{artist_id}/releases",
             params={
@@ -101,21 +137,35 @@ class DiscogsAdapter:
             }
             for r in data.get("releases", [])
         ]
-        return {
+        out = {
             "releases": releases,
             "pagination": data.get("pagination", {}),
         }
+        await upsert_external_cache(
+            source="discogs_artist_releases",
+            cache_key=cache_key,
+            payload=out,
+        )
+        return out
 
     async def search_label(self, query: str, limit: int = 10) -> list[dict]:
         """Search for labels by name."""
         if not settings.discogs_token:
             return []
+        cache_key = f"{_normalize_query(query)}|{limit}"
+        cached = await fetch_external_cache(
+            source="discogs_search_label",
+            cache_key=cache_key,
+            ttl_seconds=_TTL_30D,
+        )
+        if cached is not None:
+            return cached
         resp = await self._get(
             "/database/search",
             params={"q": query, "type": "label", "per_page": limit},
         )
         results = resp.json().get("results", [])
-        return [
+        out = [
             {
                 "id": r.get("id"),
                 "name": r.get("title"),
@@ -125,6 +175,12 @@ class DiscogsAdapter:
             for r in results
             if r.get("id")
         ]
+        await upsert_external_cache(
+            source="discogs_search_label",
+            cache_key=cache_key,
+            payload=out,
+        )
+        return out
 
     async def get_label_releases(
         self, label_id: int, page: int = 1, per_page: int = 100
@@ -135,6 +191,14 @@ class DiscogsAdapter:
         """
         if not settings.discogs_token:
             return {"releases": [], "pagination": {}}
+        cache_key = f"{label_id}|{page}|{per_page}"
+        cached = await fetch_external_cache(
+            source="discogs_label_releases",
+            cache_key=cache_key,
+            ttl_seconds=_TTL_30D,
+        )
+        if cached is not None:
+            return cached
         resp = await self._get(
             f"/labels/{label_id}/releases",
             params={
@@ -160,18 +224,36 @@ class DiscogsAdapter:
             for r in data.get("releases", [])
             if r.get("id")
         ]
-        return {
+        out = {
             "releases": releases,
             "pagination": data.get("pagination", {}),
         }
+        await upsert_external_cache(
+            source="discogs_label_releases",
+            cache_key=cache_key,
+            payload=out,
+        )
+        return out
 
     async def get_tracklist(self, release_id: int, release_type: str = "release") -> list[dict]:
         """
         Get full tracklist for a release or master release.
         release_type: "master" or "release"
+
+        Cached for 6 months — release tracklists are user-edited and the
+        long tail of corrections lands within ~6mo of publish; older releases
+        are essentially frozen.
         """
         if not settings.discogs_token:
             return []
+        cache_key = f"{release_id}|{release_type}"
+        cached = await fetch_external_cache(
+            source="discogs_tracklist",
+            cache_key=cache_key,
+            ttl_seconds=_TTL_6MO,
+        )
+        if cached is not None:
+            return cached
         endpoint = (
             f"/masters/{release_id}"
             if release_type == "master"
@@ -179,7 +261,7 @@ class DiscogsAdapter:
         )
         resp = await self._get(endpoint)
         data = resp.json()
-        return [
+        out = [
             {
                 "position": t.get("position", ""),
                 "title": t.get("title", "Unknown"),
@@ -189,3 +271,9 @@ class DiscogsAdapter:
             for t in data.get("tracklist", [])
             if t.get("type_") != "heading"
         ]
+        await upsert_external_cache(
+            source="discogs_tracklist",
+            cache_key=cache_key,
+            payload=out,
+        )
+        return out

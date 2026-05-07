@@ -46,7 +46,14 @@ import httpx
 
 from app.adapters.base import AbstractAdapter
 from app.config import settings
+from app.core.db import fetch_external_cache, upsert_external_cache
 from app.core.models import TrackMeta
+
+# DJ-set tracklists are immutable once detected — trackid's bots may add
+# detections to a process over time, but the slug→tracklist payload is
+# anchored on a process-id so cached entries stay accurate. 30d strikes a
+# balance between capturing reprocessing edits and reducing scraper load.
+_TRACKIDNET_SET_TTL = 30 * 86400
 
 API_BASE = "https://trackid.net/api/public"
 USER_AGENT = (
@@ -238,15 +245,33 @@ async def _fetch_tracklists(
     """Fetch each /audiostreams/<slug> concurrently, bounded by a
     semaphore so we don't open MAX_PLAYLISTS sockets at once and look
     like a scraper from trackid's side. Failed fetches drop out silently.
+
+    Cache: each slug → tracklist payload is keyed on the slug for 30d.
+    The semaphore is acquired AFTER the cache check on purpose — cached
+    hits don't count against the rate limit they're protecting.
     """
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
     async def _one(slug: str) -> dict | None:
+        cached = await fetch_external_cache(
+            source="trackidnet_set",
+            cache_key=slug,
+            ttl_seconds=_TRACKIDNET_SET_TTL,
+        )
+        if cached is not None:
+            return cached
         async with sem:
             try:
                 resp = await client.get(f"{API_BASE}/audiostreams/{slug}")
                 resp.raise_for_status()
-                return (resp.json() or {}).get("result")
+                data = (resp.json() or {}).get("result")
+                if data is not None:
+                    await upsert_external_cache(
+                        source="trackidnet_set",
+                        cache_key=slug,
+                        payload=data,
+                    )
+                return data
             except (httpx.HTTPError, ValueError) as e:
                 print(f"[Trackidnet] audiostream {slug} failed: {e}")
                 return None

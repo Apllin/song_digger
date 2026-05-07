@@ -6,13 +6,58 @@ import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregat
 import type { FusedCandidate } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { parseQuery } from "@/lib/parse-query";
-import type { SourceList } from "@/lib/python-client";
+import type { SimilarResponse, SourceList } from "@/lib/python-client";
 import { auth } from "@/lib/auth";
 import { gateAnonymousRequest } from "@/lib/anonymous-counter";
+import { warmEmbedCache } from "@/lib/embed-cache";
+import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 
 const SearchRequestSchema = z.object({
   input: z.string().trim().min(1).max(500),
 });
+
+// ── Search response cache ────────────────────────────────────────────────────
+// Caches the Python `/similar` response (SourceList[]) for repeat searches of
+// the same (artist, track) pair. The dominant cost in the search pipeline is
+// the Python adapter fan-out (Cosine + YTM-radio + Yandex are unavoidable
+// 3-8s); RRF + saveTracks are sub-second. Caching the upstream response
+// short-circuits the heavy part while RRF and dislike filter still run fresh
+// per request, so cross-user cache sharing is correctness-safe.
+//
+// TTL = 14 days. Source data drift (new tracks on Cosine/YTM) within 2 weeks
+// is small for the underground-techno catalogue.
+//
+// **When to bump SEARCH_CACHE_VERSION:** ANYTHING that changes what Python
+// `/similar` returns. That includes: adding/removing an adapter from the
+// fan-out in `python-service/app/api/routes/similar.py`, changing filtering
+// or source ordering inside that route, modifying any adapter's
+// `find_similar()` shape or ordering, or changing `limit_per_source` /
+// request shape in [web/lib/python-client.ts](web/lib/python-client.ts).
+// Bumping the version means old keys are never read again — no SQL flush.
+//
+// **Does NOT need a bump:** changes to `lib/aggregator.ts` (RRF formula,
+// tiebreaker, artist diversification), the dislike filter, cover enrichment,
+// or any saveTracks logic. All of these run fresh on every request and
+// re-process the cached `source_lists`.
+const SEARCH_CACHE_SOURCE = "search_response";
+const SEARCH_CACHE_VERSION = "v1";
+const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
+const PYTHON_LIMIT_PER_SOURCE = 40;
+
+export function searchCacheKey(artist: string, track: string | null): string {
+  // Reuse the same normalization as DislikedTrack identity matching so two
+  // typings with the same parsed pair share a cache entry. Sentinel "_" for
+  // artist-only search avoids colliding with empty-track variants.
+  const a = normalizeArtist(artist);
+  const t = track ? normalizeTitle(track) : "_";
+  return `${SEARCH_CACHE_VERSION}:${a}|${t}`;
+}
+
+export const _internals = {
+  SEARCH_CACHE_SOURCE,
+  SEARCH_CACHE_VERSION,
+  SEARCH_CACHE_TTL_SECONDS,
+};
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -142,6 +187,14 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
     })),
     skipDuplicates: true,
   });
+
+  // 5. Warm the embed cache from tracks that already carry an embedUrl
+  //    (YTM/Bandcamp adapters set it during /similar). Cross-feature win:
+  //    a discography click on the same song later hits cache without a
+  //    live YTM lookup. Best-effort, never blocks the search response.
+  warmEmbedCache(tracks).catch((err) =>
+    console.error("[embed-cache] warm failed:", err),
+  );
 }
 
 async function runSearch(
@@ -151,21 +204,17 @@ async function runSearch(
   track: string | null,
   userId: string | null,
 ) {
-  // ── Fetch from Python + load dislikes in parallel. ───────────────────────
-  // Per-adapter timeouts inside Python keep slow sources (Bandcamp 4s,
-  // trackid 9s) from blocking the response. The dislikes query is independent
-  // of Python output, so we kick it off concurrently to save one DB round-trip
-  // worth of wall-clock latency.
-  const [pythonResult, dislikes] = await Promise.all([
-    fetchSimilarTracks({
-      input,
-      artist,
-      track,
-      limit_per_source: 40,
-    }).catch((err) => {
-      console.error("[Search] Python stage failed:", err);
-      return null;
-    }),
+  // ── Look up cache + load dislikes in parallel. ───────────────────────────
+  // Cache lookup is one Postgres SELECT (~30-80ms RTT to Neon); dislikes is
+  // another. Parallelism saves one round-trip worth of wall-clock. On a hit
+  // we skip the 3-8s Python fan-out entirely.
+  const cacheKey = searchCacheKey(artist, track);
+  const [cached, dislikes] = await Promise.all([
+    lookupCache<SimilarResponse>(
+      SEARCH_CACHE_SOURCE,
+      cacheKey,
+      SEARCH_CACHE_TTL_SECONDS,
+    ),
     userId
       ? prisma.dislikedTrack.findMany({
           where: { userId },
@@ -173,6 +222,28 @@ async function runSearch(
         })
       : Promise.resolve([] as { artistKey: string; titleKey: string }[]),
   ]);
+
+  let pythonResult: SimilarResponse | null;
+  if (cached) {
+    pythonResult = cached;
+  } else {
+    pythonResult = await fetchSimilarTracks({
+      input,
+      artist,
+      track,
+      limit_per_source: PYTHON_LIMIT_PER_SOURCE,
+    }).catch((err) => {
+      console.error("[Search] Python stage failed:", err);
+      return null;
+    });
+    // Best-effort cache write: only on a real Python response. Errors / null
+    // results don't poison the cache — next request retries live.
+    if (pythonResult) {
+      upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
+        console.error("[search-cache] upsert failed:", err),
+      );
+    }
+  }
 
   if (!pythonResult) {
     await prisma.searchQuery.update({
