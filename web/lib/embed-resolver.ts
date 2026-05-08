@@ -23,42 +23,43 @@ function cleanArtist(artist: string): string {
   return artist.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
-export async function resolveEmbed(
+async function tryYtmExact(
   title: string,
-  artist: string
-): Promise<EmbedResult> {
-  const cleanedArtist = cleanArtist(artist);
-  const query = `${cleanedArtist} - ${title}`;
-
-  // Try YTM exact search (matches artist+title precisely)
+  cleanedArtist: string,
+): Promise<EmbedResult | null> {
   try {
     const params = new URLSearchParams({ title, artist: cleanedArtist });
     const res = await fetch(
       `${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`,
       { signal: AbortSignal.timeout(8000) }
     );
-    if (res.ok) {
-      const data = await res.json();
-      if (data.embedUrl) {
-        return {
-          embedUrl: data.embedUrl,
-          source: "youtube_music",
-          sourceUrl: data.sourceUrl ?? null,
-          coverUrl: data.coverUrl ?? null,
-        };
-      }
-    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.embedUrl) return null;
+    return {
+      embedUrl: data.embedUrl,
+      source: "youtube_music",
+      sourceUrl: data.sourceUrl ?? null,
+      coverUrl: data.coverUrl ?? null,
+    };
   } catch {
-    // continue to next source
+    return null;
   }
+}
 
-  // Try Bandcamp — require both track title and at least one artist word to match
-  // so we don't return a random first result from an unrelated search.
+async function tryBandcamp(
+  title: string,
+  cleanedArtist: string,
+): Promise<EmbedResult | null> {
   try {
     const { searchBandcampSimilar } = await import("@/lib/scrapers/bandcamp");
+    const query = `${cleanedArtist} - ${title}`;
     const tracks = await searchBandcampSimilar(query);
     const titleLower = title.toLowerCase();
-    const artistWords = cleanedArtist.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const artistWords = cleanedArtist
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
     const match = tracks.find((t) => {
       if (!t.embedUrl) return false;
       const tTitle = t.title.toLowerCase();
@@ -69,17 +70,31 @@ export async function resolveEmbed(
       );
       return titleMatch && artistMatch;
     });
-    if (match) {
-      return {
-        embedUrl: match.embedUrl ?? null,
-        source: "bandcamp",
-        sourceUrl: match.sourceUrl ?? null,
-        coverUrl: match.coverUrl,
-      };
-    }
+    if (!match) return null;
+    return {
+      embedUrl: match.embedUrl ?? null,
+      source: "bandcamp",
+      sourceUrl: match.sourceUrl ?? null,
+      coverUrl: match.coverUrl,
+    };
   } catch {
-    // continue
+    return null;
   }
+}
 
-  return { embedUrl: null, source: null };
+export async function resolveEmbed(
+  title: string,
+  artist: string
+): Promise<EmbedResult> {
+  const cleanedArtist = cleanArtist(artist);
+
+  // Run both lookups in parallel, then prefer YTM when it has a hit.
+  // Priority is preserved (YTM > Bandcamp); the Bandcamp work is "free"
+  // when YTM hits, and saves the full YTM timeout when YTM misses.
+  const [ytm, bc] = await Promise.all([
+    tryYtmExact(title, cleanedArtist),
+    tryBandcamp(title, cleanedArtist),
+  ]);
+
+  return ytm ?? bc ?? { embedUrl: null, source: null };
 }

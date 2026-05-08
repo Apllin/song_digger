@@ -9,7 +9,8 @@ import { parseQuery } from "@/lib/parse-query";
 import type { SimilarResponse, SourceList } from "@/lib/python-client";
 import { auth } from "@/lib/auth";
 import { gateAnonymousRequest } from "@/lib/anonymous-counter";
-import { warmEmbedCache } from "@/lib/embed-cache";
+import { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } from "@/lib/embed-cache";
+import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 
 const SearchRequestSchema = z.object({
@@ -40,7 +41,7 @@ const SearchRequestSchema = z.object({
 // or any saveTracks logic. All of these run fresh on every request and
 // re-process the cached `source_lists`.
 const SEARCH_CACHE_SOURCE = "search_response";
-const SEARCH_CACHE_VERSION = "v1";
+const SEARCH_CACHE_VERSION = "v5";
 const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
 const PYTHON_LIMIT_PER_SOURCE = 40;
 
@@ -197,6 +198,44 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
   );
 }
 
+// BottomPlayer plays youtube_music and bandcamp directly; yandex tracks fall
+// through to /api/embed which does a live YTM-exact + Bandcamp-fallback
+// lookup. Run that lookup at search time for any yandex track no other source
+// confirmed, drop the ones that resolve to nothing, and write the embed cache
+// so the eventual click is just a Postgres select.
+async function dropUnplayableYandex(
+  candidates: FusedCandidate[],
+): Promise<FusedCandidate[]> {
+  const checks = candidates.map(async (t) => {
+    if (t.source !== "yandex_music") return t;
+    if (
+      t.appearances.some(
+        (a) => a.source === "youtube_music" || a.source === "bandcamp",
+      )
+    ) {
+      return t;
+    }
+
+    const cached = await lookupEmbedCache(t.artist, t.title).catch(() => null);
+    if (cached) return cached.embedUrl ? t : null;
+
+    const resolved = await resolveEmbed(t.title, t.artist).catch(() => null);
+    if (!resolved) return null;
+
+    upsertEmbedCache(t.artist, t.title, {
+      embedUrl: resolved.embedUrl,
+      source: resolved.source,
+      sourceUrl: resolved.sourceUrl ?? null,
+      coverUrl: resolved.coverUrl ?? null,
+    }).catch((err) => console.error("[embed-cache] upsert failed:", err));
+
+    return resolved.embedUrl ? t : null;
+  });
+
+  const settled = await Promise.all(checks);
+  return settled.filter((t): t is FusedCandidate => t !== null);
+}
+
 async function runSearch(
   searchId: string,
   input: string,
@@ -268,8 +307,10 @@ async function runSearch(
   }));
 
   const aggregated = aggregateTracks(filteredSourceLists);
-  await enrichMissingCovers(aggregated);
-  await saveTracks(searchId, aggregated);
+  const playable = await dropUnplayableYandex(aggregated);
+
+  await enrichMissingCovers(playable);
+  await saveTracks(searchId, playable);
 
   await prisma.searchQuery.update({
     where: { id: searchId },
