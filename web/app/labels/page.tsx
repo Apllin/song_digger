@@ -183,12 +183,21 @@ function LabelsContent() {
     <div className="min-h-screen text-td-fg">
       <div className="max-w-7xl mx-auto px-4 sm:px-7 pt-8 sm:pt-16 pb-28 flex flex-col gap-5 sm:gap-7">
 
-        {/* Hero: title + subtitle */}
-        <div className="pt-1 sm:pt-2">
-          <h1 className="font-display text-[26px] sm:text-[32px] md:text-[42px] font-normal leading-[1.05] text-td-fg m-0">
+        {/* Hero: title + subtitle — same display family as the home
+            page, scaled down so the inner page reads as secondary. */}
+        <div className="pt-2 sm:pt-4">
+          <h1
+            className="font-display text-td-fg m-0"
+            style={{
+              fontSize: "clamp(34px, 6.5vw, 84px)",
+              lineHeight: 0.9,
+              letterSpacing: "-0.02em",
+              fontWeight: 600,
+            }}
+          >
             Labels
           </h1>
-          <p className="mt-3 text-[14px] text-td-fg">
+          <p className="mt-4 text-[18px] sm:text-[20px] font-semibold text-td-fg">
             Browse releases by record label
           </p>
         </div>

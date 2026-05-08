@@ -192,10 +192,10 @@ export function SearchBar({
   return (
     <div className="w-full relative z-30">
       <div
-        className="relative flex items-center gap-2.5 sm:gap-4 px-3 py-3 sm:px-5 sm:py-4 rounded-[14px] sm:rounded-[18px] border"
+        className="relative flex items-center gap-2.5 sm:gap-4 px-3 py-3 sm:px-5 sm:py-4 rounded-[14px] sm:rounded-[18px]"
         style={{
           background: "rgba(14, 16, 28, 0.78)",
-          borderColor: "rgba(255, 255, 255, 0.38)",
+          border: "2px solid rgba(255, 255, 255, 0.55)",
           boxShadow:
             "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
           backdropFilter: "blur(20px) saturate(140%)",
@@ -227,7 +227,7 @@ export function SearchBar({
               }
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Ignez — A Love Dream"
+            placeholder="Ignez - A Love Dream"
             className="w-full bg-transparent text-[16px] sm:text-[20px] tracking-tight text-td-fg placeholder:text-td-fg-m focus:outline-none disabled:opacity-60 min-w-0"
             style={{ caretColor: "var(--td-accent)" }}
             disabled={loading}
@@ -267,7 +267,7 @@ export function SearchBar({
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
           ) : (
-            "Search"
+            "Explore"
           )}
         </button>
 

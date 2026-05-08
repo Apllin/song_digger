@@ -173,42 +173,29 @@ export function TrackCard({
           </svg>
         </button>
 
-        {/* Action chips top-right */}
-        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {onDislike && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDislike();
-              }}
-              className="w-6 h-6 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
-              style={{
-                background: "rgba(15,13,16,0.6)",
-                color: "var(--td-fg-d)",
-              }}
-              aria-label="Not interested"
-              title="Not interested"
-            >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z" />
-              </svg>
-            </button>
-          )}
+        {/* Action chips top-right — always visible */}
+        <div className="absolute top-1.5 right-1.5 flex gap-1.5">
           {onFavoriteToggle && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onFavoriteToggle(track.id);
               }}
-              className="w-6 h-6 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
+              className="w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
               style={{
-                background: "rgba(15,13,16,0.6)",
-                color: isFavorite ? "var(--td-accent-2)" : "var(--td-fg-d)",
+                background: isFavorite
+                  ? "rgba(112, 132, 255, 0.18)"
+                  : "rgba(15,13,16,0.7)",
+                border: `1px solid ${
+                  isFavorite ? "#7084ff" : "rgba(255,255,255,0.18)"
+                }`,
+                color: isFavorite ? "#7084ff" : "var(--td-fg)",
               }}
               aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              title={isFavorite ? "Remove from favorites" : "Like"}
             >
               <svg
-                className="w-3 h-3"
+                className="w-3.5 h-3.5"
                 fill={isFavorite ? "currentColor" : "none"}
                 stroke="currentColor"
                 strokeWidth={2}
@@ -218,6 +205,36 @@ export function TrackCard({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
+              </svg>
+            </button>
+          )}
+          {onDislike && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDislike();
+              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
+              style={{
+                background: "rgba(15,13,16,0.7)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                color: "var(--td-fg)",
+              }}
+              aria-label="Not interested"
+              title="Dislike"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.095c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"
                 />
               </svg>
             </button>

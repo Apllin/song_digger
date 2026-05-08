@@ -23,10 +23,13 @@ export function Logo({
       <RadarSweepMark size={size} />
       {showWordmark && (
         <span
-          className="inline-block font-display font-medium text-td-fg leading-none whitespace-nowrap"
+          className="inline-block font-cal-sans text-td-fg leading-none whitespace-nowrap"
           style={{
             fontSize: `clamp(16px, 4.4vw, ${resolvedWordmark}px)`,
-            letterSpacing: "-0.02em",
+            // Cal Sans is drawn for tight default setting at display
+            // sizes; keep tracking near zero so the brief's geometric
+            // "tight but not touching" texture comes through.
+            letterSpacing: "-0.01em",
           }}
         >
           Track Digger
@@ -80,8 +83,10 @@ export function RadarSweepMark({
       {/* Vinyl base */}
       <circle cx="23" cy="23" r="20" fill="#0e0c10" />
 
+      {/* Outer rim — thin white stroke around the vinyl. */}
+      <circle cx="23" cy="23" r="20" fill="none" stroke="#ffffff" strokeOpacity="0.9" strokeWidth="0.6" />
+
       {/* Concentric grooves */}
-      <circle cx="23" cy="23" r="20" fill="none" stroke="#efeaf3" strokeOpacity="0.30" strokeWidth="1" />
       <circle cx="23" cy="23" r="15.5" fill="none" stroke="#efeaf3" strokeOpacity="0.22" strokeWidth="1" />
       <circle cx="23" cy="23" r="11" fill="none" stroke="#efeaf3" strokeOpacity="0.16" strokeWidth="1" />
 

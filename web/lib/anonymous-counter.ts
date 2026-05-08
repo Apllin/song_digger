@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
-export const ANON_LIMIT = 10;
+export const ANON_LIMIT = 5;
 
 // Reads x-forwarded-for / x-real-ip set by Vercel / nginx / Cloudflare.
 // In bare local dev there is no proxy, so we fall back to "unknown" — a

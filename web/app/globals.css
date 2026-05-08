@@ -27,7 +27,18 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  /*
+    Typography — monopo saigon design system.
+    Roobert is the primary brand typeface (commercial, Displaay foundry).
+    If a 'Roobert' face is installed/self-hosted it picks up automatically;
+    otherwise Geist (loaded via next/font) is the visual fallback —
+    closest free geometric grotesque to Roobert's proportions.
+    Raleway is the secondary heading face, loaded from Google Fonts.
+  */
+  --font-roobert: 'Roobert', var(--font-geist), var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-raleway-stack: var(--font-raleway), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-cal-sans: 'Cal Sans', var(--font-roobert), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-roobert);
   --font-mono: var(--font-geist-mono);
   --color-td-bg: var(--td-bg);
   --color-td-bg-2: var(--td-bg-2);
@@ -58,20 +69,41 @@ body {
 }
 
 body {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-roobert);
   font-feature-settings: "calt", "kern", "liga", "ss03";
 }
 
 /*
-  Raycast display headline: Inter with negative tracking for compressed,
-  dense headlines. -0.022em is the practical midpoint between heading-lg
-  (-0.11em at 56px) and display (-0.13em at 64px) ranges in DESIGN.md.
+  Display headline / brand wordmark: Roobert with tighter tracking for a
+  compressed, confident headline that reads as distinct from body copy
+  while staying in the same family. Falls back to Geist when Roobert
+  isn't licensed/installed.
 */
 .font-display {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-roobert);
   letter-spacing: -0.022em;
   font-weight: 600;
   font-feature-settings: "calt", "kern", "liga", "ss03";
+}
+
+/*
+  Raleway — secondary heading face per the monopo saigon design system.
+  Apply via `font-raleway` for accent headings.
+*/
+.font-raleway {
+  font-family: var(--font-raleway-stack);
+  font-feature-settings: "kern", "liga";
+}
+
+/*
+  Cal Sans — Cal.com's geometric display sans (single weight 600).
+  Reserved for the brand wordmark; designed for tight default setting at
+  display sizes, so callers should keep letter-spacing near zero.
+*/
+.font-cal-sans {
+  font-family: var(--font-cal-sans);
+  font-weight: 600;
+  font-feature-settings: "kern", "liga";
 }
 
 .font-mono-td {

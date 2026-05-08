@@ -7,9 +7,10 @@ interface Props {
   onClose: () => void;
 }
 
-// Shown when an anonymous user hits the 10-request pool limit. Blocks
+// Shown when an anonymous user hits the ANON_LIMIT-request pool. Blocks
 // further interaction with results until they register, sign in, or
-// dismiss. ADR-0021.
+// dismiss. ADR-0021. Styled to match the /login card (--td-bg-2 + hair
+// border) and the nav's Sign in / Sign up button treatments.
 export function RegisterPromptModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -24,37 +25,57 @@ export function RegisterPromptModal({ open, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="register-prompt-title"
     >
       <div
-        className="relative w-full max-w-sm rounded-lg bg-zinc-900 border border-zinc-700 p-6"
+        className="relative w-full max-w-md rounded-xl p-7 sm:p-9 text-td-fg"
+        style={{
+          background: "var(--td-bg-2)",
+          border: "1px solid var(--td-hair-2)",
+          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.55)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="register-prompt-title"
-          className="text-xl font-semibold mb-2 text-zinc-100"
+          className="font-display text-[26px] sm:text-[30px] leading-tight mb-3"
+          style={{ letterSpacing: "-0.02em", fontWeight: 600 }}
         >
           Sign up to keep digging
         </h2>
-        <p className="text-sm text-zinc-400 mb-6">
-          You&rsquo;ve used your 10 free searches. Create a free account to keep
-          exploring music &mdash; plus you&rsquo;ll be able to save favorites and
-          dislike tracks you don&rsquo;t want to see again.
+        <p className="text-[15px] leading-relaxed mb-7" style={{ color: "var(--td-fg-d)" }}>
+          You&rsquo;ve used your 5&nbsp;free searches. Create a free account to
+          keep exploring music &mdash; you&rsquo;ll be able to save
+          favorite tracks and much more.
         </p>
-        <div className="space-y-2">
+        <div className="flex flex-col gap-3">
           <a
             href="/register"
-            className="block w-full text-center rounded-md bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors"
+            className="inline-flex w-full items-center justify-center font-bold text-[14px] transition-opacity hover:opacity-90"
+            style={{
+              color: "#ffffff",
+              background: "#4d3ec2",
+              border: "1px solid rgba(216, 200, 255, 0.22)",
+              borderRadius: "30px",
+              padding: "12px 22px",
+            }}
           >
             Create free account
           </a>
           <a
             href="/login"
-            className="block w-full text-center rounded-md border border-zinc-700 hover:bg-zinc-800 px-4 py-2 text-sm text-zinc-200 transition-colors"
+            className="inline-flex w-full items-center justify-center font-bold text-[14px] transition-colors hover:bg-[rgba(112,132,255,0.08)]"
+            style={{
+              color: "#ffffff",
+              border: "1px solid #7084ff",
+              borderRadius: "30px",
+              padding: "12px 22px",
+              background: "transparent",
+            }}
           >
             Already have an account? Sign in
           </a>
@@ -62,10 +83,20 @@ export function RegisterPromptModal({ open, onClose }: Props) {
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 text-zinc-500 hover:text-zinc-300"
+          className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+          style={{ color: "var(--td-fg-m)" }}
           aria-label="Close"
         >
-          &times;
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
       </div>
     </div>

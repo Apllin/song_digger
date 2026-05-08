@@ -100,7 +100,7 @@ export function RegisterForm() {
       >
         {pending ? "Creating account..." : "Create account"}
       </button>
-      <p className="text-xs text-center text-zinc-500">
+      <p className="text-xs text-center text-white">
         Already have an account?{" "}
         <a href="/login" className="text-blue-400 hover:underline">
           Sign in

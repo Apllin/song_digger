@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, Geist, Geist_Mono, Raleway } from "next/font/google";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
+import { CookieConsentHost } from "@/components/CookieConsentHost";
+import "cal-sans/index.css";
 import "./globals.css";
 
 const inter = Inter({
@@ -14,10 +16,27 @@ const inter = Inter({
   weight: ["400", "500", "600", "700"],
 });
 
+// Geist is the closest free analogue to LaunchDarkly's Söhne — neutral
+// grotesque, similar proportions and letter shapes. Used as the primary
+// UI typeface (--font-sans) and for the brand wordmark.
+const geist = Geist({
+  variable: "--font-geist",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   weight: ["300", "400", "500"],
+});
+
+// Raleway — secondary heading typeface from the monopo saigon design
+// system. Used selectively (e.g. accent headings) alongside Roobert.
+const raleway = Raleway({
+  variable: "--font-raleway",
+  subsets: ["latin"],
+  weight: ["400", "600"],
 });
 
 export const metadata: Metadata = {
@@ -32,7 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${raleway.variable} h-full antialiased`}
     >
       <body className="bg-td-bg">
         <HomeBackground />
@@ -43,6 +62,7 @@ export default function RootLayout({
             <AnonymousLimitModalHost />
           </PlayerProvider>
         </div>
+        <CookieConsentHost />
         {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout
             level so any mounted widget can find window.turnstile.
             Cloudflare requires the script come from this exact URL with

@@ -52,9 +52,9 @@ describe("checkAnonymousLimit", () => {
   });
 
   it("returns remaining < ANON_LIMIT once count is non-zero", async () => {
-    prismaMock.anonymousRequest.findUnique.mockResolvedValueOnce({ count: 7 });
+    prismaMock.anonymousRequest.findUnique.mockResolvedValueOnce({ count: 3 });
     const result = await checkAnonymousLimit("1.2.3.4");
-    expect(result).toEqual({ overLimit: false, count: 7, remaining: 3 });
+    expect(result).toEqual({ overLimit: false, count: 3, remaining: ANON_LIMIT - 3 });
   });
 
   it("flags overLimit at exactly ANON_LIMIT", async () => {
@@ -83,7 +83,7 @@ describe("incrementAnonymousCounter", () => {
 describe("gateAnonymousRequest", () => {
   it("returns ok and increments when under limit", async () => {
     headerStore.set("x-forwarded-for", "5.5.5.5");
-    prismaMock.anonymousRequest.findUnique.mockResolvedValueOnce({ count: 9 });
+    prismaMock.anonymousRequest.findUnique.mockResolvedValueOnce({ count: ANON_LIMIT - 1 });
     prismaMock.anonymousRequest.upsert.mockResolvedValueOnce({});
 
     const result = await gateAnonymousRequest();

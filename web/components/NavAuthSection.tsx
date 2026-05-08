@@ -9,12 +9,37 @@ export async function NavAuthSection() {
 
   if (!session?.user) {
     return (
-      <Link
-        href="/login"
-        className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-      >
-        Sign in
-      </Link>
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Outlined Action Button — Launch Violet border, 60px radius. */}
+        <Link
+          href="/login"
+          className="hidden sm:inline-flex items-center font-bold text-[14px] transition-colors hover:bg-[rgba(112,132,255,0.08)]"
+          style={{
+            color: "#ffffff",
+            border: "1px solid #7084ff",
+            borderRadius: "60px",
+            padding: "10px 22px",
+            background: "transparent",
+          }}
+        >
+          Sign in
+        </Link>
+        {/* Primary Action Button — purple fill, 30px radius. The lighter
+            violet lifts the CTA off the dark bg without overpowering. */}
+        <Link
+          href="/register"
+          className="inline-flex items-center font-bold text-[14px] transition-opacity hover:opacity-90"
+          style={{
+            color: "#ffffff",
+            background: "#4d3ec2",
+            border: "1px solid rgba(216, 200, 255, 0.22)",
+            borderRadius: "30px",
+            padding: "10px 22px",
+          }}
+        >
+          Sign up
+        </Link>
+      </div>
     );
   }
 
@@ -38,8 +63,8 @@ export async function NavAuthSection() {
           aria-label="Sign out"
           title={`Sign out${session.user.email ? ` — ${session.user.email}` : ""}`}
           style={{
-            background: "rgba(14, 16, 28, 0.78)",
-            borderColor: "rgba(255, 255, 255, 0.22)",
+            background: "rgba(40, 32, 110, 0.82)",
+            borderColor: "rgba(216, 200, 255, 0.22)",
             color: "var(--td-fg)",
             backdropFilter: "blur(20px) saturate(140%)",
             WebkitBackdropFilter: "blur(20px) saturate(140%)",
