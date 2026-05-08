@@ -242,6 +242,69 @@ async def test_seed_match_tolerates_diacritics_and_collaborators(monkeypatch):
     # *reached* the /similar call (no AssertionError was raised).
 
 
+async def test_version_specific_query_prefers_version_specific_seed(monkeypatch):
+    """A query carrying a version marker must seed off the version-specific
+    catalog entry, not the bare-title sibling. Without scored matching, the
+    bare title is a substring of the long query so it validates and the
+    upstream's own ranking decides — which collapses different recordings."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    # Cosine often returns the bare title first for relevance/popularity, with
+    # the version-specific entry further down. The seed picker must reach for
+    # the higher-scoring exact match anyway.
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                {"id": "bare", "artist": "Nina Kraviz, David Löhlein", "track": "Bailando"},
+                {
+                    "id": "version",
+                    "artist": "Nina Kraviz, David Löhlein",
+                    "track": "Bailando (NK & David Löhlein Version)",
+                },
+            ]})
+        if url == "/v1/tracks/version/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "X", "artist": "Y", "video_id": "v"}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar(
+        "Nina Kraviz, David Löhlein - Bailando (NK & David Löhlein Version)"
+    )
+    assert len(out) == 1
+    assert out[0].artist == "Y"
+
+
+async def test_bare_title_query_still_picks_bare_seed(monkeypatch):
+    """The reverse: when the query has no version marker, the bare-title hit
+    is the exact match and should win even if a version-specific sibling
+    appears in the candidate list."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                {
+                    "id": "version",
+                    "artist": "Nina Kraviz, David Löhlein",
+                    "track": "Bailando (NK & David Löhlein Version)",
+                },
+                {"id": "bare", "artist": "Nina Kraviz, David Löhlein", "track": "Bailando"},
+            ]})
+        if url == "/v1/tracks/bare/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "X", "artist": "Y", "video_id": "v"}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar("Nina Kraviz, David Löhlein - Bailando")
+    assert len(out) == 1
+
+
 async def test_freeform_query_without_dash_skips_validation(monkeypatch):
     """A query without ' - ' has no parseable artist/title — accept top hit."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")

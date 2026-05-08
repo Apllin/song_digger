@@ -1,6 +1,7 @@
 import asyncio
 from ytmusicapi import YTMusic
 from app.adapters.base import AbstractAdapter
+from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
 from app.core.models import TrackMeta
 from app.config import settings
 
@@ -10,6 +11,40 @@ _ytm = YTMusic()
 
 def _yt_embed_url(video_id: str) -> str:
     return f"https://www.youtube.com/embed/{video_id}?autoplay=1&origin={settings.frontend_origin}"
+
+
+def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
+    """Return the videoId of the best-scoring search hit for `query`.
+
+    YTM search is fuzzy: a query with no exact match still returns the closest
+    text-similar song, and `get_watch_playlist()` on that mismatched seed
+    yields a radio of the wrong genre. Picking the highest-scoring candidate
+    (exact signature > substring) lets a version-specific query prefer the
+    version-specific catalog entry over the bare title.
+    """
+    best_vid: str | None = None
+    best_score = 0
+    for cand in results:
+        vid = cand.get("videoId")
+        if not vid:
+            continue
+        cand_artist = ", ".join(
+            a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")
+        )
+        cand_title = cand.get("title") or ""
+        score = query_match_score(query, cand_artist, cand_title)
+        if score > best_score:
+            best_score = score
+            best_vid = vid
+    if best_vid is not None:
+        return best_vid
+    rejected = ", ".join(
+        f"{', '.join(a.get('name', '') for a in (c.get('artists') or []) if a.get('name'))!r}"
+        f" - {c.get('title', '')!r}"
+        for c in results
+    )
+    print(f"[YouTubeMusic] no seed matched query {query!r}; rejected: {rejected}")
+    return None
 
 
 def _parse_ytm_track(t: dict) -> TrackMeta | None:
@@ -51,12 +86,15 @@ class YouTubeMusicAdapter(AbstractAdapter):
             return []
 
     def _find_similar_sync(self, query: str, limit: int) -> list[TrackMeta]:
-        # Step 1: search for the track to get its videoId
-        results = _ytm.search(query, filter="songs", limit=1)
+        # Step 1: search for the track and validate the seed.
+        # YTM search is fuzzy and will return *something* for almost any input.
+        # Without validation a query like "Ignez - Aventurine" can resolve to
+        # an unrelated record and the radio playlist will be off-genre.
+        results = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
         if not results:
             return []
 
-        video_id = results[0].get("videoId")
+        video_id = _pick_seed_video_id(query, results)
         if not video_id:
             return []
 

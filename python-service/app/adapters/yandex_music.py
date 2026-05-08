@@ -1,5 +1,6 @@
 from typing import Any
 from app.adapters.base import AbstractAdapter
+from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
 from app.core.models import TrackMeta
 from app.config import settings
 
@@ -56,7 +57,9 @@ class YandexMusicAdapter(AbstractAdapter):
             results = (search.tracks.results if search and search.tracks else None) or []
             if not results:
                 return []
-            seed = results[0]
+            seed = self._pick_seed(query, results[:SEED_CANDIDATES])
+            if seed is None:
+                return []
             similar = await client.tracks_similar(seed.id)
             sim = (similar.similar_tracks if similar else None) or []
             return [m for t in sim[:limit] if (m := self._parse(t))]
@@ -66,6 +69,37 @@ class YandexMusicAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[YandexMusic] find_similar unexpected error: {e}")
             return []
+
+    @staticmethod
+    def _pick_seed(query: str, candidates: list[Any]) -> Any | None:
+        """Return the best-scoring candidate for the query.
+
+        Yandex search is fuzzy and will resolve unknown queries to the closest
+        text-similar track in its catalog, so blindly trusting `results[0]`
+        leads to off-genre similars (see ADR for the cosine.club incident).
+        Picking the highest-scoring hit (exact signature > substring) also
+        prevents version-specific queries from collapsing onto the bare title.
+        """
+        best: Any | None = None
+        best_score = 0
+        for cand in candidates:
+            cand_artist = ", ".join(
+                a.name for a in (getattr(cand, "artists", None) or []) if getattr(a, "name", None)
+            )
+            cand_title = getattr(cand, "title", "") or ""
+            score = query_match_score(query, cand_artist, cand_title)
+            if score > best_score:
+                best_score = score
+                best = cand
+        if best is not None:
+            return best
+        rejected = ", ".join(
+            f"{', '.join(a.name for a in (getattr(c, 'artists', None) or []) if getattr(a, 'name', None))!r}"
+            f" - {getattr(c, 'title', '')!r}"
+            for c in candidates
+        )
+        print(f"[YandexMusic] no seed matched query {query!r}; rejected: {rejected}")
+        return None
 
     def _parse(self, t: Any) -> TrackMeta | None:
         if t is None or not getattr(t, "id", None):
