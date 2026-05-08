@@ -5,7 +5,8 @@ import { useAtom, useSetAtom } from "jotai";
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { useSearchHistory } from "@/lib/use-search-history";
 import { useDebounce } from "@/lib/use-debounce";
-import { labelsAtom, type Label, type LabelRelease } from "@/lib/atoms/labels";
+import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
+import { labelsAtom, type Label } from "@/lib/atoms/labels";
 import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
 
@@ -15,38 +16,6 @@ const POPULAR_LABELS = [
 ];
 
 const PAGE_SIZE = 15;
-
-async function fetchAllLabelReleases(
-  labelId: number,
-  signal?: AbortSignal
-): Promise<LabelRelease[]> {
-  const first = await fetch(
-    `/api/discography/label/releases?labelId=${labelId}&page=1&perPage=100`,
-    { signal }
-  ).then((r) => r.json());
-
-  const releases: LabelRelease[] = first.releases ?? [];
-  const totalPages: number = first.pagination?.pages ?? 1;
-
-  if (totalPages > 1) {
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, i) =>
-        fetch(
-          `/api/discography/label/releases?labelId=${labelId}&page=${i + 2}&perPage=100`,
-          { signal }
-        ).then((r) => r.json())
-      )
-    );
-    for (const p of rest) releases.push(...(p.releases ?? []));
-  }
-
-  const seen = new Set<number>();
-  return releases.filter((r) => {
-    if (seen.has(r.id)) return false;
-    seen.add(r.id);
-    return true;
-  });
-}
 
 export default function LabelsPage() {
   return (
@@ -76,7 +45,6 @@ function LabelsContent() {
       showHistory: false,
       activeIndex: -1,
       page: 1,
-      releases: [],
     }));
   }
 
@@ -90,7 +58,6 @@ function LabelsContent() {
       ...prev,
       query: name,
       selectedLabel: null,
-      releases: [],
       suggestions: [],
       page: 1,
       showSuggestions: false,
@@ -157,27 +124,10 @@ function LabelsContent() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
 
-  // Load releases when label selected
-  useEffect(() => {
-    if (!s.selectedLabel) return;
-    const ac = new AbortController();
-    setS((prev) => ({ ...prev, loadingReleases: true }));
-    fetchAllLabelReleases(s.selectedLabel.id, ac.signal)
-      .then((all) => {
-        if (ac.signal.aborted) return;
-        setS((prev) => ({ ...prev, releases: all }));
-      })
-      .catch(() => {
-        if (!ac.signal.aborted) setS((prev) => ({ ...prev, releases: [] }));
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingReleases: false }));
-      });
-    return () => ac.abort();
-  }, [s.selectedLabel, setS]);
+  const { releases, loadingReleases } = useAllLabelReleases(s.selectedLabel?.id);
 
-  const totalPages = Math.ceil(s.releases.length / PAGE_SIZE);
-  const pagedReleases = s.releases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
+  const totalPages = Math.ceil(releases.length / PAGE_SIZE);
+  const pagedReleases = releases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -415,15 +365,15 @@ function LabelsContent() {
                 <p className="font-display text-[20px] font-normal text-td-fg leading-tight">
                   {s.selectedLabel.name}
                 </p>
-                {!s.loadingReleases && s.releases.length > 0 && (
+                {!loadingReleases && releases.length > 0 && (
                   <p className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-fg-d mt-0.5">
-                    {s.releases.length} release{s.releases.length !== 1 ? "s" : ""}
+                    {releases.length} release{releases.length !== 1 ? "s" : ""}
                   </p>
                 )}
               </div>
             </div>
 
-            {s.loadingReleases && (
+            {loadingReleases && (
               <div className="flex justify-center py-10">
                 <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -432,7 +382,7 @@ function LabelsContent() {
               </div>
             )}
 
-            {!s.loadingReleases && s.releases.length === 0 && (
+            {!loadingReleases && releases.length === 0 && (
               <p className="text-sm text-td-fg-m text-center py-10">No releases found</p>
             )}
 
@@ -443,11 +393,11 @@ function LabelsContent() {
                   release={{
                     id: r.id,
                     title: r.title,
-                    year: r.year,
+                    year: r.year ?? undefined,
                     type: r.type ?? "release",
-                    format: r.format,
+                    format: r.format ?? undefined,
                     label: r.catno && r.catno !== "none" ? r.catno : undefined,
-                    thumb: r.thumb,
+                    thumb: r.thumb ?? undefined,
                   }}
                   artistName={r.artist ?? "Various"}
                 />
