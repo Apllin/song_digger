@@ -268,6 +268,87 @@ export function BottomPlayer() {
     playing ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
   };
 
+  // Spacebar globally toggles play/pause. Skip when typing into an input,
+  // textarea, or contenteditable so the search field still gets spaces.
+  useEffect(() => {
+    if (!track) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      e.preventDefault();
+      if (track.source === "bandcamp") bcToggle();
+      else if (track.source === "youtube_music") toggle();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // bcToggle/toggle close over refs and `playing` — re-bind on those.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.source, playing]);
+
+  // Media Session API — exposes track metadata + play/pause/next/prev to the
+  // OS (iOS lockscreen, Android notification, macOS Now Playing). Together
+  // with the <audio playsInline> on Bandcamp this lets playback survive a
+  // screen lock or app backgrounding on mobile. YouTube iframe is harder to
+  // keep alive on iOS lock — but the lockscreen controls still drive our
+  // play/pause/skip via the action handlers below.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!track) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = "none";
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      artwork: track.coverUrl
+        ? [
+            { src: track.coverUrl, sizes: "256x256", type: "image/jpeg" },
+            { src: track.coverUrl, sizes: "512x512", type: "image/jpeg" },
+          ]
+        : [],
+    });
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      if (track.source === "bandcamp") bcAudioRef.current?.play().catch(() => {});
+      else if (track.source === "youtube_music") playerRef.current?.playVideo();
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      if (track.source === "bandcamp") bcAudioRef.current?.pause();
+      else if (track.source === "youtube_music") playerRef.current?.pauseVideo();
+    });
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      if (playingIndex !== null && playingIndex < playlist.length - 1) playNext();
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      if (playingIndex !== null && playingIndex > 0) playPrev();
+    });
+    return () => {
+      try {
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+        navigator.mediaSession.setActionHandler("previoustrack", null);
+      } catch {}
+    };
+  }, [track, playing, playingIndex, playlist.length, playNext, playPrev]);
+
+  // Keep position state in sync with the OS (iOS uses this for the scrubber).
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!track || duration <= 0 || !isFinite(duration)) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        position: Math.min(currentTime, duration),
+        playbackRate: 1,
+      });
+    } catch {}
+  }, [track, currentTime, duration]);
+
   const seek = (pct: number) => {
     if (duration <= 0) return;
     const t = pct * duration;
@@ -282,7 +363,7 @@ export function BottomPlayer() {
     }
   };
 
-  const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     seek(pct);
@@ -299,7 +380,13 @@ export function BottomPlayer() {
   if (!track) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 border-t border-zinc-800 shadow-2xl">
+    <div
+      className="fixed bottom-4 left-4 right-4 md:left-7 md:right-7 z-50 max-w-6xl md:mx-auto rounded-[18px] backdrop-blur-xl shadow-2xl"
+      style={{
+        background: "rgba(20,18,26,0.85)",
+        border: "1px solid var(--td-hair-2)",
+      }}
+    >
       {/* Hidden YT iframe holder */}
       <div
         ref={holderRef}
@@ -328,36 +415,54 @@ export function BottomPlayer() {
         />
       )}
 
-      <div className="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1.5">
+      <div className="px-4 py-2 flex flex-col gap-1.5">
         {/* Main row */}
         <div className="flex items-center gap-3">
           {/* Cover thumbnail */}
-          {coverUrl && !coverFailed && (
+          {coverUrl && !coverFailed ? (
             <img
               src={coverUrl}
               alt=""
-              className="w-10 h-10 rounded object-cover shrink-0"
+              className="w-[36px] h-[36px] rounded-lg object-cover shrink-0"
+              style={{ border: "1px solid var(--td-hair)" }}
               onError={() => setCoverFailed(true)}
             />
+          ) : (
+            <div
+              className="w-[36px] h-[36px] rounded-lg shrink-0 relative overflow-hidden"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(185,163,232,0.35), rgba(58,36,64,0.6))",
+              }}
+            >
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(circle at 70% 30%, var(--td-accent-soft), transparent 50%)",
+                }}
+              />
+            </div>
           )}
 
           {/* Track info */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-zinc-100 truncate">{track.title}</p>
-            <p className="text-xs text-zinc-500 truncate">
+            <p className="text-[13px] font-medium text-td-fg truncate">{track.title}</p>
+            <p className="text-[11px] text-td-fg-m truncate">
               {track.artist}
-              <span className="ml-2 text-zinc-700">
-                {resolving ? "Finding playable source…" : SOURCE_LABELS[track.source] ?? track.source}
+              <span className="ml-2" style={{ color: "var(--td-fg-m)" }}>
+                · {resolving ? "Finding playable source…" : SOURCE_LABELS[track.source] ?? track.source}
               </span>
             </p>
           </div>
 
           {/* Controls */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => playPrev()}
               disabled={!hasPrev}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-30"
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+              style={{ color: "var(--td-fg-d)" }}
               aria-label="Previous"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -373,7 +478,12 @@ export function BottomPlayer() {
                 <button
                   onClick={onClick}
                   disabled={!isReady}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors disabled:opacity-40"
+                  className="w-[34px] h-[34px] flex items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{
+                    background: "var(--td-accent)",
+                    color: "var(--td-bg)",
+                    boxShadow: "0 0 18px var(--td-accent-soft)",
+                  }}
                   aria-label={playing ? "Pause" : "Play"}
                 >
                   {!isReady ? (
@@ -397,7 +507,8 @@ export function BottomPlayer() {
             <button
               onClick={() => playNext()}
               disabled={!hasNext}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-30"
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+              style={{ color: "var(--td-fg-d)" }}
               aria-label="Next"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -411,7 +522,8 @@ export function BottomPlayer() {
               <div className="flex items-center gap-1.5 ml-1">
                 <button
                   onClick={() => changeVolume(volume === 0 ? 100 : 0)}
-                  className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+                  className="w-7 h-7 flex items-center justify-center transition-colors shrink-0"
+                  style={{ color: "var(--td-fg-d)" }}
                   aria-label={volume === 0 ? "Unmute" : "Mute"}
                 >
                   {volume === 0 ? (
@@ -436,17 +548,23 @@ export function BottomPlayer() {
                   value={volume}
                   onChange={(e) => changeVolume(Number(e.target.value))}
                   aria-label="Volume"
-                  className="w-20 h-1 accent-zinc-400 cursor-pointer"
+                  className="w-20 h-1 cursor-pointer"
+                  style={{ accentColor: "var(--td-accent)" }}
                 />
               </div>
             )}
 
             {/* Open source */}
             <a
-              href={track.sourceUrl}
+              href={
+                track.source === "youtube_music" && videoId
+                  ? `https://www.youtube.com/watch?v=${videoId}`
+                  : track.sourceUrl
+              }
               target="_blank"
               rel="noopener noreferrer"
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: "var(--td-fg-d)" }}
               aria-label="Open on source"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -457,7 +575,8 @@ export function BottomPlayer() {
             {/* Close */}
             <button
               onClick={close}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: "var(--td-fg-m)" }}
               aria-label="Close player"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -469,8 +588,8 @@ export function BottomPlayer() {
 
         {/* Progress bar (YouTube + Bandcamp) */}
         {(track.source === "youtube_music" || track.source === "bandcamp") && (
-          <div className="flex items-center gap-2 pb-0.5">
-            <span className="text-[10px] text-zinc-600 tabular-nums w-7 text-right shrink-0">
+          <div className="flex items-center gap-2 font-mono-td">
+            <span className="text-[10px] text-td-fg-m tabular-nums w-8 text-right shrink-0">
               {formatTime(currentTime)}
             </span>
             <div
@@ -479,17 +598,38 @@ export function BottomPlayer() {
               aria-valuenow={Math.round(currentTime)}
               aria-valuemin={0}
               aria-valuemax={Math.round(duration)}
-              className="flex-1 h-1.5 bg-zinc-800 rounded-full cursor-pointer group/bar"
-              onClick={handleBarClick}
+              className="flex-1 h-[5px] rounded-full cursor-pointer group/bar touch-none"
+              style={{ background: "rgba(255, 255, 255, 0.18)" }}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                seekFromPointer(e);
+              }}
+              onPointerMove={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  seekFromPointer(e);
+                }
+              }}
             >
               <div
-                className="h-full bg-zinc-500 group-hover/bar:bg-zinc-300 rounded-full transition-colors relative"
-                style={{ width: `${progressPct}%` }}
+                className="h-full rounded-full relative"
+                style={{
+                  width: `${progressPct}%`,
+                  background: "var(--td-accent)",
+                  boxShadow: "0 0 12px var(--td-accent)",
+                }}
               >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-zinc-100 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                <div
+                  className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-[13px] h-[13px] rounded-full transition-transform group-hover/bar:scale-110"
+                  style={{
+                    background: "#ffffff",
+                    border: "2px solid var(--td-accent)",
+                    boxShadow:
+                      "0 0 0 1px rgba(0,0,0,0.3), 0 0 12px var(--td-accent-soft)",
+                  }}
+                />
               </div>
             </div>
-            <span className="text-[10px] text-zinc-600 tabular-nums w-7 shrink-0">
+            <span className="text-[10px] text-td-fg-m tabular-nums w-8 shrink-0">
               {formatTime(duration)}
             </span>
           </div>

@@ -166,26 +166,58 @@ function DiscographyContent() {
       .finally(() => setS((prev) => ({ ...prev, loadingReleases: false })));
   }, [s.selectedArtist, setS]);
 
-  const filteredReleases =
-    s.roleFilter === "main" ? s.releases.filter((r) => r.role === "Main") : s.releases;
+  const filteredReleases = (
+    s.roleFilter === "main" ? s.releases.filter((r) => r.role === "Main") : s.releases
+  )
+    .slice()
+    .sort((a, b) => {
+      if (a.year == null && b.year == null) return 0;
+      if (a.year == null) return 1;
+      if (b.year == null) return -1;
+      return b.year - a.year;
+    });
   const totalPages = Math.ceil(filteredReleases.length / PAGE_SIZE);
   const pagedReleases = filteredReleases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-3xl mx-auto px-4 py-10 flex flex-col gap-8">
-
-        {/* Header */}
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Discography</h1>
-          <p className="text-sm text-zinc-500">
-            Search an artist to browse their full discography via Discogs
+    <div className="min-h-screen text-td-fg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-7 pt-8 sm:pt-16 pb-28 flex flex-col gap-5 sm:gap-7">
+        {/* Hero: title + subtitle */}
+        <div className="pt-1 sm:pt-2">
+          <h1 className="font-display text-[26px] sm:text-[32px] md:text-[42px] font-normal leading-[1.05] text-td-fg m-0">
+            Discography
+          </h1>
+          <p className="mt-3 text-[14px] text-td-fg">
+            Search an artist and explore their full discography
           </p>
         </div>
 
-        {/* Artist search */}
-        <div className="relative" ref={containerRef}>
-          <div className="relative">
+        {/* Glass search bar — same visual language as the home page */}
+        <div className="w-full relative z-30" ref={containerRef}>
+          <div
+            className="relative flex items-center gap-2.5 sm:gap-4 px-3 py-3 sm:px-5 sm:py-4 rounded-[14px] sm:rounded-[18px] border"
+            style={{
+              background: "rgba(14, 16, 28, 0.78)",
+              borderColor: "rgba(255, 255, 255, 0.38)",
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
+              backdropFilter: "blur(20px) saturate(140%)",
+              WebkitBackdropFilter: "blur(20px) saturate(140%)",
+            }}
+          >
+            <svg
+              className="w-5 h-5 shrink-0"
+              style={{ color: "var(--td-accent)" }}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path strokeLinecap="round" d="m20 20-3.5-3.5" />
+            </svg>
+
             <input
               type="text"
               value={s.query}
@@ -227,6 +259,7 @@ function DiscographyContent() {
                   setS((prev) => ({ ...prev, activeIndex: Math.max(prev.activeIndex - 1, -1) }));
                 } else if (e.key === "Enter") {
                   e.preventDefault();
+                  setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                   if (s.activeIndex >= 0) {
                     if (inHistory) searchArtistByName(items[s.activeIndex]);
                     else selectArtist(s.artistSuggestions[s.activeIndex]);
@@ -237,34 +270,60 @@ function DiscographyContent() {
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                 }
               }}
-              placeholder="Search artist (e.g. Ignez - Aventurine)"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 pr-10 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
+              placeholder="Oscar Mulero"
+              className="flex-1 bg-transparent text-[16px] sm:text-[20px] tracking-tight text-td-fg placeholder:text-td-fg-m focus:outline-none min-w-0"
+              style={{ caretColor: "var(--td-accent)" }}
             />
+
             {s.loadingArtists && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <svg className="w-4 h-4 animate-spin text-zinc-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-              </div>
+              <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
             )}
+
+            <button
+              onClick={() => {
+                setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false, activeIndex: -1 }));
+                if (s.query.trim()) searchArtistByName(s.query.trim());
+              }}
+              disabled={!s.query.trim() || s.loadingArtists}
+              className="shrink-0 px-4 py-2.5 sm:px-8 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-[16px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: "var(--td-fg)",
+                color: "var(--td-bg)",
+                boxShadow: "0 0 24px rgba(255, 255, 255, 0.18)",
+              }}
+            >
+              Search
+            </button>
           </div>
 
           {/* History dropdown */}
           {s.showHistory && history.length > 0 && (
-            <ul className="absolute z-50 top-full mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-xl">
-              <li className="px-4 py-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-zinc-600">Recent searches</span>
+            <ul
+              className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
+              style={{
+                background: "rgba(20,18,26,0.92)",
+                borderColor: "rgba(255, 255, 255, 0.18)",
+              }}
+            >
+              <li className="px-5 py-2 font-mono-td text-[10px] uppercase tracking-[0.14em] text-td-fg-m">
+                Recent searches
               </li>
               {history.map((h, i) => (
                 <li key={h}>
                   <button
+                    onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
+                    onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
                     onMouseDown={(e) => { e.preventDefault(); searchArtistByName(h); }}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-left ${
-                      i === s.activeIndex ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                    }`}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
+                    style={{
+                      background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
+                      color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
+                    }}
                   >
-                    <svg className="w-3.5 h-3.5 shrink-0 text-zinc-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: "var(--td-fg-m)" }}>
                       <circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
                     </svg>
                     {h}
@@ -276,16 +335,27 @@ function DiscographyContent() {
 
           {/* Autocomplete suggestions */}
           {s.showSuggestions && s.artistSuggestions.length > 0 && (
-            <ul className="absolute z-50 top-full mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-xl">
+            <ul
+              className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
+              style={{
+                background: "rgba(20,18,26,0.92)",
+                borderColor: "rgba(255, 255, 255, 0.18)",
+              }}
+            >
               {s.artistSuggestions.map((a, i) => (
                 <li key={a.id}>
                   <button
+                    onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
+                    onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
                     onMouseDown={(e) => { e.preventDefault(); selectArtist(a); }}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-left ${
-                      i === s.activeIndex ? "bg-zinc-700 text-zinc-100" : "text-zinc-300 hover:bg-zinc-800"
-                    }`}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
+                    style={{
+                      background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
+                      color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
+                    }}
                   >
                     {a.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={a.imageUrl} alt={a.name} className="w-6 h-6 rounded-full object-cover" />
                     )}
                     {a.name}
@@ -298,38 +368,104 @@ function DiscographyContent() {
 
         {/* Results */}
         {s.selectedArtist && (
-          <div className="flex flex-col gap-4">
-            {/* Artist header + filters */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <p className="font-semibold text-zinc-100">{s.selectedArtist.name}</p>
-                {!s.loadingReleases && s.releases.length > 0 && (
-                  <p className="text-xs text-zinc-500">
-                    {s.releases.length} release{s.releases.length !== 1 ? "s" : ""}
-                  </p>
-                )}
+          <div className="flex flex-col gap-5">
+            {/* Glassy artist hero — single row on all sizes; chip block stacks
+                vertically on mobile so the filter pills sit alongside the avatar. */}
+            <div
+              className="relative flex flex-row items-center gap-3 sm:gap-5 p-4 sm:p-5 rounded-[18px] border overflow-hidden"
+              style={{
+                background: "rgba(0, 0, 0, 0.30)",
+                borderColor: "rgba(255, 255, 255, 0.20)",
+                boxShadow:
+                  "0 0 0 1px rgba(255,255,255,0.06), 0 20px 60px rgba(0,0,0,0.55)",
+              }}
+            >
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background:
+                    "radial-gradient(40% 80% at 80% 50%, var(--td-accent-soft), transparent 60%)",
+                  opacity: 0.6,
+                }}
+              />
+
+              {/* Avatar + name — always inline so the avatar sits next to the
+                  artist name even when the chip row drops below on mobile. */}
+              <div className="relative flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                <div
+                  className="w-[64px] h-[64px] sm:w-[88px] sm:h-[88px] rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
+                  style={{
+                    background:
+                      "conic-gradient(from 30deg, #1a1620, #3a3140, #2a2530, #1a1620)",
+                    border: "1px solid var(--td-hair-2)",
+                    boxShadow: "0 0 30px var(--td-accent-soft)",
+                  }}
+                >
+                  {s.selectedArtist.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.selectedArtist.imageUrl}
+                      alt={s.selectedArtist.name}
+                      className="w-full h-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: "var(--td-bg)",
+                        border: "1px solid var(--td-hair-2)",
+                      }}
+                    >
+                      <div
+                        className="w-[7px] h-[7px] rounded-full"
+                        style={{ background: "var(--td-accent)" }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-accent">
+                    Artist
+                  </div>
+                  <h2 className="font-display text-[22px] sm:text-[32px] md:text-[40px] font-normal leading-[1.05] m-0 mt-1 break-words">
+                    {s.selectedArtist.name}
+                  </h2>
+                  {!s.loadingReleases && s.releases.length > 0 && (
+                    <div className="font-mono-td text-[12px] text-td-fg-d mt-1">
+                      {s.releases.length} release{s.releases.length !== 1 ? "s" : ""}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex gap-1">
-                {(["main", "all"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1 }))}
-                    className={`px-3 py-1 text-xs rounded-lg transition-colors ${
-                      s.roleFilter === f
-                        ? "bg-zinc-700 text-zinc-100"
-                        : "text-zinc-500 hover:text-zinc-300"
-                    }`}
-                  >
-                    {f === "main" ? "Main releases" : "All"}
-                  </button>
-                ))}
+              {/* Filter chips — vertical stack on mobile (right side, even
+                  widths), single row on sm+. */}
+              <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                {(["main", "all"] as const).map((f) => {
+                  const active = s.roleFilter === f;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1 }))}
+                      className="px-3 py-1.5 text-[11px] rounded-full transition-colors whitespace-nowrap"
+                      style={{
+                        border: `1px solid ${active ? "var(--td-accent)" : "rgba(255, 255, 255, 0.22)"}`,
+                        color: active ? "var(--td-accent)" : "var(--td-fg-d)",
+                        background: active
+                          ? "var(--td-accent-soft)"
+                          : "rgba(0, 0, 0, 0.30)",
+                      }}
+                    >
+                      {f === "main" ? "Main releases" : "All"}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {s.loadingReleases && (
               <div className="flex justify-center py-10">
-                <svg className="w-6 h-6 animate-spin text-zinc-600" fill="none" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
@@ -337,33 +473,84 @@ function DiscographyContent() {
             )}
 
             {!s.loadingReleases && filteredReleases.length === 0 && (
-              <p className="text-sm text-zinc-600 text-center py-10">No releases found</p>
+              <p className="text-sm text-td-fg-m text-center py-10">No releases found</p>
             )}
 
-            <div className="flex flex-col gap-2">
-              {pagedReleases.map((r) => (
-                <AlbumAccordion
-                  key={r.id}
-                  release={r}
-                  artistName={s.selectedArtist!.name}
+            {pagedReleases.length > 0 && (
+              <div className="relative">
+                <div
+                  className="absolute top-6 bottom-6 w-px pointer-events-none"
+                  style={{ left: "52px", background: "var(--td-hair-2)" }}
                 />
-              ))}
-            </div>
+                <div className="flex flex-col gap-2">
+                  {pagedReleases.map((r, i) => {
+                    const prevYear = i > 0 ? pagedReleases[i - 1].year : undefined;
+                    const showYear = i === 0 || prevYear !== r.year;
+                    return (
+                      <div key={r.id} className="flex items-start relative gap-6">
+                        <div
+                          className="w-[36px] shrink-0 pt-[34px] text-right font-mono-td text-[11px] uppercase tracking-[0.14em]"
+                          style={{ color: "var(--td-accent)" }}
+                        >
+                          {showYear && (r.year ?? "—")}
+                        </div>
+                        <div
+                          className="absolute rounded-full"
+                          style={{
+                            top: showYear ? "35px" : "37px",
+                            left: showYear ? "47px" : "49px",
+                            width: showYear ? "10px" : "6px",
+                            height: showYear ? "10px" : "6px",
+                            background: showYear ? "var(--td-accent)" : "var(--td-hair-2)",
+                            boxShadow: showYear ? "0 0 12px var(--td-accent-soft)" : "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <AlbumAccordion
+                            release={r}
+                            artistName={s.selectedArtist!.name}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-2">
+              <div className="flex items-center justify-center gap-3 pt-2">
                 <button
                   onClick={() => setS((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
                   disabled={s.page === 1}
-                  className="px-3 py-1.5 text-sm bg-zinc-800 rounded-lg disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                  className="px-5 py-2 text-sm font-medium rounded-full border transition-transform duration-150 ease-out hover:scale-[1.04] disabled:opacity-40 disabled:hover:scale-100"
+                  style={{
+                    borderColor: "rgba(255, 255, 255, 0.30)",
+                    background: "rgba(255,255,255,0.12)",
+                    color: "var(--td-fg)",
+                    backdropFilter: "blur(16px) saturate(140%)",
+                    WebkitBackdropFilter: "blur(16px) saturate(140%)",
+                    boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
+                  }}
                 >
                   ← Prev
                 </button>
-                <span className="text-sm text-zinc-500">{s.page} / {totalPages}</span>
+                <span className="text-sm font-mono-td text-td-fg">
+                  {s.page} / {totalPages}
+                </span>
                 <button
                   onClick={() => setS((prev) => ({ ...prev, page: Math.min(totalPages, prev.page + 1) }))}
                   disabled={s.page === totalPages}
-                  className="px-3 py-1.5 text-sm bg-zinc-800 rounded-lg disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                  className="px-5 py-2 text-sm font-medium rounded-full border transition-transform duration-150 ease-out hover:scale-[1.04] disabled:opacity-40 disabled:hover:scale-100"
+                  style={{
+                    borderColor: "rgba(255, 255, 255, 0.30)",
+                    background: "rgba(255,255,255,0.12)",
+                    color: "var(--td-fg)",
+                    backdropFilter: "blur(16px) saturate(140%)",
+                    WebkitBackdropFilter: "blur(16px) saturate(140%)",
+                    boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
+                  }}
                 >
                   Next →
                 </button>

@@ -44,5 +44,5 @@ export const discographyAtom = atom<DiscographyState>({
   page: 1,
   loadingArtists: false,
   loadingReleases: false,
-  roleFilter: "all",
+  roleFilter: "main",
 });

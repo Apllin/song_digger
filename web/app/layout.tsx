@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
+import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -29,14 +32,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950">
-        <PlayerProvider>
-          <Nav rightSlot={<NavAuthSection />} />
-          {children}
-          <AnonymousLimitModalHost />
-        </PlayerProvider>
+      <body className="bg-td-bg">
+        <HomeBackground />
+        <div className="relative z-10 min-h-full flex flex-col">
+          <PlayerProvider>
+            <Nav rightSlot={<NavAuthSection />} />
+            {children}
+            <AnonymousLimitModalHost />
+          </PlayerProvider>
+        </div>
         {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout
             level so any mounted widget can find window.turnstile.
             Cloudflare requires the script come from this exact URL with

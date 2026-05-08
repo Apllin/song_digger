@@ -129,7 +129,7 @@ function HomeContent() {
         tracks: [],
         errorMsg: "",
         status: "running",
-        displayCount: 20,
+        displayCount: 18,
       }));
 
       try {
@@ -307,13 +307,21 @@ function HomeContent() {
   const { query, tracks, status, errorMsg, displayCount } = search;
   const isLoading = status === "running";
 
+  const visibleTracks = tracks.filter(
+    (t) =>
+      !fav.dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) &&
+      !fav.ids.has(t.id)
+  );
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-6xl mx-auto px-4 py-10 pb-28 flex flex-col gap-8">
-        {/* Header */}
-        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-50">
-          Find your next favourite track
-        </h2>
+    <div className="min-h-screen text-td-fg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-7 pt-8 sm:pt-16 pb-28 flex flex-col gap-5 sm:gap-7">
+        {/* Hero: headline */}
+        <div className="pt-1 sm:pt-2">
+          <h1 className="font-display text-[26px] sm:text-[32px] md:text-[42px] font-normal leading-[1.05] text-td-fg m-0">
+            Find your next favourite track
+          </h1>
+        </div>
 
         {/* Search */}
         <SearchBar
@@ -325,8 +333,8 @@ function HomeContent() {
 
         {/* States */}
         {isLoading && tracks.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-20 text-zinc-500">
-            <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24">
+          <div className="flex flex-col items-center gap-3 py-20 text-td-fg-d">
+            <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
@@ -335,13 +343,20 @@ function HomeContent() {
         )}
 
         {status === "error" && (
-          <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-400">
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{
+              borderColor: "rgba(220,90,90,0.45)",
+              background: "rgba(120,30,30,0.18)",
+              color: "#f3b8b8",
+            }}
+          >
             {errorMsg}
           </div>
         )}
 
         {status === "done" && tracks.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-20 text-zinc-600">
+          <div className="flex flex-col items-center gap-2 py-20 text-td-fg-m">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
             </svg>
@@ -351,11 +366,6 @@ function HomeContent() {
 
         {/* Results */}
         {tracks.length > 0 && (() => {
-          const visibleTracks = tracks.filter(
-            (t) =>
-              !fav.dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) &&
-              !fav.ids.has(t.id)
-          );
           const shown = visibleTracks.slice(0, displayCount);
 
           // Every visible track goes into the playlist — non-YTM/non-bandcamp
@@ -371,14 +381,17 @@ function HomeContent() {
           }));
 
           return (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-zinc-500">
-                  {Math.min(displayCount, visibleTracks.length)} / {visibleTracks.length} track{visibleTracks.length !== 1 ? "s" : ""}
-                  {isLoading && " · searching…"}
-                </p>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-fg">
+                <span style={{ textShadow: "0 1px 6px rgba(0,0,0,0.55)" }}>
+                  {Math.min(displayCount, visibleTracks.length)} of {visibleTracks.length} ·
+                  sorted by relevance
+                </span>
+                {isLoading && (
+                  <span className="text-td-accent">searching…</span>
+                )}
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-7">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
                 {shown.map((track, idx) => {
                   return (
                     <TrackCard
@@ -400,24 +413,52 @@ function HomeContent() {
                 })}
               </div>
 
-              <div className="flex justify-center gap-3 pt-2 flex-wrap">
-                {displayCount < visibleTracks.length && (
-                  <button
-                    onClick={() => setSearch((prev) => ({ ...prev, displayCount: prev.displayCount + 20 }))}
-                    className="px-6 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 text-sm rounded-xl transition-colors"
-                  >
-                    Show 20 more ({visibleTracks.length - displayCount} remaining)
-                  </button>
-                )}
-                {status === "done" && (
-                  <button
-                    onClick={loadMoreTracks}
-                    className="px-6 py-2.5 bg-indigo-900/60 hover:bg-indigo-800/70 text-indigo-300 hover:text-indigo-100 text-sm rounded-xl transition-colors"
-                  >
-                    Find more similar
-                  </button>
-                )}
-              </div>
+              {(() => {
+                const allShown = displayCount >= visibleTracks.length;
+                const findMoreActive = allShown && !isLoading;
+                return (
+                  <div className="flex justify-center gap-3 pt-2 flex-wrap">
+                    <button
+                      onClick={() =>
+                        setSearch((prev) => ({
+                          ...prev,
+                          displayCount: prev.displayCount + 18,
+                        }))
+                      }
+                      disabled={allShown}
+                      className="px-6 py-2.5 text-sm font-medium rounded-full border transition-transform duration-150 ease-out hover:scale-[1.04] disabled:hover:scale-100 disabled:cursor-not-allowed"
+                      style={{
+                        borderColor: "rgba(255, 255, 255, 0.30)",
+                        background: "rgba(255,255,255,0.12)",
+                        color: "var(--td-fg)",
+                        backdropFilter: "blur(16px) saturate(140%)",
+                        WebkitBackdropFilter: "blur(16px) saturate(140%)",
+                        boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
+                        opacity: allShown ? 0.45 : 1,
+                      }}
+                    >
+                      {allShown
+                        ? `All ${visibleTracks.length} shown — list exhausted`
+                        : `Show 18 more (${visibleTracks.length - displayCount} remaining)`}
+                    </button>
+                    <button
+                      onClick={loadMoreTracks}
+                      disabled={!findMoreActive}
+                      className="px-6 py-2.5 text-sm font-semibold rounded-full transition-transform duration-150 ease-out hover:scale-[1.04] disabled:hover:scale-100 disabled:cursor-not-allowed"
+                      style={{
+                        background: "var(--td-fg)",
+                        color: "var(--td-bg)",
+                        boxShadow: findMoreActive
+                          ? "0 0 24px rgba(255, 255, 255, 0.20)"
+                          : "none",
+                        opacity: findMoreActive ? 1 : 0.45,
+                      }}
+                    >
+                      {isLoading ? "Searching…" : "Find more similar"}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}

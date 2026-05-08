@@ -29,5 +29,5 @@ export const searchAtom = atom<SearchState>({
   tracks: [],
   status: "idle",
   errorMsg: "",
-  displayCount: 10,
+  displayCount: 18,
 });

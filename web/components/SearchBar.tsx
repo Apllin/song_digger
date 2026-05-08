@@ -21,7 +21,9 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   return (
     <span>
       {text.slice(0, idx)}
-      <span className="text-zinc-100 font-semibold">{text.slice(idx, idx + query.length)}</span>
+      <span className="text-td-fg font-semibold" style={{ color: "var(--td-accent)" }}>
+        {text.slice(idx, idx + query.length)}
+      </span>
       {text.slice(idx + query.length)}
     </span>
   );
@@ -70,6 +72,7 @@ export function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const justSubmittedRef = useRef(false);
 
   const { history, addToHistory } = useSearchHistory("search-history");
 
@@ -77,7 +80,7 @@ export function SearchBar({
   const dropdownItems: { text: string; isHistory: boolean }[] = showHistory
     ? history.map((h) => ({ text: h, isHistory: true }))
     : suggestions.map((s) => ({ text: s, isHistory: false }));
-  const dropdownVisible = (showHistory && history.length > 0) || (showSuggestions && suggestions.length > 0);
+  const dropdownVisible = !loading && ((showHistory && history.length > 0) || (showSuggestions && suggestions.length > 0));
 
   // Fetch suggestions — with AbortController to cancel stale requests
   useEffect(() => {
@@ -95,6 +98,7 @@ export function SearchBar({
     })
       .then((r) => r.json())
       .then((data: string[]) => {
+        if (justSubmittedRef.current) return;
         setSuggestions(data);
         setShowSuggestions(data.length > 0);
         setShowHistory(false);
@@ -122,6 +126,8 @@ export function SearchBar({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!dropdownVisible) {
       if (e.key === "Enter" && !loading) {
+        justSubmittedRef.current = true;
+        abortRef.current?.abort();
         addToHistory(value);
         onSubmit();
       }
@@ -146,6 +152,9 @@ export function SearchBar({
       }
       if (pickIndex >= 0) {
         const item = dropdownItems[pickIndex];
+        justSubmittedRef.current = true;
+        abortRef.current?.abort();
+        setSuggestions([]);
         onChange(item.text);
         setShowSuggestions(false);
         setShowHistory(false);
@@ -155,6 +164,9 @@ export function SearchBar({
           setTimeout(() => onSubmit(), 0);
         }
       } else {
+        justSubmittedRef.current = true;
+        abortRef.current?.abort();
+        setSuggestions([]);
         setShowSuggestions(false);
         setShowHistory(false);
         addToHistory(value);
@@ -167,68 +179,122 @@ export function SearchBar({
   };
 
   const handleSubmitClick = () => {
+    justSubmittedRef.current = true;
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setShowHistory(false);
+    setActiveIndex(-1);
+    abortRef.current?.abort();
     addToHistory(value);
     onSubmit();
   };
 
   return (
-    <div className="flex gap-2 w-full">
-      <div className="relative flex-1" ref={containerRef}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            if (e.target.value.length >= 2) {
-              setShowHistory(false);
-            } else if (e.target.value.length === 0) {
-              setShowSuggestions(false);
-            }
-          }}
-          onFocus={() => {
-            if (value.length < 2 && history.length > 0) {
-              setShowHistory(true);
-            } else if (suggestions.length > 0) {
-              setShowSuggestions(true);
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Artist - Track"
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 pr-10 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
-          disabled={loading}
-        />
+    <div className="w-full relative z-30">
+      <div
+        className="relative flex items-center gap-2.5 sm:gap-4 px-3 py-3 sm:px-5 sm:py-4 rounded-[14px] sm:rounded-[18px] border"
+        style={{
+          background: "rgba(14, 16, 28, 0.78)",
+          borderColor: "rgba(255, 255, 255, 0.38)",
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
+          backdropFilter: "blur(20px) saturate(140%)",
+          WebkitBackdropFilter: "blur(20px) saturate(140%)",
+        }}
+        ref={containerRef}
+      >
+        <SearchGlyph />
 
-        {value && (
-          <button
-            onClick={() => {
-              onChange("");
-              setSuggestions([]);
-              setShowSuggestions(false);
-              setShowHistory(history.length > 0);
+        <div className="relative flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => {
+              justSubmittedRef.current = false;
+              onChange(e.target.value);
+              if (e.target.value.length >= 2) {
+                setShowHistory(false);
+              } else if (e.target.value.length === 0) {
+                setShowSuggestions(false);
+              }
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-            aria-label="Clear"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            onFocus={() => {
+              if (value.length < 2 && history.length > 0) {
+                setShowHistory(true);
+              } else if (suggestions.length > 0) {
+                setShowSuggestions(true);
+              }
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Ignez — A Love Dream"
+            className="w-full bg-transparent text-[16px] sm:text-[20px] tracking-tight text-td-fg placeholder:text-td-fg-m focus:outline-none disabled:opacity-60 min-w-0"
+            style={{ caretColor: "var(--td-accent)" }}
+            disabled={loading}
+          />
+
+          {value && !loading && (
+            <button
+              onClick={() => {
+                onChange("");
+                setSuggestions([]);
+                setShowSuggestions(false);
+                setShowHistory(history.length > 0);
+              }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 text-td-fg-m hover:text-td-fg transition-colors"
+              aria-label="Clear"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={handleSubmitClick}
+          disabled={loading || !value.trim()}
+          className="shrink-0 px-4 py-2.5 sm:px-8 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-[16px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: "var(--td-fg)",
+            color: "var(--td-bg)",
+            boxShadow: "0 0 24px rgba(255, 255, 255, 0.18)",
+          }}
+        >
+          {loading ? (
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
-          </button>
-        )}
+          ) : (
+            "Search"
+          )}
+        </button>
 
         {/* Dropdown: history or suggestions */}
         {dropdownVisible && (
-          <ul className="absolute z-50 top-full mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-xl">
+          <ul
+            className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
+            style={{
+              background: "rgba(20,18,26,0.92)",
+              borderColor: "var(--td-hair-2)",
+            }}
+          >
             {showHistory && history.length > 0 && (
-              <li className="px-4 py-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-zinc-600">Recent searches</span>
+              <li className="px-5 py-2 font-mono-td text-[10px] uppercase tracking-[0.14em] text-td-fg-m">
+                Recent searches
               </li>
             )}
             {dropdownItems.map((item, i) => (
               <li key={item.text + i}>
                 <button
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onMouseLeave={() => setActiveIndex(-1)}
                   onMouseDown={(e) => {
                     e.preventDefault();
+                    justSubmittedRef.current = true;
+                    abortRef.current?.abort();
+                    setSuggestions([]);
                     onChange(item.text);
                     setShowSuggestions(false);
                     setShowHistory(false);
@@ -236,11 +302,15 @@ export function SearchBar({
                     addToHistory(item.text);
                     setTimeout(() => onSubmit(), 0);
                   }}
-                  className={`w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm transition-colors ${
-                    i === activeIndex
-                      ? "bg-zinc-700 text-zinc-100"
-                      : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                  }`}
+                  className="w-full flex items-center gap-3 text-left px-5 py-3 text-sm transition-colors"
+                  style={{
+                    background:
+                      i === activeIndex
+                        ? "rgba(255, 255, 255, 0.10)"
+                        : "transparent",
+                    color:
+                      i === activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
+                  }}
                 >
                   {item.isHistory ? (
                     <ClockIcon />
@@ -254,21 +324,23 @@ export function SearchBar({
           </ul>
         )}
       </div>
-
-      <button
-        onClick={handleSubmitClick}
-        disabled={loading || !value.trim()}
-        className="px-5 py-3 bg-zinc-100 text-zinc-900 rounded-xl text-sm font-medium hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? (
-          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-          </svg>
-        ) : (
-          "Search"
-        )}
-      </button>
     </div>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg
+      className="w-5 h-5 shrink-0"
+      style={{ color: "var(--td-accent)" }}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path strokeLinecap="round" d="m20 20-3.5-3.5" />
+    </svg>
   );
 }
