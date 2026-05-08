@@ -48,7 +48,10 @@ pnpm dev      # web (next dev :3000) + python-service (uvicorn :8000) in paralle
 pnpm build    # next build
 pnpm test     # default unit tests (pytest in python-service)
 pnpm lint     # eslint in web
+pnpm codegen  # export openapi.json from FastAPI + run kubb to regenerate web/lib/python-api/generated
 ```
+
+`codegen` runs automatically before `dev` and `build` via Turbo. The chain is `python-service codegen` (writes `python-service/openapi.json`) → `web codegen` (kubb generates types + zod schemas + a typed axios client into `web/lib/python-api/generated/`). Both artifacts are gitignored — regenerate after editing FastAPI route signatures or Pydantic response models.
 
 Three test tiers — unit by default, smoke + speed opt-in. See [ADR-0018](web/docs/decisions/0018-test-coverage-strategy.md) for the strategy.
 
@@ -95,7 +98,7 @@ pnpm turbo run build --force
 
 `.venv/` is gitignored and **not** cached by Turborepo. It's a local dev artifact; `pnpm setup` recreates it from `requirements.txt`.
 
-The two services have **no build-time dependency graph** between them — `web` talks to `python-service` over HTTP at runtime. If a future change introduces a shared artifact (e.g. generated TypeScript types from the FastAPI OpenAPI schema), add it as a workspace package and wire `dependsOn` in [turbo.json](turbo.json).
+The two services share **one build-time artifact**: the FastAPI OpenAPI schema. `python-service codegen` exports `python-service/openapi.json` from `app.openapi()`; `web codegen` runs `kubb` against it to produce `web/lib/python-api/generated/{types,zod,clients}/`. The dependency is wired in [turbo.json](turbo.json) so `web build` and `web dev` can't start with stale generated code.
 
 ## Docker
 

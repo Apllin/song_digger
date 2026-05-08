@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.adapters.discogs import DiscogsAdapter
+from app.core.models import LabelReleasesResponse
 
 router = APIRouter(prefix="/discogs")
 _discogs = DiscogsAdapter()
@@ -33,7 +34,11 @@ async def search_label(q: str = Query(..., min_length=1)):
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@router.get("/label/{label_id}/releases")
+@router.get(
+    "/label/{label_id}/releases",
+    operation_id="get_label_releases",
+    response_model=LabelReleasesResponse,
+)
 async def get_label_releases(
     label_id: int,
     page: int = Query(1, ge=1),

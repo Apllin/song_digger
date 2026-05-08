@@ -5,6 +5,7 @@ import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
+import { QueryProvider } from "@/components/QueryProvider";
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
 import { CookieConsentHost } from "@/components/CookieConsentHost";
 import "cal-sans/index.css";
@@ -56,11 +57,13 @@ export default function RootLayout({
       <body className="bg-td-bg">
         <HomeBackground />
         <div className="relative z-10 min-h-full flex flex-col">
-          <PlayerProvider>
-            <Nav rightSlot={<NavAuthSection />} />
-            {children}
-            <AnonymousLimitModalHost />
-          </PlayerProvider>
+          <QueryProvider>
+            <PlayerProvider>
+              <Nav rightSlot={<NavAuthSection />} />
+              {children}
+              <AnonymousLimitModalHost />
+            </PlayerProvider>
+          </QueryProvider>
         </div>
         <CookieConsentHost />
         {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout

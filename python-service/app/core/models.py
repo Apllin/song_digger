@@ -31,3 +31,26 @@ class SourceList(BaseModel):
 class SimilarResponse(BaseModel):
     source_lists: list[SourceList]
     source_artist: str | None = None
+
+
+class LabelRelease(BaseModel):
+    id: int
+    title: str
+    year: int | None = None
+    artist: str | None = None
+    format: str | None = None
+    catno: str | None = None
+    thumb: str | None = None
+    type: str | None = None
+
+
+class LabelReleasesPagination(BaseModel):
+    page: int
+    pages: int
+    per_page: int
+    items: int
+
+
+class LabelReleasesResponse(BaseModel):
+    releases: list[LabelRelease]
+    pagination: LabelReleasesPagination

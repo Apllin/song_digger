@@ -16,14 +16,14 @@ dist/
 build/
 .turbo/
 
+# Codegen artifacts (regenerated via `pnpm codegen`)
+python-service/openapi.json
+
 # Misc
 .DS_Store
 *.log
 .idea/
 .vscode/
-
-# Local Claude Code skills (per-developer)
-.agents/skills/
 
 # Stage instruction files (working notes, not source)
 07-eval-harness-setup.md
