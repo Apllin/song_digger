@@ -16,9 +16,6 @@ dist/
 build/
 .turbo/
 
-# Codegen artifacts (regenerated via `pnpm codegen`)
-python-service/openapi.json
-
 # Misc
 .DS_Store
 *.log

@@ -52,7 +52,13 @@ pnpm codegen   # export openapi.json from FastAPI + run kubb to regenerate web/l
 pnpm stack:up  # full prod-parity stack via docker-compose (uses Railway dockerfiles)
 ```
 
-`codegen` runs automatically before `dev` and `build` via Turbo. The chain is `python-service codegen` (writes `python-service/openapi.json`) → `web codegen` (kubb generates types + zod schemas + a typed axios client into `web/lib/python-api/generated/`). Both artifacts are gitignored — regenerate after editing FastAPI route signatures or Pydantic response models.
+`codegen` runs automatically before `dev` and `build` via Turbo. The chain is `python-service codegen` (writes `python-service/openapi.json`) → `web codegen` (kubb generates types + zod schemas + a typed axios client into `web/lib/python-api/generated/`).
+
+**Both artifacts are checked into git.** The Railway Dockerfile builds with `web/` as its context and can't reach the Python source, so it relies on the committed clients rather than running codegen during the image build. After editing FastAPI route signatures or Pydantic response models, regenerate locally and commit the result before pushing — otherwise the deploy will ship stale clients:
+
+```bash
+pnpm codegen   # rewrites python-service/openapi.json + web/lib/python-api/generated/
+```
 
 Three test tiers — unit by default, smoke + speed opt-in. See [ADR-0018](web/docs/decisions/0018-test-coverage-strategy.md) for the strategy.
 
