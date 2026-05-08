@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code conventions (read first)
+
+**Before writing or modifying any code, invoke the `code` skill.** It loads only the rule files relevant to the change — feature folders, file/folder naming, typed API clients (Hono RPC + kubb-generated python-service client), TypeScript conventions (Zod as source of truth, etc.), React conventions, CSS/Tailwind. See [.claude/skills/code/SKILL.md](.claude/skills/code/SKILL.md).
+
+The skill is the source of truth for **how** we write code. This file (CLAUDE.md) is the source of truth for **what** exists in the codebase. They're complementary — read this for context, then defer to the skill for conventions.
+
 ## Monorepo layout
 
 pnpm workspace + Turborepo. Two packages:
