@@ -1,8 +1,8 @@
-import re
 import asyncio
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
+from app.core.title_norm import strip_recording_suffixes
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.bandcamp import BandcampAdapter
@@ -91,54 +91,12 @@ def _same_artist(a: str, b: str) -> bool:
     return shorter.issubset(longer)
 
 
-# ── Title-suffix whitelist ────────────────────────────────────────────────────
-# Suffixes describing the SAME recording — safe to drop when deduping titles.
-# Why a whitelist: a catch-all `\[.*?\]` collapsed "(Remix)" / "[Dub]" / "[Live]"
-# into the original, so different recordings appeared as one row. Anything not
-# listed below (Remix, Dub, Live, VIP, Acoustic, Instrumental, Edit, …)
-# identifies a distinct recording and must survive normalization.
-# Each pattern matches case-insensitively in both (...) and [...] forms.
-
-
-def _both_brackets(inner: str) -> str:
-    """Wrap an inner pattern so it matches either ( ... ) or [ ... ]."""
-    return rf"\s*(?:\({inner}\)|\[{inner}\])"
-
-
-STRIP_ORIGINAL_MIX = _both_brackets(r"original mix")
-STRIP_EXTENDED = _both_brackets(r"extended(?:\s+mix)?")
-STRIP_RADIO = _both_brackets(r"radio\s+(?:edit|mix)")
-# (Remaster), (Remastered), (Remastered YYYY), (YYYY Remaster) — and bracket forms.
-STRIP_REMASTER = _both_brackets(r"(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)")
-# (feat. X) / (ft. X) / (featuring X). Inner stops at the first closing bracket
-# so a sibling group like "(feat. X) (Remix)" leaves "(Remix)" alone.
-STRIP_FEAT = _both_brackets(r"(?:feat\.|ft\.|featuring)\s+[^\)\]]*")
-STRIP_PROD = _both_brackets(r"(?:prod\.|produced\s+by)\s+[^\)\]]*")
-STRIP_CLEAN_EXPLICIT = _both_brackets(r"(?:clean|explicit)")
-STRIP_BONUS = _both_brackets(r"bonus\s+track")
-
-_STRIP_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(p, re.IGNORECASE)
-    for p in (
-        STRIP_ORIGINAL_MIX,
-        STRIP_EXTENDED,
-        STRIP_RADIO,
-        STRIP_REMASTER,
-        STRIP_FEAT,
-        STRIP_PROD,
-        STRIP_CLEAN_EXPLICIT,
-        STRIP_BONUS,
-    )
-)
-
-
 def _normalize_title(s: str) -> str:
     """Lower-case and strip whitelisted recording-equivalence suffixes for dedup.
-    Preserves version markers like (Remix), (Dub), (Live), (VIP), (Instrumental)."""
-    s = s.lower().strip()
-    for pat in _STRIP_PATTERNS:
-        s = pat.sub("", s)
-    return s.strip()
+    Preserves version markers like (Remix), (Dub), (Live), (VIP), (Instrumental).
+    The whitelist lives in `app.core.title_norm` so seed-match validation and
+    output dedup can't drift apart."""
+    return strip_recording_suffixes(s.lower().strip()).strip()
 
 
 COSINE_CONFIDENCE_THRESHOLD = 0.5

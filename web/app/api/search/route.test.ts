@@ -18,7 +18,9 @@ const { searchCacheKey, _internals } = await import("./route");
 
 describe("searchCacheKey", () => {
   it("prefixes with the version constant", () => {
-    expect(searchCacheKey("Mulero", "Voices")).toBe("v1:mulero|voices");
+    expect(searchCacheKey("Mulero", "Voices")).toBe(
+      `${_internals.SEARCH_CACHE_VERSION}:mulero|voices`,
+    );
   });
 
   it("normalizes diacritics on the artist", () => {
@@ -40,7 +42,9 @@ describe("searchCacheKey", () => {
   });
 
   it("uses '_' sentinel for artist-only searches (track=null)", () => {
-    expect(searchCacheKey("Mulero", null)).toBe("v1:mulero|_");
+    expect(searchCacheKey("Mulero", null)).toBe(
+      `${_internals.SEARCH_CACHE_VERSION}:mulero|_`,
+    );
   });
 
   it("artist-only and (artist, '') produce the same effective key (both = sentinel)", () => {
