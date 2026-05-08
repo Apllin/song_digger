@@ -54,6 +54,14 @@ from app.core.models import TrackMeta
 # anchored on a process-id so cached entries stay accurate. 30d strikes a
 # balance between capturing reprocessing edits and reducing scraper load.
 _TRACKIDNET_SET_TTL = 30 * 86400
+# Seed-search ranks by playCount; the catalogue is stable enough that a
+# week-old "best match" stays valid. Negative misses are not cached — a
+# track absent today may appear next week as bots index more sets.
+_TRACKIDNET_SEED_TTL = 7 * 86400
+# Playlists-list grows as new sets are detected. Sorted "freshest first",
+# so a stale cache costs us recent DJ context. 24h keeps the freshness
+# signal intact while removing one HTTP per warm request.
+_TRACKIDNET_PLAYLISTS_TTL = 86400
 
 API_BASE = "https://trackid.net/api/public"
 USER_AGENT = (
@@ -63,10 +71,14 @@ USER_AGENT = (
 TIMEOUT_SECONDS = 8.0
 SEARCH_PAGE_SIZE = 20
 PLAYLISTS_PAGE_SIZE = 20
-WINDOW = 5
+WINDOW = 2
 MAX_PLAYLISTS = 15
 DETAIL_CONCURRENCY = 5
 DEFAULT_LIMIT = 50
+
+
+def _seed_cache_key(artist: str, track: str) -> str:
+    return f"{artist.lower().strip()}|{track.lower().strip()}"
 
 
 class TrackidnetAdapter(AbstractAdapter):
@@ -82,6 +94,16 @@ class TrackidnetAdapter(AbstractAdapter):
         if not track:
             return []
 
+        # Try cache-only path first to skip opening an HTTP session entirely
+        # when both seed and playlists are warm. Per-slug tracklists also
+        # short-circuit on cache hits inside _fetch_tracklists.
+        seed_key = _seed_cache_key(artist, track)
+        seed = await fetch_external_cache(
+            source="trackidnet_seed",
+            cache_key=seed_key,
+            ttl_seconds=_TRACKIDNET_SEED_TTL,
+        )
+
         async with httpx.AsyncClient(
             timeout=TIMEOUT_SECONDS,
             headers={
@@ -90,12 +112,36 @@ class TrackidnetAdapter(AbstractAdapter):
                 "Referer": "https://trackid.net/",
             },
         ) as client:
-            seed = await _find_seed_track(client, artist, track)
-            if not seed or seed.get("id") is None:
+            if seed is None:
+                seed = await _find_seed_track(client, artist, track)
+                if not seed or seed.get("id") is None:
+                    # Negative result: skip cache write — caller may succeed
+                    # on a future request when the catalogue grows.
+                    return []
+                # Persist only the fields downstream actually reads.
+                await upsert_external_cache(
+                    source="trackidnet_seed",
+                    cache_key=seed_key,
+                    payload={"id": seed["id"], "slug": seed.get("slug") or ""},
+                )
+            elif seed.get("id") is None:
                 return []
 
-            playlist_slugs = await _list_playlists(client, seed["id"])
-            if not playlist_slugs:
+            playlist_slugs = await fetch_external_cache(
+                source="trackidnet_playlists",
+                cache_key=str(seed["id"]),
+                ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
+            )
+            if playlist_slugs is None:
+                playlist_slugs = await _list_playlists(client, seed["id"])
+                if not playlist_slugs:
+                    return []
+                await upsert_external_cache(
+                    source="trackidnet_playlists",
+                    cache_key=str(seed["id"]),
+                    payload=playlist_slugs,
+                )
+            elif not playlist_slugs:
                 return []
 
             tracklists = await _fetch_tracklists(client, playlist_slugs)

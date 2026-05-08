@@ -19,6 +19,7 @@ import pytest
 
 from app.adapters.trackidnet import (
     TrackidnetAdapter,
+    WINDOW,
     _split_query,
 )
 
@@ -369,8 +370,8 @@ async def test_playlists_list_empty_returns_empty(_enabled):
 # ── window extraction ────────────────────────────────────────────────────
 
 async def test_window_around_seed_in_middle(_enabled):
-    """20-track playlist, seed at index 7 → ±5 window = tracks[2..12], 10
-    candidates (excluding the seed itself)."""
+    """20-track playlist, seed at index 7 → ±WINDOW co-occurrence neighbours,
+    excluding the seed itself."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -379,8 +380,9 @@ async def test_window_around_seed_in_middle(_enabled):
          "referenceCount": 1}
         for i in range(20)
     ]
-    tracks[7] = {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
-                 "referenceCount": 50}
+    seed_idx = 7
+    tracks[seed_idx] = {"slug": "seed", "artist": "Nina Kraviz", "title": "Tarde",
+                        "referenceCount": 50}
     audio = _make_audiostream(tracks)
     rules = [
         (_is_search, _resp(search)),
@@ -391,13 +393,17 @@ async def test_window_around_seed_in_middle(_enabled):
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
     artists = {t.artist for t in results}
-    expected = {f"A{i}" for i in range(2, 13) if i != 7}
+    expected = {
+        f"A{i}"
+        for i in range(seed_idx - WINDOW, seed_idx + WINDOW + 1)
+        if i != seed_idx
+    }
     assert artists == expected
     assert "Nina Kraviz" not in artists
 
 
 async def test_window_seed_at_start_returns_only_after(_enabled):
-    """Seed at index 0 → window has 5 tracks after, none before."""
+    """Seed at index 0 → window has WINDOW tracks after, none before."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -416,12 +422,12 @@ async def test_window_seed_at_start_returns_only_after(_enabled):
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-    assert len(results) == 5
-    assert {t.artist for t in results} == {f"A{i}" for i in range(5)}
+    assert len(results) == WINDOW
+    assert {t.artist for t in results} == {f"A{i}" for i in range(WINDOW)}
 
 
 async def test_window_seed_at_end_returns_only_before(_enabled):
-    """Seed as last track → window has 5 tracks before, none after."""
+    """Seed as last track → window has WINDOW tracks before, none after."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -440,8 +446,8 @@ async def test_window_seed_at_end_returns_only_before(_enabled):
     client = _ScriptedClient(rules)
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
-    assert len(results) == 5
-    assert {t.artist for t in results} == {f"A{i}" for i in range(5, 10)}
+    assert len(results) == WINDOW
+    assert {t.artist for t in results} == {f"A{i}" for i in range(10 - WINDOW, 10)}
 
 
 async def test_window_seed_not_in_tracklist_returns_empty(_enabled):
@@ -466,14 +472,15 @@ async def test_window_seed_not_in_tracklist_returns_empty(_enabled):
 
 
 async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
-    """Seed at indices 3 and 12 — anchor on 3, window [0..8]; ALL seed
-    instances filtered."""
+    """Seed at two indices — anchor on the first; window clamps at 0; ALL
+    seed instances filtered."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
+    seed_first, seed_second = 3, 12
     tracks = []
     for i in range(15):
-        if i in (3, 12):
+        if i in (seed_first, seed_second):
             tracks.append({"slug": "seed", "artist": "Nina Kraviz",
                            "title": "Tarde", "referenceCount": 50})
         else:
@@ -489,9 +496,15 @@ async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
     with _patch_client(client):
         results = await adapter.find_similar("Nina Kraviz - Tarde")
     artists = {t.artist for t in results}
-    # Window is tracks[0..8] (anchor=3 ± 5 = [-2..8] clamped to [0..8])
-    # excluding seed at index 3.
-    expected = {f"A{i}" for i in (0, 1, 2, 4, 5, 6, 7, 8)}
+    # Window anchored on first seed at index `seed_first`, clamped to [0, len),
+    # all seed instances filtered.
+    start = max(0, seed_first - WINDOW)
+    end = min(15, seed_first + WINDOW + 1)
+    expected = {
+        f"A{i}"
+        for i in range(start, end)
+        if i not in (seed_first, seed_second)
+    }
     assert artists == expected
     assert "Nina Kraviz" not in artists
 
