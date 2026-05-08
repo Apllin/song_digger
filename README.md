@@ -44,11 +44,12 @@ pnpm --filter web exec prisma migrate dev
 Run from the repo root — all scripts delegate to `turbo run`:
 
 ```bash
-pnpm dev      # web (next dev :3000) + python-service (uvicorn :8000) in parallel
-pnpm build    # next build
-pnpm test     # default unit tests (pytest in python-service)
-pnpm lint     # eslint in web
-pnpm codegen  # export openapi.json from FastAPI + run kubb to regenerate web/lib/python-api/generated
+pnpm dev       # web (next dev :3000) + python-service (uvicorn :8000) in parallel
+pnpm build     # next build
+pnpm test      # default unit tests (pytest in python-service)
+pnpm lint      # eslint in web
+pnpm codegen   # export openapi.json from FastAPI + run kubb to regenerate web/lib/python-api/generated
+pnpm stack:up  # full prod-parity stack via docker-compose (uses Railway dockerfiles)
 ```
 
 `codegen` runs automatically before `dev` and `build` via Turbo. The chain is `python-service codegen` (writes `python-service/openapi.json`) → `web codegen` (kubb generates types + zod schemas + a typed axios client into `web/lib/python-api/generated/`). Both artifacts are gitignored — regenerate after editing FastAPI route signatures or Pydantic response models.
@@ -102,19 +103,18 @@ The two services share **one build-time artifact**: the FastAPI OpenAPI schema. 
 
 ## Docker
 
-Full stack (web + python-service + postgres):
+The full stack (web + python-service) builds from the **production** Railway dockerfiles, so a `docker compose up` matches what's actually deployed. The database is Neon — compose has no local postgres service; web reads `DATABASE_URL` from `.env` and connects to Neon directly.
 
 ```bash
-docker compose up
+pnpm stack:up      # runs codegen, then docker compose up --build
+pnpm stack:down    # docker compose down
 ```
 
-Just the database:
+**Why a wrapper script.** `web/Dockerfile.railway` and `python-service/Dockerfile.railway` each `COPY` only their own service directory. They have no access to each other's files at build time, so `web codegen` (which kubb-generates from `python-service/openapi.json`) has to run on the host first. `pnpm stack:up` does that, then hands off to compose. Same constraint applies to your real Railway deploys — generated files would need to be present in the build context one way or another.
 
-```bash
-docker compose up -d postgres
-```
+**Build args wired through compose** (see [docker-compose.yml](docker-compose.yml)): `DATABASE_URL` (placeholder for `next build` static analysis — passed through from `.env`), `NEXT_PUBLIC_HOST_URL` (defaults to `http://localhost:3000`), `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (defaults to the always-pass test key). Real Turnstile keys, Resend, Discogs token, etc. come in via `env_file: ./.env` at runtime.
 
-**Note:** [web/Dockerfile](web/Dockerfile) currently uses `npm install`. It should be updated to pnpm (via Corepack inside the image) before production use.
+**Migrations on boot.** Web's CMD runs `prisma migrate deploy` immediately on container start — applies pending migrations to whatever Neon DB `DATABASE_URL` points at. It's idempotent; running it repeatedly is safe.
 
 ## Environment variables
 

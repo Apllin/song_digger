@@ -1,48 +1,57 @@
-version: "3.9"
+# Env loading
+#
+# 1. Variable substitution (${VAR} below): docker compose auto-loads `.env`
+#    from the project directory — i.e. the directory containing this file
+#    (the repo root). The `pnpm stack:up` script also passes `--env-file
+#    ./.env` explicitly so substitution behaviour is identical regardless of
+#    cwd or compose-internal default changes.
+# 2. Container env (`env_file: ./.env` per service): paths are resolved
+#    relative to this compose file, so they always point at the repo-root
+#    .env. Service `environment:` overrides take precedence over env_file
+#    values.
+#
+# Database
+#
+# We use Neon (managed Postgres). DATABASE_URL in .env points at Neon and is
+# passed straight through to web — no local postgres service in compose.
+# `prisma migrate deploy` runs on web container start and applies pending
+# migrations to the Neon DB; it's a no-op if there are none.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-trackdigger}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trackdigger}
-      POSTGRES_DB: ${POSTGRES_DB:-trackdigger}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
   python-service:
     build:
       context: ./python-service
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.railway
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment:
-      - COSINE_CLUB_API_KEY=${COSINE_CLUB_API_KEY}
-    volumes:
-      - ./python-service:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - ./.env
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     build:
       context: ./web
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.railway
+      args:
+        # Build-time only. lib/prisma.ts evaluates at module load during `next
+        # build` so DATABASE_URL must be defined; the build itself does not
+        # connect (no migrations run here — those run on container start).
+        DATABASE_URL: ${DATABASE_URL}
+        # NEXT_PUBLIC_* vars are inlined into the client bundle by `next build`.
+        NEXT_PUBLIC_HOST_URL: ${NEXT_PUBLIC_HOST_URL:-http://localhost:3000}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-1x00000000000000000000AA}
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - ./.env
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-trackdigger}:${POSTGRES_PASSWORD:-trackdigger}@postgres:5432/${POSTGRES_DB:-trackdigger}
-      - PYTHON_SERVICE_URL=http://python-service:8000
-    depends_on:
-      - postgres
-      - python-service
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
-
-volumes:
-  postgres_data:
+      # Web reaches python-service via the compose-internal hostname, not
+      # localhost. DATABASE_URL is inherited from .env (Neon).
+      PYTHON_SERVICE_URL: http://python-service:8000

@@ -37,6 +37,13 @@ ENV DATABASE_URL=${DATABASE_URL}
 ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 
+# lib/env.ts validates this at module load and throws if unset, which kills
+# the build during page collection. Set the matching variable in Railway
+# service Variables (e.g. https://your-app.up.railway.app); for compose
+# builds it falls back to http://localhost:3000.
+ARG NEXT_PUBLIC_HOST_URL
+ENV NEXT_PUBLIC_HOST_URL=${NEXT_PUBLIC_HOST_URL}
+
 # Generated client lands at app/generated/prisma (see prisma/schema.prisma).
 RUN pnpm exec prisma generate
 RUN pnpm exec next build
