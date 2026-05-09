@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Branding
+
+The product name is **TrackDigger**. Always refer to it as "TrackDigger"
+
 ## Code conventions (read first)
 
 **Before writing or modifying any code, invoke the `code` skill.** It loads only the rule files relevant to the change — feature folders, file/folder naming, typed API clients (Hono RPC + kubb-generated python-service client), TypeScript conventions (Zod as source of truth, etc.), React conventions, CSS/Tailwind. See [.claude/skills/code/SKILL.md](.claude/skills/code/SKILL.md).
@@ -54,12 +58,12 @@ Postgres runs via `docker-compose up postgres` (or the full stack with `docker-c
 
 Project-specific commands live in [.claude/commands/](.claude/commands/). Use them instead of ad-hoc git/gh invocations:
 
-| Command | When to use |
-| --- | --- |
-| `/commit` | Commit staged/unstaged changes — analyzes the diff, generates a changeset, asks for approval before executing |
-| `/pr` | Open a PR to `develop` — derives a branch name, generates a changeset if needed, commits any uncommitted work, and creates the PR |
-| `/pr-update` | Update an existing PR description after new commits — also updates or creates a changeset for newly affected packages |
-| `/release-docs` | Run from `staging` — generates `docs/releases/YYYY-MM-DD.md` from changes since the last release and opens a PR to `main` |
+| Command         | When to use                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `/commit`       | Commit staged/unstaged changes — analyzes the diff, generates a changeset, asks for approval before executing                     |
+| `/pr`           | Open a PR to `develop` — derives a branch name, generates a changeset if needed, commits any uncommitted work, and creates the PR |
+| `/pr-update`    | Update an existing PR description after new commits — also updates or creates a changeset for newly affected packages             |
+| `/release-docs` | Run from `staging` — generates `docs/releases/YYYY-MM-DD.md` from changes since the last release and opens a PR to `main`         |
 
 ## Release cycle
 
@@ -72,6 +76,7 @@ feature branch  →  PR to develop      (/pr)
 ```
 
 Key facts for giving accurate guidance:
+
 - Changesets drive all version bumps — there is no npm publish; packages are private.
 - `rc-release.yml` puts both packages into pre-release mode (`X.Y.Z-rc.N`) on every `staging` push and syncs the bump back to `develop`.
 - `release.yml` exits pre-release mode, creates a `vX.Y.Z` tag, and pushes `main → production` to trigger Railway.
@@ -114,7 +119,7 @@ Key facts for giving accurate guidance:
   2. CAPTCHA gate — required after 3 failed attempts on the email; verified before the bcrypt compare.
   3. Per-email exponential backoff — 0/0/1s/4s/16s/64s. Sleeps inside `authorize()`. **Vercel free tier (10s function timeout) will time out** at the 64s tier — production deployments need 90s+.
   4. Email warning at 5+ failed attempts (only for accounts that exist).
-  Successful login calls `clearFailedAttempts(email)`; the per-IP counter is unaffected.
+     Successful login calls `clearFailedAttempts(email)`; the per-IP counter is unaffected.
 - **Login form** asks the server (`loginPrecheckAction`) on email blur whether CAPTCHA is required; the server is the source of truth. Constants live in `BRUTE_FORCE_CONSTANTS` in `lib/brute-force.ts` — change them there, not inline.
 - **CSP**: strict allowlists in `next.config.ts`. Adding a new iframe source means adding its host to `frame-src`. CSP violations show up in DevTools Console — check there before assuming a feature is broken. `'unsafe-inline'` / `'unsafe-eval'` on `script-src` are unavoidable due to Next.js inline hydration scripts.
 - **Honeypot fields**: hidden `website` input on register and login. When non-empty, the action returns fake success without DB writes — bot sees no signal it was detected.
