@@ -1,6 +1,6 @@
 "use client";
 
-import { BottomPlayer } from "@/components/BottomPlayer";
+import { BottomPlayer } from "@/features/player/components/BottomPlayer";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   return (

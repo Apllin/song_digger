@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
+import { loadYTApi, type YTPlayer } from "@/features/player/ytApi";
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";

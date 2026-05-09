@@ -9,8 +9,8 @@ import { CookieConsentHost } from "@/components/CookieConsentHost";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
-import { PlayerProvider } from "@/components/PlayerProvider";
 import { QueryProvider } from "@/components/QueryProvider";
+import { PlayerProvider } from "@/features/player/components/PlayerProvider";
 
 const inter = Inter({
   variable: "--font-inter",

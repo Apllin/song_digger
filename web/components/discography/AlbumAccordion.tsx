@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { TrackRow } from "./TrackRow";
 
-interface Track {
-  position: string;
-  title: string;
-  duration: string;
-  artists: string[];
-}
+import type { DiscographyTrack } from "@/features/player/types";
 
 interface Release {
   id: number;
@@ -27,7 +22,7 @@ interface AlbumAccordionProps {
 
 export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   const [open, setOpen] = useState(false);
-  const [tracks, setTracks] = useState<Track[]>([]);
+  const [tracks, setTracks] = useState<DiscographyTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
@@ -44,7 +39,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     try {
       const releaseType = release.type === "master" ? "master" : "release";
       const res = await fetch(`/api/discography/tracklist?releaseId=${release.id}&type=${releaseType}`);
-      const data: Track[] = await res.json();
+      const data: DiscographyTrack[] = await res.json();
       setTracks(data);
       setLoaded(true);
     } finally {
