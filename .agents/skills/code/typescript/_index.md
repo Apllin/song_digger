@@ -12,3 +12,4 @@
 | 8 | Zod as source of truth | Use Zod schemas + `z.infer` for runtime-parsed data | `zod-source-of-truth.md` |
 | 9 | React Router generated types | Import `Route.LoaderArgs` etc. from generated `+types/` files | `react-router-types.md` |
 | 10 | Hono RPC `parseResponse` | Use `parseResponse` from `hono/client` for RPC calls; guard for streaming endpoints | `hono-parse-response.md` |
+| 11 | Derived state | Never store a value that can be computed from existing state; derive at read time instead | `derived-state.md` |

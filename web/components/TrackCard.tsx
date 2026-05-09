@@ -2,17 +2,8 @@
 
 import { useCallback, useState } from "react";
 
-import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
-
-interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  source: string;
-  sourceUrl: string;
-  coverUrl?: string | null;
-  embedUrl?: string | null;
-}
+import { usePlayer } from "@/features/player/hooks/usePlayer";
+import type { PlayerTrack } from "@/features/player/types";
 
 const SOURCE_LABELS: Record<string, string> = {
   youtube_music: "YouTube Music",
@@ -24,7 +15,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 interface TrackCardProps {
-  track: Track;
+  track: PlayerTrack;
   playlist: PlayerTrack[];
   trackIndex: number;
   isFavorite?: boolean;
