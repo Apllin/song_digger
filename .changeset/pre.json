@@ -1,9 +1,0 @@
-{
-  "mode": "exit",
-  "tag": "rc",
-  "initialVersions": {
-    "@trackdigger/python-service": "0.0.0",
-    "@trackdigger/web": "0.1.0"
-  },
-  "changesets": []
-}
