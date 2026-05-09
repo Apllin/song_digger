@@ -1,8 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import type { SyntheticEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+
+import { api } from "@/lib/hono/client";
 
 interface BandcampAudioData {
   audioUrl: string;
@@ -25,19 +28,8 @@ export function useBandcampAudio({ source, sourceUrl, volume, onEnded }: Bandcam
 
   const { data } = useQuery<BandcampAudioData>({
     queryKey: ["bandcamp-audio", sourceUrl],
-    queryFn: async ({ signal }) => {
-      const r = await fetch(`/api/bandcamp-audio?url=${encodeURIComponent(sourceUrl!)}`, { signal });
-      if (!r.ok) {
-        console.error("[Bandcamp] /api/bandcamp-audio failed:", r.status, await r.text().catch(() => ""));
-        throw new Error(`[Bandcamp] fetch failed: ${r.status}`);
-      }
-      const json = await r.json();
-      if (!json?.audioUrl) {
-        console.error("[Bandcamp] no audioUrl in response:", json);
-        throw new Error("[Bandcamp] missing audioUrl");
-      }
-      return json;
-    },
+    queryFn: async ({ signal }) =>
+      parseResponse(api["bandcamp-audio"].$get({ query: { url: sourceUrl! } }, { init: { signal } })),
     enabled: source === "bandcamp" && !!sourceUrl,
   });
 

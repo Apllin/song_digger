@@ -1,20 +1,32 @@
-export { findSimilarSimilarPost } from "./clients/findSimilarSimilarPost";
+export { findSimilar } from "./clients/findSimilar";
+export { getArtistReleases } from "./clients/getArtistReleases";
 export { getLabelReleases } from "./clients/getLabelReleases";
-export { getReleasesDiscogsArtistArtistIdReleasesGet } from "./clients/getReleasesDiscogsArtistArtistIdReleasesGet";
+export { getReleaseTracklist } from "./clients/getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./clients/getSuggestionsSuggestionsGet";
-export { getTracklistDiscogsReleaseReleaseIdTracklistGet } from "./clients/getTracklistDiscogsReleaseReleaseIdTracklistGet";
 export { healthHealthGet } from "./clients/healthHealthGet";
 export { playLookupPlayLookupGet } from "./clients/playLookupPlayLookupGet";
-export { searchArtistDiscogsSearchGet } from "./clients/searchArtistDiscogsSearchGet";
+export { searchArtists } from "./clients/searchArtists";
 export { searchExactYtmSearchExactGet } from "./clients/searchExactYtmSearchExactGet";
-export { searchLabelDiscogsLabelSearchGet } from "./clients/searchLabelDiscogsLabelSearchGet";
+export { searchLabels } from "./clients/searchLabels";
+export type { ArtistRelease } from "./types/ArtistRelease";
+export type { ArtistReleasesResponse } from "./types/ArtistReleasesResponse";
+export type { DiscogsArtist } from "./types/DiscogsArtist";
+export type { DiscogsLabel } from "./types/DiscogsLabel";
 export type {
-  FindSimilarSimilarPost200,
-  FindSimilarSimilarPost422,
-  FindSimilarSimilarPostMutation,
-  FindSimilarSimilarPostMutationRequest,
-  FindSimilarSimilarPostMutationResponse,
-} from "./types/FindSimilarSimilarPost";
+  FindSimilar200,
+  FindSimilar422,
+  FindSimilarMutation,
+  FindSimilarMutationRequest,
+  FindSimilarMutationResponse,
+} from "./types/FindSimilar";
+export type {
+  GetArtistReleases200,
+  GetArtistReleases422,
+  GetArtistReleasesPathParams,
+  GetArtistReleasesQuery,
+  GetArtistReleasesQueryParams,
+  GetArtistReleasesQueryResponse,
+} from "./types/GetArtistReleases";
 export type {
   GetLabelReleases200,
   GetLabelReleases422,
@@ -24,13 +36,13 @@ export type {
   GetLabelReleasesQueryResponse,
 } from "./types/GetLabelReleases";
 export type {
-  GetReleasesDiscogsArtistArtistIdReleasesGet200,
-  GetReleasesDiscogsArtistArtistIdReleasesGet422,
-  GetReleasesDiscogsArtistArtistIdReleasesGetPathParams,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQuery,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQueryParams,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQueryResponse,
-} from "./types/GetReleasesDiscogsArtistArtistIdReleasesGet";
+  GetReleaseTracklist200,
+  GetReleaseTracklist422,
+  GetReleaseTracklistPathParams,
+  GetReleaseTracklistQuery,
+  GetReleaseTracklistQueryParams,
+  GetReleaseTracklistQueryResponse,
+} from "./types/GetReleaseTracklist";
 export type {
   GetSuggestionsSuggestionsGet200,
   GetSuggestionsSuggestionsGet422,
@@ -38,14 +50,6 @@ export type {
   GetSuggestionsSuggestionsGetQueryParams,
   GetSuggestionsSuggestionsGetQueryResponse,
 } from "./types/GetSuggestionsSuggestionsGet";
-export type {
-  GetTracklistDiscogsReleaseReleaseIdTracklistGet200,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGet422,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetPathParams,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQuery,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQueryParams,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQueryResponse,
-} from "./types/GetTracklistDiscogsReleaseReleaseIdTracklistGet";
 export type { HealthHealthGet200, HealthHealthGetQuery, HealthHealthGetQueryResponse } from "./types/HealthHealthGet";
 export type { HTTPValidationError } from "./types/HTTPValidationError";
 export type { LabelRelease } from "./types/LabelRelease";
@@ -59,12 +63,12 @@ export type {
   PlayLookupPlayLookupGetQueryResponse,
 } from "./types/PlayLookupPlayLookupGet";
 export type {
-  SearchArtistDiscogsSearchGet200,
-  SearchArtistDiscogsSearchGet422,
-  SearchArtistDiscogsSearchGetQuery,
-  SearchArtistDiscogsSearchGetQueryParams,
-  SearchArtistDiscogsSearchGetQueryResponse,
-} from "./types/SearchArtistDiscogsSearchGet";
+  SearchArtists200,
+  SearchArtists422,
+  SearchArtistsQuery,
+  SearchArtistsQueryParams,
+  SearchArtistsQueryResponse,
+} from "./types/SearchArtists";
 export type {
   SearchExactYtmSearchExactGet200,
   SearchExactYtmSearchExactGet422,
@@ -73,23 +77,35 @@ export type {
   SearchExactYtmSearchExactGetQueryResponse,
 } from "./types/SearchExactYtmSearchExactGet";
 export type {
-  SearchLabelDiscogsLabelSearchGet200,
-  SearchLabelDiscogsLabelSearchGet422,
-  SearchLabelDiscogsLabelSearchGetQuery,
-  SearchLabelDiscogsLabelSearchGetQueryParams,
-  SearchLabelDiscogsLabelSearchGetQueryResponse,
-} from "./types/SearchLabelDiscogsLabelSearchGet";
+  SearchLabels200,
+  SearchLabels422,
+  SearchLabelsQuery,
+  SearchLabelsQueryParams,
+  SearchLabelsQueryResponse,
+} from "./types/SearchLabels";
 export type { SimilarRequest } from "./types/SimilarRequest";
 export type { SimilarResponse } from "./types/SimilarResponse";
 export type { SourceList } from "./types/SourceList";
+export type { TracklistItem } from "./types/TracklistItem";
 export type { TrackMeta } from "./types/TrackMeta";
 export type { ValidationError } from "./types/ValidationError";
+export { artistReleaseSchema } from "./zod/artistReleaseSchema";
+export { artistReleasesResponseSchema } from "./zod/artistReleasesResponseSchema";
+export { discogsArtistSchema } from "./zod/discogsArtistSchema";
+export { discogsLabelSchema } from "./zod/discogsLabelSchema";
 export {
-  findSimilarSimilarPost200Schema,
-  findSimilarSimilarPost422Schema,
-  findSimilarSimilarPostMutationRequestSchema,
-  findSimilarSimilarPostMutationResponseSchema,
-} from "./zod/findSimilarSimilarPostSchema";
+  findSimilar200Schema,
+  findSimilar422Schema,
+  findSimilarMutationRequestSchema,
+  findSimilarMutationResponseSchema,
+} from "./zod/findSimilarSchema";
+export {
+  getArtistReleases200Schema,
+  getArtistReleases422Schema,
+  getArtistReleasesPathParamsSchema,
+  getArtistReleasesQueryParamsSchema,
+  getArtistReleasesQueryResponseSchema,
+} from "./zod/getArtistReleasesSchema";
 export {
   getLabelReleases200Schema,
   getLabelReleases422Schema,
@@ -98,25 +114,18 @@ export {
   getLabelReleasesQueryResponseSchema,
 } from "./zod/getLabelReleasesSchema";
 export {
-  getReleasesDiscogsArtistArtistIdReleasesGet200Schema,
-  getReleasesDiscogsArtistArtistIdReleasesGet422Schema,
-  getReleasesDiscogsArtistArtistIdReleasesGetPathParamsSchema,
-  getReleasesDiscogsArtistArtistIdReleasesGetQueryParamsSchema,
-  getReleasesDiscogsArtistArtistIdReleasesGetQueryResponseSchema,
-} from "./zod/getReleasesDiscogsArtistArtistIdReleasesGetSchema";
+  getReleaseTracklist200Schema,
+  getReleaseTracklist422Schema,
+  getReleaseTracklistPathParamsSchema,
+  getReleaseTracklistQueryParamsSchema,
+  getReleaseTracklistQueryResponseSchema,
+} from "./zod/getReleaseTracklistSchema";
 export {
   getSuggestionsSuggestionsGet200Schema,
   getSuggestionsSuggestionsGet422Schema,
   getSuggestionsSuggestionsGetQueryParamsSchema,
   getSuggestionsSuggestionsGetQueryResponseSchema,
 } from "./zod/getSuggestionsSuggestionsGetSchema";
-export {
-  getTracklistDiscogsReleaseReleaseIdTracklistGet200Schema,
-  getTracklistDiscogsReleaseReleaseIdTracklistGet422Schema,
-  getTracklistDiscogsReleaseReleaseIdTracklistGetPathParamsSchema,
-  getTracklistDiscogsReleaseReleaseIdTracklistGetQueryParamsSchema,
-  getTracklistDiscogsReleaseReleaseIdTracklistGetQueryResponseSchema,
-} from "./zod/getTracklistDiscogsReleaseReleaseIdTracklistGetSchema";
 export { healthHealthGet200Schema, healthHealthGetQueryResponseSchema } from "./zod/healthHealthGetSchema";
 export { HTTPValidationErrorSchema } from "./zod/HTTPValidationErrorSchema";
 export { labelReleaseSchema } from "./zod/labelReleaseSchema";
@@ -129,11 +138,11 @@ export {
   playLookupPlayLookupGetQueryResponseSchema,
 } from "./zod/playLookupPlayLookupGetSchema";
 export {
-  searchArtistDiscogsSearchGet200Schema,
-  searchArtistDiscogsSearchGet422Schema,
-  searchArtistDiscogsSearchGetQueryParamsSchema,
-  searchArtistDiscogsSearchGetQueryResponseSchema,
-} from "./zod/searchArtistDiscogsSearchGetSchema";
+  searchArtists200Schema,
+  searchArtists422Schema,
+  searchArtistsQueryParamsSchema,
+  searchArtistsQueryResponseSchema,
+} from "./zod/searchArtistsSchema";
 export {
   searchExactYtmSearchExactGet200Schema,
   searchExactYtmSearchExactGet422Schema,
@@ -141,13 +150,14 @@ export {
   searchExactYtmSearchExactGetQueryResponseSchema,
 } from "./zod/searchExactYtmSearchExactGetSchema";
 export {
-  searchLabelDiscogsLabelSearchGet200Schema,
-  searchLabelDiscogsLabelSearchGet422Schema,
-  searchLabelDiscogsLabelSearchGetQueryParamsSchema,
-  searchLabelDiscogsLabelSearchGetQueryResponseSchema,
-} from "./zod/searchLabelDiscogsLabelSearchGetSchema";
+  searchLabels200Schema,
+  searchLabels422Schema,
+  searchLabelsQueryParamsSchema,
+  searchLabelsQueryResponseSchema,
+} from "./zod/searchLabelsSchema";
 export { similarRequestSchema } from "./zod/similarRequestSchema";
 export { similarResponseSchema } from "./zod/similarResponseSchema";
 export { sourceListSchema } from "./zod/sourceListSchema";
+export { tracklistItemSchema } from "./zod/tracklistItemSchema";
 export { trackMetaSchema } from "./zod/trackMetaSchema";
 export { validationErrorSchema } from "./zod/validationErrorSchema";

@@ -295,7 +295,11 @@ async def _find_by_artist_only(
     return source_lists, artist
 
 
-@router.post("/similar", response_model=SimilarResponse)
+@router.post(
+    "/similar",
+    operation_id="find_similar",
+    response_model=SimilarResponse,
+)
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(

@@ -1,7 +1,9 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useEffect, useRef, useState } from "react";
 
+import { api } from "@/lib/hono/client";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
 
@@ -96,11 +98,8 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
-    fetch(`/api/suggestions?q=${encodeURIComponent(debouncedValue)}`, {
-      signal: abortRef.current.signal,
-    })
-      .then((r) => r.json())
-      .then((data: string[]) => {
+    parseResponse(api.suggestions.$get({ query: { q: debouncedValue } }, { init: { signal: abortRef.current.signal } }))
+      .then((data) => {
         if (justSubmittedRef.current) return;
         setSuggestions(data);
         setShowSuggestions(data.length > 0);

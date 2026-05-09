@@ -1,6 +1,7 @@
 "use client";
 
-import { useAtom, useSetAtom } from "jotai";
+import { parseResponse } from "hono/client";
+import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -10,9 +11,10 @@ import { TrackCard } from "@/components/TrackCard";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { favoritesAtom } from "@/lib/atoms/favorites";
 import { searchAtom } from "@/lib/atoms/search";
+import { fetchApi } from "@/lib/callApi";
+import { api } from "@/lib/hono/client";
 
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 90_000;
@@ -30,7 +32,6 @@ function HomeContent() {
   const player = usePlayer();
   const [search, setSearch] = useAtom(searchAtom);
   const [fav, setFav] = useAtom(favoritesAtom);
-  const setShowRegisterPrompt = useSetAtom(showRegisterPromptAtom);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,9 +80,7 @@ function HomeContent() {
         }
 
         try {
-          const res = await fetch(`/api/search/${searchId}`);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
+          const data = await parseResponse(api.search[":id"].$get({ param: { id: searchId } }));
 
           if (currentSearchIdRef.current !== searchId) return;
 
@@ -135,21 +134,11 @@ function HomeContent() {
       }));
 
       try {
-        const res = await fetch("/api/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: q.trim() }),
-        });
-        if (res.status === 429) {
-          const body = await res.json().catch(() => ({}));
-          if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
-            setShowRegisterPrompt(true);
-            setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
-            return;
-          }
+        const data = await fetchApi(api.search.$post({ json: { input: q.trim() } }));
+        if (!data) {
+          setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
+          return;
         }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
         pollSearch(data.id);
       } catch (err) {
         console.error("[search] error:", err);
@@ -160,7 +149,7 @@ function HomeContent() {
         }));
       }
     },
-    [search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch],
+    [search.status, stopPolling, setSearch, pollSearch],
   );
 
   const handleSearch = useCallback(() => startSearch(search.query), [search.query, startSearch]);
@@ -175,22 +164,12 @@ function HomeContent() {
     setSearch((prev) => ({ ...prev, status: "running", errorMsg: "" }));
 
     try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: q }),
-      });
-      if (res.status === 429) {
-        const body = await res.json().catch(() => ({}));
-        if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
-          setShowRegisterPrompt(true);
-          appendModeRef.current = false;
-          setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
-          return;
-        }
+      const data = await fetchApi(api.search.$post({ json: { input: q } }));
+      if (!data) {
+        appendModeRef.current = false;
+        setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
+        return;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       pollSearch(data.id);
     } catch (err) {
       console.error("[loadMore] error:", err);
@@ -201,7 +180,7 @@ function HomeContent() {
         errorMsg: "Failed to load more tracks.",
       }));
     }
-  }, [search.query, search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch]);
+  }, [search.query, search.status, stopPolling, setSearch, pollSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {
@@ -225,13 +204,9 @@ function HomeContent() {
 
       try {
         if (isFav) {
-          await fetch(`/api/favorites?trackId=${trackId}`, { method: "DELETE" });
+          await parseResponse(api.favorites.$delete({ query: { trackId } }));
         } else {
-          await fetch("/api/favorites", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackId }),
-          });
+          await parseResponse(api.favorites.$post({ json: { trackId } }));
         }
       } catch (err) {
         console.error("[favorites] error:", err);
@@ -248,18 +223,14 @@ function HomeContent() {
 
   // Load favorites + dislikes on mount
   useEffect(() => {
-    fetch("/api/favorites")
-      .then((r) => (r.ok ? (r.json() as Promise<{ id: string }[]>) : null))
+    parseResponse(api.favorites.$get())
       .then((data) => {
-        if (!data) return;
         setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }));
       })
       .catch(console.error);
 
-    fetch("/api/dislikes")
-      .then((r) => (r.ok ? (r.json() as Promise<{ artistKey: string; titleKey: string }[]>) : null))
+    parseResponse(api.dislikes.$get())
       .then((rows) => {
-        if (!rows) return;
         setFav((prev) => ({
           ...prev,
           dislikedKeys: new Set(rows.map((d) => `${d.artistKey}|${d.titleKey}`)),
@@ -281,14 +252,7 @@ function HomeContent() {
         player.close();
       }
       try {
-        await fetch("/api/dislikes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            artist: track.artist,
-            title: track.title,
-          }),
-        });
+        await parseResponse(api.dislikes.$post({ json: { artist: track.artist, title: track.title } }));
       } catch {
         setFav((prev) => {
           const next = new Set(prev.dislikedKeys);

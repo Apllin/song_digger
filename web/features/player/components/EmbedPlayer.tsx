@@ -1,8 +1,10 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useEffect, useRef, useState } from "react";
 
 import { loadYTApi, type YTPlayer } from "@/features/player/ytApi";
+import { api } from "@/lib/hono/client";
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";
@@ -342,20 +344,13 @@ function BandcampPlayer({ title, artist, sourceUrl, onPrev, onNext }: Omit<Embed
     setAudioUrl(null);
     setCurrentTime(0);
     setDuration(0);
-    fetch(`/api/bandcamp-audio?url=${encodeURIComponent(sourceUrl)}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          console.error("[Bandcamp] /api/bandcamp-audio failed:", r.status, await r.text().catch(() => ""));
-          return null;
-        }
-        return r.json();
-      })
+    parseResponse(api["bandcamp-audio"].$get({ query: { url: sourceUrl } }))
       .then((data) => {
-        if (cancelled || !data?.audioUrl) return;
-        setAudioUrl(data.audioUrl as string);
+        if (cancelled) return;
+        setAudioUrl(data.audioUrl);
         if (typeof data.duration === "number") setDuration(data.duration);
       })
-      .catch((err) => console.error("[Bandcamp] audio fetch error:", err));
+      .catch((err) => console.error("[Bandcamp] /api/bandcamp-audio failed:", err));
     return () => {
       cancelled = true;
     };

@@ -2,31 +2,17 @@
 
 import { atom } from "jotai";
 
-export interface Artist {
-  id: number;
-  name: string;
-  imageUrl?: string;
-}
-
-export interface Release {
-  id: number;
-  title: string;
-  year?: number;
-  type: string;
-  role: string;
-  format?: string;
-  label?: string;
-  thumb?: string;
-}
+import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
+import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 
 interface DiscographyState {
   query: string;
-  artistSuggestions: Artist[];
+  artistSuggestions: DiscogsArtist[];
   showSuggestions: boolean;
   showHistory: boolean;
   activeIndex: number;
-  selectedArtist: Artist | null;
-  releases: Release[];
+  selectedArtist: DiscogsArtist | null;
+  releases: ArtistRelease[];
   page: number;
   loadingArtists: boolean;
   loadingReleases: boolean;

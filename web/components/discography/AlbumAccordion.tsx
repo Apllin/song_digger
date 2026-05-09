@@ -1,28 +1,21 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useState } from "react";
 import { TrackRow } from "./TrackRow";
 
-import type { DiscographyTrack } from "@/features/player/types";
-
-interface Release {
-  id: number;
-  title: string;
-  year?: number;
-  type: string;
-  format?: string;
-  label?: string;
-  thumb?: string;
-}
+import { api } from "@/lib/hono/client";
+import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
+import type { TracklistItem } from "@/lib/python-api/generated/types/TracklistItem";
 
 interface AlbumAccordionProps {
-  release: Release;
+  release: ArtistRelease;
   artistName: string;
 }
 
 export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   const [open, setOpen] = useState(false);
-  const [tracks, setTracks] = useState<DiscographyTrack[]>([]);
+  const [tracks, setTracks] = useState<TracklistItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
@@ -38,8 +31,11 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     setLoading(true);
     try {
       const releaseType = release.type === "master" ? "master" : "release";
-      const res = await fetch(`/api/discography/tracklist?releaseId=${release.id}&type=${releaseType}`);
-      const data: DiscographyTrack[] = await res.json();
+      const data = await parseResponse(
+        api.discography.tracklist.$get({
+          query: { releaseId: String(release.id), type: releaseType },
+        }),
+      );
       setTracks(data);
       setLoaded(true);
     } finally {

@@ -1,10 +1,10 @@
-export { findSimilarSimilarPost } from "./findSimilarSimilarPost";
+export { findSimilar } from "./findSimilar";
+export { getArtistReleases } from "./getArtistReleases";
 export { getLabelReleases } from "./getLabelReleases";
-export { getReleasesDiscogsArtistArtistIdReleasesGet } from "./getReleasesDiscogsArtistArtistIdReleasesGet";
+export { getReleaseTracklist } from "./getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./getSuggestionsSuggestionsGet";
-export { getTracklistDiscogsReleaseReleaseIdTracklistGet } from "./getTracklistDiscogsReleaseReleaseIdTracklistGet";
 export { healthHealthGet } from "./healthHealthGet";
 export { playLookupPlayLookupGet } from "./playLookupPlayLookupGet";
-export { searchArtistDiscogsSearchGet } from "./searchArtistDiscogsSearchGet";
+export { searchArtists } from "./searchArtists";
 export { searchExactYtmSearchExactGet } from "./searchExactYtmSearchExactGet";
-export { searchLabelDiscogsLabelSearchGet } from "./searchLabelDiscogsLabelSearchGet";
+export { searchLabels } from "./searchLabels";

@@ -11,8 +11,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { aggregateTracks, type SourceList } from "@/lib/aggregator";
-import type { TrackMeta } from "@/lib/python-client";
+import { aggregateTracks } from "@/lib/aggregator";
+import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
+import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 const RUNS = 100;
 const P95_INDEX = Math.floor(RUNS * 0.95) - 1; // 94 for 100 runs

@@ -5,10 +5,12 @@ import "cal-sans/index.css";
 import "./globals.css";
 
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
+import { RateLimitModalHost } from "@/components/auth/RateLimitModalHost";
 import { CookieConsentHost } from "@/components/CookieConsentHost";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
+import { NetworkErrorHost } from "@/components/NetworkErrorHost";
 import { QueryProvider } from "@/components/QueryProvider";
 import { PlayerProvider } from "@/features/player/components/PlayerProvider";
 
@@ -63,6 +65,8 @@ export default function RootLayout({
               <Nav rightSlot={<NavAuthSection />} />
               {children}
               <AnonymousLimitModalHost />
+              <RateLimitModalHost />
+              <NetworkErrorHost />
             </PlayerProvider>
           </QueryProvider>
         </div>

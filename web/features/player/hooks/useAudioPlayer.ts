@@ -1,12 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { useEffect, useState } from "react";
 import { useBandcampAudio } from "./useBandcampAudio";
 import { useYTPlayer } from "./useYTPlayer";
 
 import { PLAYABLE_SOURCES } from "@/features/player/constants";
 import type { PlayerAdapter, PlayerTrack } from "@/features/player/types";
+import { api } from "@/lib/hono/client";
 
 interface Props {
   track: PlayerTrack | null;
@@ -66,11 +68,8 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
 
   const { data: embedData, status: embedStatus } = useQuery<EmbedData | null>({
     queryKey: ["embed", track?.title, track?.artist],
-    queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ title: track!.title, artist: track!.artist });
-      const r = await fetch(`/api/embed?${params}`, { signal });
-      return r.ok ? ((await r.json()) as EmbedData) : null;
-    },
+    queryFn: async ({ signal }) =>
+      parseResponse(api.embed.$get({ query: { title: track!.title, artist: track!.artist } }, { init: { signal } })),
     enabled: shouldResolve,
     staleTime: Infinity,
     retry: false,

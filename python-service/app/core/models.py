@@ -54,3 +54,41 @@ class LabelReleasesPagination(BaseModel):
 class LabelReleasesResponse(BaseModel):
     releases: list[LabelRelease]
     pagination: LabelReleasesPagination
+
+
+class DiscogsArtist(BaseModel):
+    id: int
+    name: str
+    imageUrl: str | None = None
+    resourceUrl: str | None = None
+
+
+class DiscogsLabel(BaseModel):
+    id: int
+    name: str
+    imageUrl: str | None = None
+    resourceUrl: str | None = None
+
+
+class ArtistRelease(BaseModel):
+    id: int
+    title: str
+    year: int | None = None
+    type: str | None = None     # "master" | "release"
+    role: str | None = None     # "Main" | "Appearance" | "TrackAppearance"
+    format: str | None = None
+    label: str | None = None
+    thumb: str | None = None
+    resourceUrl: str | None = None
+
+
+class ArtistReleasesResponse(BaseModel):
+    releases: list[ArtistRelease]
+    pagination: LabelReleasesPagination
+
+
+class TracklistItem(BaseModel):
+    position: str
+    title: str
+    duration: str
+    artists: list[str]

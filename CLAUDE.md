@@ -19,7 +19,7 @@ pnpm workspace + Turborepo. Two packages:
 - `web/` — Next.js 16 app (React 19, Prisma 7, Tailwind v4, Jotai, Zod). User-facing UI + thin API routes.
 - `python-service/` — FastAPI service. Owns all external-source scraping/aggregation and music-feature heuristics.
 
-The Next app talks to the Python service over HTTP (`PYTHON_SERVICE_URL`, default `http://localhost:8000`) via [web/lib/python-client.ts](web/lib/python-client.ts). Postgres is shared infra owned by `web` through Prisma.
+The Next app talks to the Python service over HTTP (`PYTHON_SERVICE_URL`, default `http://localhost:8000`) via the kubb-generated client at [web/lib/python-api/generated/clients/](web/lib/python-api/generated/clients/), regenerated from `python-service/openapi.json` by `pnpm codegen`. Postgres is shared infra owned by `web` through Prisma.
 
 ## Commands
 
@@ -29,6 +29,7 @@ Run from repo root; Turbo fans out to the right workspace. Single-package comman
 pnpm install                    # install JS deps across workspaces
 pnpm setup                      # creates python-service/.venv and installs requirements.txt
 pnpm dev                        # runs web + python-service together (turbo, persistent)
+pnpm codegen                    # regen python openapi.json + kubb client (after editing FastAPI routes / Pydantic models)
 pnpm build                      # next build (web only)
 pnpm lint                       # eslint in web
 pnpm test                       # pytest in python-service (default unit tests only)
@@ -87,15 +88,15 @@ Key facts for giving accurate guidance:
 
 ### Python service (`python-service/app`)
 
-- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `suggestions`, `discogs`, `ytm_playlist`).
+- `main.py` wires FastAPI + CORS (only allows `http://localhost:3000`) and mounts route modules from `api/routes/` (`similar`, `suggestions`, `discogs`, `ytm_playlist`, `play_lookup`). Routes consumed by web set `operation_id="..."` and `response_model=...` so kubb generates a typed client name + Zod schema; without those, kubb falls back to a verbose auto-name and `any` for the response.
 - `adapters/` — one module per external source (`bandcamp`, `cosine_club`, `discogs`, `lastfm`, `trackidnet`, `yandex_music`, `youtube_music`). All conform to `AbstractAdapter` in [python-service/app/adapters/base.py](python-service/app/adapters/base.py) (single `find_similar(query, limit)` method). Add a new source by implementing this interface and registering it where routes aggregate adapters. The Discogs adapter is scoped to the `/discography` and `/labels` page routes only — it does not feed `/similar` (see ADR-0019).
 - `core/models.py` defines the shared `TrackMeta` Pydantic model returned to web.
 - `config.py` uses `pydantic-settings` reading the repo-root `.env`; holds tokens for Cosine.club, Discogs, Yandex.Music, Last.fm. `extra="ignore"` so shared web/db env vars in the same file don't break validation.
 
 ### Web (`web/`)
 
-- App Router under `app/`. API routes under `app/api/*/route.ts` are Next's thin layer — most heavy lifting lives in `lib/` and is proxied to the Python service.
-- `lib/python-client.ts` is the single typed boundary to the Python service; keep request/response shapes in sync with `python-service/app/core/models.py` and the route handlers.
+- App Router under `app/`. **All `/api/*` routes flow through one Hono app** at [web/lib/hono/app.ts](web/lib/hono/app.ts), wired into Next via the catch-all [web/app/api/[[...route]]/route.ts](web/app/api/[[...route]]/route.ts). The only non-Hono route is `app/api/auth/[...nextauth]/route.ts` (NextAuth owns its own segment). To add an endpoint: write a Hono router at `features/<name>/server/<name>Api.ts`, then chain `.route("/", <name>Api)` on the root app — the typed RPC client picks it up automatically.
+- The browser calls `/api/*` through the typed RPC client at [web/lib/hono/client.ts](web/lib/hono/client.ts) (`api.<...>.$get/$post/$delete(...)` + `parseResponse` from `hono/client`). Server-to-server calls into Python go through the kubb-generated client at `lib/python-api/generated/clients/`. **Don't add raw `fetch` to either surface** (see [.claude/skills/code/architecture/typed-clients.md](.claude/skills/code/architecture/typed-clients.md)).
 - `lib/aggregator.ts` — RRF fusion across per-source ranks plus artist diversification (max 2 consecutive). No BPM/key filter, no genre filter, no embed bonus, no artist-level dislike penalty. Runs in Node, not Python.
 - `prisma/schema.prisma` — Postgres schema (Track, SearchQuery/SearchResult, Favorite, DislikedTrack, LastfmArtistSimilars; plus the auth tables: User, Account, Session, VerificationCode, PasswordResetToken — see ADR-0020; plus the Stage J security tables: AnonymousRequest, LoginAttempt — see ADR-0021). Prisma client outputs to `app/generated/prisma`, imported via `lib/prisma.ts`. Requires `DATABASE_URL`.
 - Client state uses Jotai atoms in `lib/atoms/`.
@@ -112,7 +113,7 @@ Key facts for giving accurate guidance:
 
 ### Security (`web/lib/{anonymous-counter,brute-force,turnstile}.ts`, `next.config.ts`, ADR-0021)
 
-- **Anonymous limit**: per-IP counter (`AnonymousRequest`) gates `/api/search`, `/api/discography/search`, `/api/discography/label/search`. 10 free requests pooled across them; 11th returns `429 ANONYMOUS_LIMIT_REACHED`. Authenticated users bypass. Client uses `fetchWithAnonGate` to detect 429 and toggle the shared `showRegisterPromptAtom`, which `<AnonymousLimitModalHost />` (mounted in the root layout) reads. Don't add the gate to follow-up calls (releases / tracklist / embed) — it's intended for the typed-search entry points only.
+- **Anonymous limit**: per-IP counter (`AnonymousRequest`) gates `/api/search`, `/api/discography/search`, `/api/discography/label/search`. 10 free requests pooled across them; 11th returns `429 ANONYMOUS_LIMIT_REACHED`. Authenticated users bypass. Server-side, the gate is the [`anonGate` Hono middleware](web/lib/hono/anonGate.ts), mounted on those three routes. Client-side, [`withAnonGate`](web/lib/with-anon-gate.ts) wraps the typed `parseResponse(...)` promise: it converts a `DetailedError` whose body is `{ error: "ANONYMOUS_LIMIT_REACHED" }` into a single call to `setShowRegisterPrompt(true)` returning `null`. `<AnonymousLimitModalHost />` (mounted in the root layout) reads the shared `showRegisterPromptAtom`. Don't add the gate to follow-up calls (releases / tracklist / embed) — it's intended for the typed-search entry points only.
 - **Cloudflare Turnstile**: `lib/turnstile.ts` calls `siteverify` and **fails closed** on missing secret, network errors, non-2xx, or empty token. Don't add fail-open paths — bypassing CAPTCHA on infra failure is the attack vector. The api.js script is loaded once at the layout level via `next/script`. Test keys are `1x00...AA` (always-pass) and `2x...AB` (always-fail) — publicly documented, safe to commit.
 - **Brute-force layers** (in `authorize()` in `lib/auth.ts`, ordered cheapest-first):
   1. Per-IP rate limit — 10 failed attempts in 15 min throws `RateLimitError` (CredentialsSignin subclass with `code: "RATE_LIMIT"`).
@@ -127,10 +128,11 @@ Key facts for giving accurate guidance:
 
 ### Data flow for a similarity search
 
-1. User query hits `web/app/api/search/route.ts`. The route calls `auth()` to capture the current `userId` (or null for anonymous).
-2. Web persists a `SearchQuery` via Prisma, then looks up the **search response cache** (`ExternalApiCache` row with `source="search_response"`, key versioned by `SEARCH_CACHE_VERSION`, TTL 14 days). On hit, the cached `SimilarResponse` is reused; on miss, web calls `fetchSimilarTracks` → `POST {PYTHON_SERVICE_URL}/similar` and writes the result to the cache.
+1. Browser calls `api.search.$post({ json: { input } })` → POST `/api/search`, handled by the Hono route in [web/features/search/server/searchApi.ts](web/features/search/server/searchApi.ts). The route runs the `anonGate` middleware first, then calls `auth()` to capture the current `userId` (or null for anonymous).
+2. Web persists a `SearchQuery` via Prisma and returns `{ id, status: "running" }` immediately. The actual work runs as a fire-and-forget background task that looks up the **search response cache** (`ExternalApiCache` row with `source="search_response"`, key versioned by `SEARCH_CACHE_VERSION`, TTL 14 days). On hit, the cached `SimilarResponse` is reused; on miss, web calls the kubb-generated `findSimilar(...)` → `POST {PYTHON_SERVICE_URL}/similar` and writes the result to the cache.
 3. Python route (on cache miss) fans out to enabled adapters, each returning `TrackMeta[]`.
-4. Web filters out tracks whose `(artistKey, titleKey)` identity is in **the current user's** `DislikedTrack` rows (anonymous = empty set, no filter), fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"` (work runs as a fire-and-forget background task; the search-id was returned to the client up front). RRF, dislike filter, and cover enrichment always run fresh — they are not part of the cache.
+4. Web filters out tracks whose `(artistKey, titleKey)` identity is in **the current user's** `DislikedTrack` rows (anonymous = empty set, no filter), fuses with `lib/aggregator.ts` (RRF + artist diversification), persists tracks + results, and updates `SearchQuery.status = "done"`. RRF, dislike filter, and cover enrichment always run fresh — they are not part of the cache.
+5. Browser polls `api.search[":id"].$get({ param: { id } })` → GET `/api/search/:id` until `status === "done"`, then renders the result list.
 
 ## Project-specific gotchas
 
@@ -138,7 +140,7 @@ Key facts for giving accurate guidance:
 - **Prisma 7** (also newer than training data in many cases) — generated client lives at `web/app/generated/prisma`, not the default `node_modules/@prisma/client` location. Use `@prisma/adapter-pg` (Prisma + node-postgres driver adapter), not the default engine.
 - Python tests use `asyncio_mode = auto` — don't manually decorate with `@pytest.mark.asyncio`.
 - The service assumes the frontend origin is `http://localhost:3000` in two places: FastAPI CORS and YouTube embed URLs (`settings.frontend_origin`). Change both together if the port moves.
-- **Bump `SEARCH_CACHE_VERSION` whenever you change what `/similar` returns.** [web/app/api/search/route.ts](web/app/api/search/route.ts) caches the Python `/similar` response in `ExternalApiCache` for 14 days, keyed by `${SEARCH_CACHE_VERSION}:${normalizedArtist}|${normalizedTrack}`. If you don't bump the version, up to 14 days of users will silently see results from the previous logic. **Triggers a bump** (anything that changes what Python `/similar` returns): adding/removing an adapter from the `/similar` fan-out, changing filtering or ordering inside `python-service/app/api/routes/similar.py`, modifying any adapter's `find_similar()` shape or ordering, or changing `limit_per_source` / request shape in [web/lib/python-client.ts](web/lib/python-client.ts). **Does NOT trigger a bump** (these run fresh on every request, post-cache): `lib/aggregator.ts` (RRF formula, tiebreaker, artist diversification), the `DislikedTrack` filter, `enrichMissingCovers`, `saveTracks` logic. Bump = change the constant string in `route.ts` (`"v1"` → `"v2"`); old keys are never read again, no SQL flush needed.
+- **Bump `SEARCH_CACHE_VERSION` whenever you change what `/similar` returns.** The constant lives in [web/features/search/searchCache.ts](web/features/search/searchCache.ts) and the search route caches the Python `/similar` response in `ExternalApiCache` for 14 days, keyed by `${SEARCH_CACHE_VERSION}:${normalizedArtist}|${normalizedTrack}`. If you don't bump the version, up to 14 days of users will silently see results from the previous logic. **Triggers a bump** (anything that changes what Python `/similar` returns): adding/removing an adapter from the `/similar` fan-out, changing filtering or ordering inside `python-service/app/api/routes/similar.py`, modifying any adapter's `find_similar()` shape or ordering, or changing the `findSimilar` request shape (e.g. `limit_per_source` / `PYTHON_LIMIT_PER_SOURCE`). **Does NOT trigger a bump** (these run fresh on every request, post-cache): `lib/aggregator.ts` (RRF formula, tiebreaker, artist diversification), the `DislikedTrack` filter, `enrichMissingCovers`, `saveTracks` logic. Bump = change the constant string in `searchCache.ts` (`"v1"` → `"v2"`); old keys are never read again, no SQL flush needed.
 
 ## Testing
 

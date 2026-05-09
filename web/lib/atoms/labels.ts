@@ -2,19 +2,15 @@
 
 import { atom } from "jotai";
 
-export interface Label {
-  id: number;
-  name: string;
-  imageUrl?: string;
-}
+import type { DiscogsLabel } from "@/lib/python-api/generated/types/DiscogsLabel";
 
 interface LabelsState {
   query: string;
-  suggestions: Label[];
+  suggestions: DiscogsLabel[];
   showSuggestions: boolean;
   showHistory: boolean;
   activeIndex: number;
-  selectedLabel: Label | null;
+  selectedLabel: DiscogsLabel | null;
   page: number;
   loadingLabels: boolean;
 }
