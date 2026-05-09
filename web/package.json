@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "pnpm run with-env next build",
+    "build": "pnpm run db:generate && pnpm run with-env next build",
+    "db:generate": "pnpm run with-env prisma generate",
     "codegen": "kubb",
     "dev": "pnpm run with-env next dev",
     "lint": "pnpm run with-env eslint",
