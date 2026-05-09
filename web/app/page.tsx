@@ -1,5 +1,6 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useAtom, useSetAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
@@ -12,6 +13,7 @@ import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { favoritesAtom } from "@/lib/atoms/favorites";
 import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
+import { api } from "@/lib/hono/client";
 
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 90_000;
@@ -224,13 +226,9 @@ function HomeContent() {
 
       try {
         if (isFav) {
-          await fetch(`/api/favorites?trackId=${trackId}`, { method: "DELETE" });
+          await parseResponse(api.favorites.$delete({ query: { trackId } }));
         } else {
-          await fetch("/api/favorites", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackId }),
-          });
+          await parseResponse(api.favorites.$post({ json: { trackId } }));
         }
       } catch (err) {
         console.error("[favorites] error:", err);
@@ -247,18 +245,14 @@ function HomeContent() {
 
   // Load favorites + dislikes on mount
   useEffect(() => {
-    fetch("/api/favorites")
-      .then((r) => (r.ok ? (r.json() as Promise<{ id: string }[]>) : null))
+    parseResponse(api.favorites.$get())
       .then((data) => {
-        if (!data) return;
         setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }));
       })
       .catch(console.error);
 
-    fetch("/api/dislikes")
-      .then((r) => (r.ok ? (r.json() as Promise<{ artistKey: string; titleKey: string }[]>) : null))
+    parseResponse(api.dislikes.$get())
       .then((rows) => {
-        if (!rows) return;
         setFav((prev) => ({
           ...prev,
           dislikedKeys: new Set(rows.map((d) => `${d.artistKey}|${d.titleKey}`)),
@@ -280,14 +274,7 @@ function HomeContent() {
         player.close();
       }
       try {
-        await fetch("/api/dislikes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            artist: track.artist,
-            title: track.title,
-          }),
-        });
+        await parseResponse(api.dislikes.$post({ json: { artist: track.artist, title: track.title } }));
       } catch {
         setFav((prev) => {
           const next = new Set(prev.dislikedKeys);
