@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   GetLabelReleases200,
   GetLabelReleases422,
@@ -12,7 +13,6 @@ import type {
 } from "../types/GetLabelReleases";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { labelReleasesResponseSchema } from "./labelReleasesResponseSchema";
-import { z } from "zod/v4";
 
 export const getLabelReleasesPathParamsSchema = z.object({
   label_id: z.coerce.number().int(),

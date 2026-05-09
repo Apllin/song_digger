@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { SimilarResponse } from "../types/SimilarResponse";
 import { sourceListSchema } from "./sourceListSchema";
-import { z } from "zod/v4";
 
 export const similarResponseSchema = z.object({
   get source_lists() {

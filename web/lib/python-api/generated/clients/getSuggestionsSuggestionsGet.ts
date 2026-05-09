@@ -3,13 +3,13 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  GetSuggestionsSuggestionsGetQueryResponse,
-  GetSuggestionsSuggestionsGetQueryParams,
   GetSuggestionsSuggestionsGet422,
+  GetSuggestionsSuggestionsGetQueryParams,
+  GetSuggestionsSuggestionsGetQueryResponse,
 } from "../types/GetSuggestionsSuggestionsGet";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { getSuggestionsSuggestionsGetQueryResponseSchema } from "../zod/getSuggestionsSuggestionsGetSchema";
 
 function getGetSuggestionsSuggestionsGetUrl() {

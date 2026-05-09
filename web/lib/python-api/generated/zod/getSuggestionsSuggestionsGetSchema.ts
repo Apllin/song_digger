@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   GetSuggestionsSuggestionsGet200,
   GetSuggestionsSuggestionsGet422,
@@ -10,7 +11,6 @@ import type {
   GetSuggestionsSuggestionsGetQueryResponse,
 } from "../types/GetSuggestionsSuggestionsGet";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
-import { z } from "zod/v4";
 
 export const getSuggestionsSuggestionsGetQueryParamsSchema = z.object({
   q: z.string(),

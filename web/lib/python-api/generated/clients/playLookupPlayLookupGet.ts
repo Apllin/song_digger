@@ -3,13 +3,13 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  PlayLookupPlayLookupGetQueryResponse,
-  PlayLookupPlayLookupGetQueryParams,
   PlayLookupPlayLookupGet422,
+  PlayLookupPlayLookupGetQueryParams,
+  PlayLookupPlayLookupGetQueryResponse,
 } from "../types/PlayLookupPlayLookupGet";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { playLookupPlayLookupGetQueryResponseSchema } from "../zod/playLookupPlayLookupGetSchema";
 
 function getPlayLookupPlayLookupGetUrl() {

@@ -1,7 +1,7 @@
 "use client";
 
 import { parseResponse } from "hono/client";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -9,12 +9,11 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { SearchBar } from "@/components/SearchBar";
 import { TrackCard } from "@/components/TrackCard";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { favoritesAtom } from "@/lib/atoms/favorites";
 import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
+import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
-import { withAnonGate } from "@/lib/with-anon-gate";
 
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 90_000;
@@ -32,7 +31,6 @@ function HomeContent() {
   const player = usePlayer();
   const [search, setSearch] = useAtom(searchAtom);
   const [fav, setFav] = useAtom(favoritesAtom);
-  const setShowRegisterPrompt = useSetAtom(showRegisterPromptAtom);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -135,11 +133,11 @@ function HomeContent() {
       }));
 
       try {
-        const data = await withAnonGate(parseResponse(api.search.$post({ json: { input: q.trim() } })), () => {
-          setShowRegisterPrompt(true);
+        const data = await fetchApi(api.search.$post({ json: { input: q.trim() } }));
+        if (!data) {
           setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
-        });
-        if (!data) return;
+          return;
+        }
         pollSearch(data.id);
       } catch (err) {
         console.error("[search] error:", err);
@@ -150,7 +148,7 @@ function HomeContent() {
         }));
       }
     },
-    [search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch],
+    [search.status, stopPolling, setSearch, pollSearch],
   );
 
   const handleSearch = useCallback(() => startSearch(search.query), [search.query, startSearch]);
@@ -165,12 +163,12 @@ function HomeContent() {
     setSearch((prev) => ({ ...prev, status: "running", errorMsg: "" }));
 
     try {
-      const data = await withAnonGate(parseResponse(api.search.$post({ json: { input: q } })), () => {
-        setShowRegisterPrompt(true);
+      const data = await fetchApi(api.search.$post({ json: { input: q } }));
+      if (!data) {
         appendModeRef.current = false;
         setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
-      });
-      if (!data) return;
+        return;
+      }
       pollSearch(data.id);
     } catch (err) {
       console.error("[loadMore] error:", err);
@@ -181,7 +179,7 @@ function HomeContent() {
         errorMsg: "Failed to load more tracks.",
       }));
     }
-  }, [search.query, search.status, stopPolling, setSearch, setShowRegisterPrompt, pollSearch]);
+  }, [search.query, search.status, stopPolling, setSearch, pollSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {

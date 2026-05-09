@@ -40,8 +40,8 @@ export type {
   GetSuggestionsSuggestionsGetQueryParams,
   GetSuggestionsSuggestionsGetQueryResponse,
 } from "./GetSuggestionsSuggestionsGet";
-export type { HTTPValidationError } from "./HTTPValidationError";
 export type { HealthHealthGet200, HealthHealthGetQuery, HealthHealthGetQueryResponse } from "./HealthHealthGet";
+export type { HTTPValidationError } from "./HTTPValidationError";
 export type { LabelRelease } from "./LabelRelease";
 export type { LabelReleasesPagination } from "./LabelReleasesPagination";
 export type { LabelReleasesResponse } from "./LabelReleasesResponse";
@@ -76,6 +76,6 @@ export type {
 export type { SimilarRequest } from "./SimilarRequest";
 export type { SimilarResponse } from "./SimilarResponse";
 export type { SourceList } from "./SourceList";
-export type { TrackMeta } from "./TrackMeta";
 export type { TracklistItem } from "./TracklistItem";
+export type { TrackMeta } from "./TrackMeta";
 export type { ValidationError } from "./ValidationError";

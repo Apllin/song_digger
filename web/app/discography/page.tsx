@@ -1,19 +1,18 @@
 "use client";
 
 import { parseResponse } from "hono/client";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
-import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
 import { discographyAtom } from "@/lib/atoms/discography";
+import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
-import { withAnonGate } from "@/lib/with-anon-gate";
 
 const PAGE_SIZE = 15;
 
@@ -57,13 +56,10 @@ export default function DiscographyPage() {
 function DiscographyContent() {
   const searchParams = useSearchParams();
   const [s, setS] = useAtom(discographyAtom);
-  const setShowRegisterPrompt = useSetAtom(showRegisterPromptAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
   const didAutoLoad = useRef(false);
   const { history, addToHistory } = useSearchHistory("discography-history");
-
-  const onAnonLimit = () => setShowRegisterPrompt(true);
 
   function selectArtist(artist: DiscogsArtist) {
     setS((prev) => ({
@@ -90,7 +86,7 @@ function DiscographyContent() {
       loadingArtists: true,
     }));
     addToHistory(name);
-    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: name } })), onAnonLimit)
+    fetchApi(api.discography.search.$get({ query: { q: name } }))
       .then((data) => {
         if (!data) return;
         const exact = data.find((a) => a.name.toLowerCase() === name.toLowerCase());
@@ -109,7 +105,7 @@ function DiscographyContent() {
     didAutoLoad.current = true;
 
     setS((prev) => ({ ...prev, query: artistParam, loadingArtists: true }));
-    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: artistParam } })), onAnonLimit)
+    fetchApi(api.discography.search.$get({ query: { q: artistParam } }))
       .then((data) => {
         if (!data || data.length === 0) return;
         const exact = data.find((a) => a.name.toLowerCase() === artistParam.toLowerCase());
@@ -127,14 +123,13 @@ function DiscographyContent() {
       return;
     }
     setS((prev) => ({ ...prev, loadingArtists: true }));
-    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: debouncedQuery } })), onAnonLimit)
+    fetchApi(api.discography.search.$get({ query: { q: debouncedQuery } }))
       .then((data) => {
         if (!data) return;
         setS((prev) => ({ ...prev, artistSuggestions: data, showSuggestions: true }));
       })
       .catch(() => setS((prev) => ({ ...prev, artistSuggestions: [] })))
       .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, s.selectedArtist, setS]);
 
   // Close suggestions on outside click

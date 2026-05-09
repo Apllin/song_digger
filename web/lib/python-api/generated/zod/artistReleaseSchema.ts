@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { ArtistRelease } from "../types/ArtistRelease";
 import { z } from "zod/v4";
+import type { ArtistRelease } from "../types/ArtistRelease";
 
 export const artistReleaseSchema = z.object({
   id: z.int(),

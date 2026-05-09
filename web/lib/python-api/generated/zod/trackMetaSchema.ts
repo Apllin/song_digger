@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { TrackMeta } from "../types/TrackMeta";
 import { z } from "zod/v4";
+import type { TrackMeta } from "../types/TrackMeta";
 
 export const trackMetaSchema = z.object({
   title: z.string(),

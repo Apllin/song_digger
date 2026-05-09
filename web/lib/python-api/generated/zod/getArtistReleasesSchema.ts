@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   GetArtistReleases200,
   GetArtistReleases422,
@@ -10,9 +11,8 @@ import type {
   GetArtistReleasesQueryParams,
   GetArtistReleasesQueryResponse,
 } from "../types/GetArtistReleases";
-import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { artistReleasesResponseSchema } from "./artistReleasesResponseSchema";
-import { z } from "zod/v4";
+import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 
 export const getArtistReleasesPathParamsSchema = z.object({
   artist_id: z.coerce.number().int(),

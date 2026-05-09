@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { DiscogsArtist } from "../types/DiscogsArtist";
 import { z } from "zod/v4";
+import type { DiscogsArtist } from "../types/DiscogsArtist";
 
 export const discogsArtistSchema = z.object({
   id: z.int(),

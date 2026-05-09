@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type { HealthHealthGetQueryResponse } from "../types/HealthHealthGet";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { healthHealthGetQueryResponseSchema } from "../zod/healthHealthGetSchema";
 
 function getHealthHealthGetUrl() {
