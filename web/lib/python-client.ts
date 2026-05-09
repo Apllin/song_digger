@@ -1,7 +1,6 @@
 import { cachedFetch } from "@/lib/dev-cache";
 
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
 export interface TrackMeta {
   title: string;
@@ -14,9 +13,9 @@ export interface TrackMeta {
 }
 
 export interface SimilarRequest {
-  input: string;          // raw query string
-  artist: string;         // parsed artist
-  track?: string | null;  // parsed track (null = artist-only mode)
+  input: string; // raw query string
+  artist: string; // parsed artist
+  track?: string | null; // parsed track (null = artist-only mode)
   limit_per_source: number;
 }
 
@@ -30,9 +29,7 @@ export interface SimilarResponse {
   source_artist: string | null;
 }
 
-export async function fetchSimilarTracks(
-  req: SimilarRequest
-): Promise<SimilarResponse> {
+export async function fetchSimilarTracks(req: SimilarRequest): Promise<SimilarResponse> {
   const res = await cachedFetch(`${PYTHON_SERVICE_URL}/similar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -41,9 +38,7 @@ export async function fetchSimilarTracks(
   });
 
   if (!res.ok) {
-    throw new Error(
-      `Python service error: ${res.status} ${await res.text()}`
-    );
+    throw new Error(`Python service error: ${res.status} ${await res.text()}`);
   }
 
   return res.json();

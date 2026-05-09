@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useEffect, useRef, useState } from "react";
 import { TurnstileWidget } from "./TurnstileWidget";
+
 import { loginPrecheckAction } from "@/app/actions/login-precheck";
 
 export function LoginForm({
@@ -191,9 +192,7 @@ export function LoginForm({
       </div>
       {captchaConfigured && requireCaptcha && (
         <div>
-          <p className="text-xs text-zinc-500 mb-2">
-            Please verify you&rsquo;re not a robot:
-          </p>
+          <p className="text-xs text-zinc-500 mb-2">Please verify you&rsquo;re not a robot:</p>
           <TurnstileWidget
             action="login"
             theme="dark"
@@ -212,10 +211,7 @@ export function LoginForm({
         {pending ? "Signing in..." : "Sign in"}
       </button>
       <div className="flex justify-between text-xs">
-        <a
-          href="/forgot-password"
-          className="text-zinc-400 hover:text-zinc-300"
-        >
+        <a href="/forgot-password" className="text-zinc-400 hover:text-zinc-300">
           Forgot password?
         </a>
         <a href="/register" className="text-blue-400 hover:underline">

@@ -1,13 +1,10 @@
 "use server";
 
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import {
-  verifyCode,
-  generateVerificationCode,
-  hashCode,
-} from "@/lib/auth-tokens";
+
+import { generateVerificationCode, hashCode, verifyCode } from "@/lib/auth-tokens";
 import { sendVerificationCode } from "@/lib/email";
+import { prisma } from "@/lib/prisma";
 
 const VerifySchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -19,9 +16,7 @@ const VerifySchema = z.object({
 
 type VerifyResult = { success: true } | { error: string };
 
-export async function verifyEmailAction(
-  formData: FormData,
-): Promise<VerifyResult> {
+export async function verifyEmailAction(formData: FormData): Promise<VerifyResult> {
   const parsed = VerifySchema.safeParse({
     email: formData.get("email"),
     code: formData.get("code"),
@@ -64,9 +59,7 @@ const ResendSchema = z.object({ email: z.string().email().toLowerCase() });
 
 type ResendResult = { success: true } | { error: string };
 
-export async function resendVerificationCodeAction(
-  formData: FormData,
-): Promise<ResendResult> {
+export async function resendVerificationCodeAction(formData: FormData): Promise<ResendResult> {
   const parsed = ResendSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: "Invalid email" };
 

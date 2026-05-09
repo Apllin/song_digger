@@ -12,9 +12,7 @@ export default function RegisterPage() {
       >
         <div className="text-center">
           <h1 className="text-2xl font-semibold">Create account</h1>
-          <p className="text-sm text-zinc-400 mt-2">
-            Sign up to save favorites and track dislikes
-          </p>
+          <p className="text-sm text-zinc-400 mt-2">Sign up to save favorites and track dislikes</p>
         </div>
         <RegisterForm />
       </div>

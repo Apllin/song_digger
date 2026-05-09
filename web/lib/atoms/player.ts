@@ -41,9 +41,7 @@ export function usePlayer() {
       setState((prev) => {
         if (!prev.track || prev.playingIndex === null) return prev;
         const merged = { ...prev.track, ...resolved };
-        const playlist = prev.playlist.map((t, i) =>
-          i === prev.playingIndex ? { ...t, ...resolved } : t
-        );
+        const playlist = prev.playlist.map((t, i) => (i === prev.playingIndex ? { ...t, ...resolved } : t));
         return { ...prev, track: merged, playlist };
       }),
     playNext: () =>

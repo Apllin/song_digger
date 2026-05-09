@@ -10,7 +10,10 @@ export async function fetchWithAnonGate(
 ): Promise<Response | null> {
   const res = await fetch(url, init);
   if (res.status === 429) {
-    const body = await res.clone().json().catch(() => ({}));
+    const body = await res
+      .clone()
+      .json()
+      .catch(() => ({}));
     if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
       onAnonLimit();
       return null;

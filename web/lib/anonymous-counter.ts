@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+
 import { prisma } from "@/lib/prisma";
 
 export const ANON_LIMIT = 5;
@@ -45,9 +46,7 @@ export async function incrementAnonymousCounter(ip: string): Promise<void> {
 // Returns { ok: false } when over the limit; the caller should respond
 // 429 ANONYMOUS_LIMIT_REACHED. When ok, the counter has been incremented
 // and the caller should proceed.
-export async function gateAnonymousRequest(): Promise<
-  { ok: true } | { ok: false }
-> {
+export async function gateAnonymousRequest(): Promise<{ ok: true } | { ok: false }> {
   const ip = await getRequestIp();
   const { overLimit } = await checkAnonymousLimit(ip);
   if (overLimit) return { ok: false };

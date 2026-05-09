@@ -4,17 +4,20 @@ const VARIANTS = [
   {
     slug: "dark",
     name: "Dark · Bordered",
-    description: "Текущая палитра zinc, мягкие границы у карточек, hover-подсветка. Ближе всего к нынешнему UI, отполировано под новые требования.",
+    description:
+      "Текущая палитра zinc, мягкие границы у карточек, hover-подсветка. Ближе всего к нынешнему UI, отполировано под новые требования.",
   },
   {
     slug: "airy",
     name: "Dark · Airy",
-    description: "Та же тёмная палитра, но без рамок у карточек — больше воздуха, обложки доминируют, текст и кнопки парят на фоне.",
+    description:
+      "Та же тёмная палитра, но без рамок у карточек — больше воздуха, обложки доминируют, текст и кнопки парят на фоне.",
   },
   {
     slug: "light",
     name: "Light",
-    description: "Светлая палитра — off-white фон, тёмный текст. Та же структура, чтобы посмотреть как тема работает в свету.",
+    description:
+      "Светлая палитра — off-white фон, тёмный текст. Та же структура, чтобы посмотреть как тема работает в свету.",
   },
 ];
 
@@ -26,7 +29,8 @@ export default function PrototypesIndex() {
           <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">UI prototypes</p>
           <h1 className="text-3xl font-semibold tracking-tight">Three minimalist variants</h1>
           <p className="text-sm text-zinc-400 max-w-xl">
-            Большие квадратные обложки, явная кнопка Find similar и ссылка Open in. Без BPM/тональности — этих данных нет в пайплайне.
+            Большие квадратные обложки, явная кнопка Find similar и ссылка Open in. Без BPM/тональности — этих данных
+            нет в пайплайне.
           </p>
         </header>
 

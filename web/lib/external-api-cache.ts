@@ -53,11 +53,7 @@ function logCacheEvent(
  * Errors are swallowed and logged: a cache outage must never block the caller
  * from making the live external request.
  */
-export async function lookupCache<T>(
-  source: string,
-  cacheKey: string,
-  ttlSeconds?: number,
-): Promise<T | null> {
+export async function lookupCache<T>(source: string, cacheKey: string, ttlSeconds?: number): Promise<T | null> {
   if (!source || !cacheKey) return null;
   const start = Date.now();
   let row: CacheRow | null;
@@ -103,11 +99,7 @@ export async function lookupCache<T>(
  * — Prisma's @updatedAt bump resets the TTL window on every write, which is
  * what callers want (re-resolution after stale should reset the clock).
  */
-export async function upsertCache<T>(
-  source: string,
-  cacheKey: string,
-  payload: T,
-): Promise<void> {
+export async function upsertCache<T>(source: string, cacheKey: string, payload: T): Promise<void> {
   if (!source || !cacheKey) return;
   try {
     await prisma.externalApiCache.upsert({

@@ -43,9 +43,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     setLoading(true);
     try {
       const releaseType = release.type === "master" ? "master" : "release";
-      const res = await fetch(
-        `/api/discography/tracklist?releaseId=${release.id}&type=${releaseType}`
-      );
+      const res = await fetch(`/api/discography/tracklist?releaseId=${release.id}&type=${releaseType}`);
       const data: Track[] = await res.json();
       setTracks(data);
       setLoaded(true);
@@ -75,9 +73,12 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={release.thumb} alt={release.title} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-td-fg-m" style={{
-              background: "linear-gradient(135deg, rgba(185,163,232,0.10), rgba(180,120,80,0.06))",
-            }}>
+            <div
+              className="w-full h-full flex items-center justify-center text-td-fg-m"
+              style={{
+                background: "linear-gradient(135deg, rgba(185,163,232,0.10), rgba(180,120,80,0.06))",
+              }}
+            >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
               </svg>
@@ -87,15 +88,11 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-medium tracking-[-0.01em] text-td-fg truncate">
-            {release.title}
-          </p>
+          <p className="text-[15px] font-medium tracking-[-0.01em] text-td-fg truncate">{release.title}</p>
           <div className="flex gap-3 mt-1 font-mono-td text-[12px] text-td-fg-d flex-wrap">
             {release.year && <span>{release.year}</span>}
             {release.format && <span>{release.format}</span>}
-            {release.label && (
-              <span style={{ color: "var(--td-fg-m)" }}>{release.label}</span>
-            )}
+            {release.label && <span style={{ color: "var(--td-fg-m)" }}>{release.label}</span>}
           </div>
         </div>
 
@@ -103,20 +100,25 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
         <svg
           className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
           style={{ color: "var(--td-fg-m)" }}
-          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {open && (
-        <div
-          className="px-2 py-2 flex flex-col gap-0.5 border-t"
-          style={{ borderColor: "var(--td-hair)" }}
-        >
+        <div className="px-2 py-2 flex flex-col gap-0.5 border-t" style={{ borderColor: "var(--td-hair)" }}>
           {loading && (
             <div className="flex items-center justify-center py-6">
-              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+              <svg
+                className="w-5 h-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                style={{ color: "var(--td-accent)" }}
+              >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>

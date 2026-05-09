@@ -3,11 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "with-env": "dotenv -e ../.env --",
-    "setup": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+    "codegen": "pnpm run with-env .venv/bin/python scripts/export_openapi.py",
     "dev": "pnpm run with-env .venv/bin/uvicorn app.main:app --reload",
+    "setup": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
     "start": "sh start.sh",
     "test": "pnpm run with-env .venv/bin/pytest",
-    "codegen": "pnpm run with-env .venv/bin/python scripts/export_openapi.py"
+    "with-env": "dotenv -e ../.env --"
   }
 }

@@ -15,7 +15,8 @@
  *
  * Run with:  pnpm test:smoke
  */
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
 const WEB_URL = "http://localhost:3000";
@@ -67,9 +68,7 @@ describe("/api/dislikes CRUD", () => {
       artist: string;
       title: string;
     }>;
-    const found = list.some(
-      (d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE,
-    );
+    const found = list.some((d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE);
     expect(found).toBe(true);
   });
 
@@ -95,9 +94,7 @@ describe("/api/dislikes CRUD", () => {
       artist: string;
       title: string;
     }>;
-    const found = list.some(
-      (d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE,
-    );
+    const found = list.some((d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE);
     expect(found).toBe(false);
   });
 
@@ -170,9 +167,7 @@ describe("/api/search dislike-filter behavior", () => {
     expect(r1.tracks.length).toBeGreaterThan(0);
 
     const target = r1.tracks[0];
-    console.log(
-      `[dislike smoke] disliking "${target.artist} - ${target.title}" (rank 1, source=${target.source})`,
-    );
+    console.log(`[dislike smoke] disliking "${target.artist} - ${target.title}" (rank 1, source=${target.source})`);
 
     const post = await fetch(`${WEB_URL}/api/dislikes`, {
       method: "POST",

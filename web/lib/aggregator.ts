@@ -20,14 +20,14 @@ export interface FusedCandidate extends TrackMeta {
 // whitelist (Remix, Dub, Live, VIP, Instrumental, …) survives — those identify
 // distinct recordings.
 const TITLE_STRIP_PATTERNS: RegExp[] = [
-  /\s*[\(\[]original mix[\)\]]/gi,
-  /\s*[\(\[]extended(?:\s+mix)?[\)\]]/gi,
-  /\s*[\(\[]radio\s+(?:edit|mix)[\)\]]/gi,
-  /\s*[\(\[](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[\)\]]/gi,
-  /\s*[\(\[](?:feat\.|ft\.|featuring)\s+[^\)\]]*[\)\]]/gi,
-  /\s*[\(\[](?:prod\.|produced\s+by)\s+[^\)\]]*[\)\]]/gi,
-  /\s*[\(\[](?:clean|explicit)[\)\]]/gi,
-  /\s*[\(\[]bonus\s+track[\)\]]/gi,
+  /\s*[([]original mix[)\]]/gi,
+  /\s*[([]extended(?:\s+mix)?[)\]]/gi,
+  /\s*[([]radio\s+(?:edit|mix)[)\]]/gi,
+  /\s*[([](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[)\]]/gi,
+  /\s*[([](?:feat\.|ft\.|featuring)\s+[^)\]]*[)\]]/gi,
+  /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
+  /\s*[([](?:clean|explicit)[)\]]/gi,
+  /\s*[([]bonus\s+track[)\]]/gi,
 ];
 
 export function normalizeTitle(s: string): string {
@@ -97,10 +97,7 @@ export function rrfFuse(sourceLists: SourceList[], k: number = RRF_K): FusedCand
 // Prevents any single artist from appearing more than `maxConsecutive` times
 // in a row. Without this, three top RRF-ranked tracks by the same artist would
 // all cluster at the head of the list.
-function diversifyArtists(
-  tracks: FusedCandidate[],
-  maxConsecutive = 2,
-): FusedCandidate[] {
+function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCandidate[] {
   if (tracks.length <= maxConsecutive) return tracks;
 
   const result: FusedCandidate[] = [];
@@ -111,9 +108,7 @@ function diversifyArtists(
     const window = recentArtists.slice(-maxConsecutive);
     const idx = pool.findIndex((t) => {
       const a = normalizeArtist(t.artist);
-      return !(
-        window.length === maxConsecutive && window.every((w) => w === a)
-      );
+      return !(window.length === maxConsecutive && window.every((w) => w === a));
     });
     const pick = pool.splice(idx >= 0 ? idx : 0, 1)[0];
     result.push(pick);

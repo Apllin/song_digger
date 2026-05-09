@@ -11,7 +11,7 @@
  *
  * Run with:  pnpm test:smoke
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const WEB_URL = "http://localhost:3000";
 const POLL_INTERVAL_MS = 500;
@@ -96,10 +96,7 @@ describe("/api/search smoke", () => {
     // Multiple source badges should be represented in the top-20 — RRF
     // coverage check, not single-source dominance.
     const topSources = new Set(final.tracks.slice(0, 20).map((t) => t.source));
-    console.log(
-      `[/api/search smoke] top-20 source mix:`,
-      Array.from(topSources),
-    );
+    console.log(`[/api/search smoke] top-20 source mix:`, Array.from(topSources));
     expect(topSources.size).toBeGreaterThanOrEqual(3);
   }, 90_000);
 });

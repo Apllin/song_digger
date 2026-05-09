@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { resolveEmbed } from "@/lib/embed-resolver";
+
 import { lookupEmbedCache, upsertEmbedCache } from "@/lib/embed-cache";
+import { resolveEmbed } from "@/lib/embed-resolver";
 
 const ParamSchema = z.string().trim().min(1).max(500);
 

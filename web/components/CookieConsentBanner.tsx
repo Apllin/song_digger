@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+
 import { acceptCookieConsentAction } from "@/app/actions/cookie-consent";
 
 export function CookieConsentBanner() {
@@ -31,13 +32,9 @@ export function CookieConsentBanner() {
           boxShadow: "0 18px 50px rgba(0, 0, 0, 0.5)",
         }}
       >
-        <p
-          className="text-[14px] leading-relaxed"
-          style={{ color: "var(--td-fg-d)" }}
-        >
-          This site uses strictly necessary cookies to authenticate sessions
-          and verify requests. No analytics, advertising, or third-party
-          tracking is performed. See our{" "}
+        <p className="text-[14px] leading-relaxed" style={{ color: "var(--td-fg-d)" }}>
+          This site uses strictly necessary cookies to authenticate sessions and verify requests. No analytics,
+          advertising, or third-party tracking is performed. See our{" "}
           <a
             href="/cookies"
             className="underline transition-colors hover:text-td-fg"

@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { defineConfig } from "vitest/config";
 
 // Default `vitest run` covers fast unit tests under lib/ and app/.
 // Smoke and speed suites under tests/ are opt-in via dedicated scripts

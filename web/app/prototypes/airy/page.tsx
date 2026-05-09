@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MOCK_QUERY, MOCK_TRACKS, SOURCE_LABEL, type MockTrack } from "../data";
+import { MOCK_QUERY, MOCK_TRACKS, type MockTrack, SOURCE_LABEL } from "../data";
 
 type Theme = "dark" | "light";
 
@@ -158,13 +158,13 @@ function TrackCard({ track, theme }: { track: MockTrack; theme: Theme }) {
 
       <div className="flex flex-col gap-1.5">
         <div className="min-w-0">
-          <p className={`font-medium text-xs ${p.title} truncate`} title={track.title}>{track.title}</p>
+          <p className={`font-medium text-xs ${p.title} truncate`} title={track.title}>
+            {track.title}
+          </p>
           <div className="flex items-center gap-1 min-w-0">
             <p className={`text-[11px] ${p.subtitle} truncate`}>{track.artist}</p>
             <button
-              onClick={() =>
-                window.open(`/discography?artist=${encodeURIComponent(track.artist)}`, "_blank")
-              }
+              onClick={() => window.open(`/discography?artist=${encodeURIComponent(track.artist)}`, "_blank")}
               className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
               aria-label={`${track.artist} discography`}
               title="Discography"
@@ -189,7 +189,9 @@ function TrackCard({ track, theme }: { track: MockTrack; theme: Theme }) {
           Open in {SOURCE_LABEL[track.source]} ↗
         </a>
 
-        <button className={`self-start text-[11px] font-medium px-2.5 py-1 rounded-full border ${p.button} transition-colors`}>
+        <button
+          className={`self-start text-[11px] font-medium px-2.5 py-1 rounded-full border ${p.button} transition-colors`}
+        >
           Find similar
         </button>
       </div>
@@ -201,7 +203,9 @@ function PrototypeBackLink({ theme }: { theme: Theme }) {
   const p = PALETTE[theme];
   return (
     <div className={`flex items-center justify-between text-[10px] uppercase tracking-widest ${p.meta}`}>
-      <Link href="/prototypes" className="hover:opacity-100 opacity-70">← All prototypes</Link>
+      <Link href="/prototypes" className="hover:opacity-100 opacity-70">
+        ← All prototypes
+      </Link>
       <span>Dark · Airy</span>
     </div>
   );

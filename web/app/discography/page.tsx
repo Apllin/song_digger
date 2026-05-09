@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useRef, Suspense } from "react";
 import { useAtom, useSetAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef } from "react";
+
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
-import { useSearchHistory } from "@/lib/use-search-history";
-import { useDebounce } from "@/lib/use-debounce";
-import { discographyAtom, type Artist, type Release } from "@/lib/atoms/discography";
 import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
+import { type Artist, discographyAtom, type Release } from "@/lib/atoms/discography";
 import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
+import { useDebounce } from "@/lib/use-debounce";
+import { useSearchHistory } from "@/lib/use-search-history";
 
 const PAGE_SIZE = 15;
 
 async function fetchAllReleases(artistId: number): Promise<Release[]> {
   const PER_PAGE = 100;
-  const first = await fetch(
-    `/api/discography/releases?artistId=${artistId}&page=1&perPage=${PER_PAGE}`
-  ).then((r) => r.json());
+  const first = await fetch(`/api/discography/releases?artistId=${artistId}&page=1&perPage=${PER_PAGE}`).then((r) =>
+    r.json(),
+  );
 
   const releases: Release[] = first.releases ?? [];
   const totalPages: number = first.pagination?.pages ?? 1;
@@ -24,10 +25,8 @@ async function fetchAllReleases(artistId: number): Promise<Release[]> {
   if (totalPages > 1) {
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, i) =>
-        fetch(
-          `/api/discography/releases?artistId=${artistId}&page=${i + 2}&perPage=${PER_PAGE}`
-        ).then((r) => r.json())
-      )
+        fetch(`/api/discography/releases?artistId=${artistId}&page=${i + 2}&perPage=${PER_PAGE}`).then((r) => r.json()),
+      ),
     );
     for (const page of rest) {
       releases.push(...(page.releases ?? []));
@@ -81,11 +80,7 @@ function DiscographyContent() {
       loadingArtists: true,
     }));
     addToHistory(name);
-    fetchWithAnonGate(
-      `/api/discography/search?q=${encodeURIComponent(name)}`,
-      undefined,
-      onAnonLimit,
-    )
+    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(name)}`, undefined, onAnonLimit)
       .then((r) => (r ? r.json() : null))
       .then((data: Artist[] | null) => {
         if (!data) return;
@@ -105,17 +100,11 @@ function DiscographyContent() {
     didAutoLoad.current = true;
 
     setS((prev) => ({ ...prev, query: artistParam, loadingArtists: true }));
-    fetchWithAnonGate(
-      `/api/discography/search?q=${encodeURIComponent(artistParam)}`,
-      undefined,
-      onAnonLimit,
-    )
+    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(artistParam)}`, undefined, onAnonLimit)
       .then((r) => (r ? r.json() : null))
       .then((data: Artist[] | null) => {
         if (!data || data.length === 0) return;
-        const exact = data.find(
-          (a) => a.name.toLowerCase() === artistParam.toLowerCase()
-        );
+        const exact = data.find((a) => a.name.toLowerCase() === artistParam.toLowerCase());
         selectArtist(exact ?? data[0]);
       })
       .catch(() => {})
@@ -130,11 +119,7 @@ function DiscographyContent() {
       return;
     }
     setS((prev) => ({ ...prev, loadingArtists: true }));
-    fetchWithAnonGate(
-      `/api/discography/search?q=${encodeURIComponent(debouncedQuery)}`,
-      undefined,
-      onAnonLimit,
-    )
+    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(debouncedQuery)}`, undefined, onAnonLimit)
       .then((r) => (r ? r.json() : null))
       .then((data: Artist[] | null) => {
         if (!data) return;
@@ -166,9 +151,7 @@ function DiscographyContent() {
       .finally(() => setS((prev) => ({ ...prev, loadingReleases: false })));
   }, [s.selectedArtist, setS]);
 
-  const filteredReleases = (
-    s.roleFilter === "main" ? s.releases.filter((r) => r.role === "Main") : s.releases
-  )
+  const filteredReleases = (s.roleFilter === "main" ? s.releases.filter((r) => r.role === "Main") : s.releases)
     .slice()
     .sort((a, b) => {
       if (a.year == null && b.year == null) return 0;
@@ -208,8 +191,7 @@ function DiscographyContent() {
             style={{
               background: "rgba(14, 16, 28, 0.78)",
               border: "2px solid rgba(255, 255, 255, 0.55)",
-              boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
+              boxShadow: "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
               backdropFilter: "blur(20px) saturate(140%)",
               WebkitBackdropFilter: "blur(20px) saturate(140%)",
             }}
@@ -249,11 +231,7 @@ function DiscographyContent() {
               onKeyDown={(e) => {
                 const inHistory = s.showHistory && history.length > 0;
                 const inSuggestions = s.showSuggestions && s.artistSuggestions.length > 0;
-                const items = inHistory
-                  ? history
-                  : inSuggestions
-                  ? s.artistSuggestions.map((a) => a.name)
-                  : [];
+                const items = inHistory ? history : inSuggestions ? s.artistSuggestions.map((a) => a.name) : [];
                 const dropdownOpen = inHistory || inSuggestions;
 
                 if (!dropdownOpen) {
@@ -285,7 +263,12 @@ function DiscographyContent() {
             />
 
             {s.loadingArtists && (
-              <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+              <svg
+                className="w-5 h-5 animate-spin shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                style={{ color: "var(--td-accent)" }}
+              >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>
@@ -325,15 +308,26 @@ function DiscographyContent() {
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => { e.preventDefault(); searchArtistByName(h); }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      searchArtistByName(h);
+                    }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
                       background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
                       color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
                     }}
                   >
-                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: "var(--td-fg-m)" }}>
-                      <circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+                    <svg
+                      className="w-3.5 h-3.5 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
+                      style={{ color: "var(--td-fg-m)" }}
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
                     </svg>
                     {h}
                   </button>
@@ -356,7 +350,10 @@ function DiscographyContent() {
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => { e.preventDefault(); selectArtist(a); }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectArtist(a);
+                    }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
                       background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
@@ -385,15 +382,13 @@ function DiscographyContent() {
               style={{
                 background: "rgba(0, 0, 0, 0.30)",
                 borderColor: "rgba(255, 255, 255, 0.20)",
-                boxShadow:
-                  "0 0 0 1px rgba(255,255,255,0.06), 0 20px 60px rgba(0,0,0,0.55)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 20px 60px rgba(0,0,0,0.55)",
               }}
             >
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
-                  background:
-                    "radial-gradient(40% 80% at 80% 50%, var(--td-accent-soft), transparent 60%)",
+                  background: "radial-gradient(40% 80% at 80% 50%, var(--td-accent-soft), transparent 60%)",
                   opacity: 0.6,
                 }}
               />
@@ -404,8 +399,7 @@ function DiscographyContent() {
                 <div
                   className="w-[64px] h-[64px] sm:w-[88px] sm:h-[88px] rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
                   style={{
-                    background:
-                      "conic-gradient(from 30deg, #1a1620, #3a3140, #2a2530, #1a1620)",
+                    background: "conic-gradient(from 30deg, #1a1620, #3a3140, #2a2530, #1a1620)",
                     border: "1px solid var(--td-hair-2)",
                     boxShadow: "0 0 30px var(--td-accent-soft)",
                   }}
@@ -425,17 +419,12 @@ function DiscographyContent() {
                         border: "1px solid var(--td-hair-2)",
                       }}
                     >
-                      <div
-                        className="w-[7px] h-[7px] rounded-full"
-                        style={{ background: "var(--td-accent)" }}
-                      />
+                      <div className="w-[7px] h-[7px] rounded-full" style={{ background: "var(--td-accent)" }} />
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-accent">
-                    Artist
-                  </div>
+                  <div className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-accent">Artist</div>
                   <h2 className="font-display text-[22px] sm:text-[32px] md:text-[40px] font-normal leading-[1.05] m-0 mt-1 break-words">
                     {s.selectedArtist.name}
                   </h2>
@@ -460,9 +449,7 @@ function DiscographyContent() {
                       style={{
                         border: `1px solid ${active ? "var(--td-accent)" : "rgba(255, 255, 255, 0.22)"}`,
                         color: active ? "var(--td-accent)" : "var(--td-fg-d)",
-                        background: active
-                          ? "var(--td-accent-soft)"
-                          : "rgba(0, 0, 0, 0.30)",
+                        background: active ? "var(--td-accent-soft)" : "rgba(0, 0, 0, 0.30)",
                       }}
                     >
                       {f === "main" ? "Main releases" : "All"}
@@ -474,7 +461,12 @@ function DiscographyContent() {
 
             {s.loadingReleases && (
               <div className="flex justify-center py-10">
-                <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+                <svg
+                  className="w-6 h-6 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  style={{ color: "var(--td-accent)" }}
+                >
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
@@ -516,10 +508,7 @@ function DiscographyContent() {
                           }}
                         />
                         <div className="flex-1 min-w-0">
-                          <AlbumAccordion
-                            release={r}
-                            artistName={s.selectedArtist!.name}
-                          />
+                          <AlbumAccordion release={r} artistName={s.selectedArtist!.name} />
                         </div>
                       </div>
                     );

@@ -9,7 +9,8 @@
  *
  * Run with:  pnpm test:speed
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { aggregateTracks, type SourceList } from "@/lib/aggregator";
 import type { TrackMeta } from "@/lib/python-client";
 
@@ -17,14 +18,7 @@ const RUNS = 100;
 const P95_INDEX = Math.floor(RUNS * 0.95) - 1; // 94 for 100 runs
 const P95_THRESHOLD_MS = 200;
 
-const SOURCES = [
-  "cosine_club",
-  "youtube_music",
-  "bandcamp",
-  "yandex_music",
-  "lastfm",
-  "trackidnet",
-] as const;
+const SOURCES = ["cosine_club", "youtube_music", "bandcamp", "yandex_music", "lastfm", "trackidnet"] as const;
 
 function buildMockSourceLists(targetTotal: number): SourceList[] {
   // ~30% of tracks appear in 3+ sources, ~30% in 2, ~40% unique. Mirrors
@@ -43,18 +37,13 @@ function buildMockSourceLists(targetTotal: number): SourceList[] {
     const remaining = Math.floor(targetTotal / SOURCES.length);
     // Each source gets a slice of overlapPool (rotated to vary ranks)
     // plus its own unique tracks to fill out to `remaining`.
-    const overlap = overlapPool
-      .slice(sIdx * 8, sIdx * 8 + 25)
-      .map((t) => ({ ...t, source })); // appearances accrue under the source's own name
-    const unique: TrackMeta[] = Array.from(
-      { length: Math.max(0, remaining - overlap.length) },
-      (_, i) => ({
-        title: `Unique ${source} Track ${i}`,
-        artist: `Unique Artist ${sIdx}-${i}`,
-        source,
-        sourceUrl: `https://example.com/${source}/${i}`,
-      }),
-    );
+    const overlap = overlapPool.slice(sIdx * 8, sIdx * 8 + 25).map((t) => ({ ...t, source })); // appearances accrue under the source's own name
+    const unique: TrackMeta[] = Array.from({ length: Math.max(0, remaining - overlap.length) }, (_, i) => ({
+      title: `Unique ${source} Track ${i}`,
+      artist: `Unique Artist ${sIdx}-${i}`,
+      source,
+      sourceUrl: `https://example.com/${source}/${i}`,
+    }));
     return { source, tracks: [...overlap, ...unique] };
   });
   return lists;
@@ -78,9 +67,7 @@ describe("aggregator speed", () => {
     runs.sort((a, b) => a - b);
     const p50 = runs[Math.floor(RUNS / 2)];
     const p95 = runs[P95_INDEX];
-    console.log(
-      `[aggregator speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  total=${totalTracks} candidates`,
-    );
+    console.log(`[aggregator speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  total=${totalTracks} candidates`);
     expect(p95).toBeLessThan(P95_THRESHOLD_MS);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const headerStore = new Map<string, string>();
 const prismaMock = {
@@ -15,13 +15,8 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
-const {
-  ANON_LIMIT,
-  getRequestIp,
-  checkAnonymousLimit,
-  incrementAnonymousCounter,
-  gateAnonymousRequest,
-} = await import("./anonymous-counter");
+const { ANON_LIMIT, getRequestIp, checkAnonymousLimit, incrementAnonymousCounter, gateAnonymousRequest } =
+  await import("./anonymous-counter");
 
 beforeEach(() => {
   headerStore.clear();

@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+
 import { shouldRequireCaptcha } from "@/lib/brute-force";
 
 const Schema = z.object({
@@ -13,9 +14,7 @@ const Schema = z.object({
 // answer cannot be used to enumerate accounts. Returns false on
 // invalid email format — no probing for "is this email format
 // counted as a failure".
-export async function loginPrecheckAction(
-  email: string,
-): Promise<{ requireCaptcha: boolean }> {
+export async function loginPrecheckAction(email: string): Promise<{ requireCaptcha: boolean }> {
   const parsed = Schema.safeParse({ email });
   if (!parsed.success) return { requireCaptcha: false };
   const requireCaptcha = await shouldRequireCaptcha(parsed.data.email);

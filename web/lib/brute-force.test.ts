@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   loginAttempt: {
@@ -33,9 +33,7 @@ describe("checkIpRateLimit", () => {
   });
 
   it("returns blocked=true at exactly the cap", async () => {
-    prismaMock.loginAttempt.count.mockResolvedValueOnce(
-      BRUTE_FORCE_CONSTANTS.IP_MAX_ATTEMPTS,
-    );
+    prismaMock.loginAttempt.count.mockResolvedValueOnce(BRUTE_FORCE_CONSTANTS.IP_MAX_ATTEMPTS);
     const result = await checkIpRateLimit("1.2.3.4");
     expect(result.blocked).toBe(true);
   });
@@ -78,16 +76,12 @@ describe("shouldRequireCaptcha", () => {
   });
 
   it("requires CAPTCHA at exactly the threshold of failures", async () => {
-    prismaMock.loginAttempt.count.mockResolvedValueOnce(
-      BRUTE_FORCE_CONSTANTS.CAPTCHA_THRESHOLD,
-    );
+    prismaMock.loginAttempt.count.mockResolvedValueOnce(BRUTE_FORCE_CONSTANTS.CAPTCHA_THRESHOLD);
     expect(await shouldRequireCaptcha("user@example.com")).toBe(true);
   });
 
   it("does not require CAPTCHA below the threshold", async () => {
-    prismaMock.loginAttempt.count.mockResolvedValueOnce(
-      BRUTE_FORCE_CONSTANTS.CAPTCHA_THRESHOLD - 1,
-    );
+    prismaMock.loginAttempt.count.mockResolvedValueOnce(BRUTE_FORCE_CONSTANTS.CAPTCHA_THRESHOLD - 1);
     expect(await shouldRequireCaptcha("user@example.com")).toBe(false);
   });
 });
@@ -130,11 +124,7 @@ describe("getEmailFailedCount", () => {
     expect(where.email).toBe("u@e.com");
     expect(where.success).toBe(false);
     const ageMs = Date.now() - where.createdAt.gte.getTime();
-    expect(ageMs).toBeGreaterThanOrEqual(
-      BRUTE_FORCE_CONSTANTS.EMAIL_LOOKBACK_MS - 50,
-    );
-    expect(ageMs).toBeLessThanOrEqual(
-      BRUTE_FORCE_CONSTANTS.EMAIL_LOOKBACK_MS + 50,
-    );
+    expect(ageMs).toBeGreaterThanOrEqual(BRUTE_FORCE_CONSTANTS.EMAIL_LOOKBACK_MS - 50);
+    expect(ageMs).toBeLessThanOrEqual(BRUTE_FORCE_CONSTANTS.EMAIL_LOOKBACK_MS + 50);
   });
 });

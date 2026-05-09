@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { defineConfig } from "vitest/config";
 
 // Speed suite — opt-in via `pnpm test:speed`. Latency measurements are
 // only meaningful when nothing else competes for CPU/network on the

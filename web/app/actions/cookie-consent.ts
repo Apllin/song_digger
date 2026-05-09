@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+
 import { COOKIE_CONSENT_NAME } from "@/lib/cookie-consent";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;

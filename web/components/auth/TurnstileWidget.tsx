@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 interface Props {
   onVerify: (token: string) => void;
@@ -35,13 +35,7 @@ declare global {
 // from the root layout via next/script. We poll the global a few
 // times in case render mounts before the script finishes loading.
 // ADR-0021.
-export function TurnstileWidget({
-  onVerify,
-  onExpire,
-  onError,
-  action,
-  theme = "auto",
-}: Props) {
+export function TurnstileWidget({ onVerify, onExpire, onError, action, theme = "auto" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   // Keep the latest callbacks in refs so the effect doesn't re-render
@@ -49,9 +43,11 @@ export function TurnstileWidget({
   const onVerifyRef = useRef(onVerify);
   const onExpireRef = useRef(onExpire);
   const onErrorRef = useRef(onError);
-  onVerifyRef.current = onVerify;
-  onExpireRef.current = onExpire;
-  onErrorRef.current = onError;
+  useLayoutEffect(() => {
+    onVerifyRef.current = onVerify;
+    onExpireRef.current = onExpire;
+    onErrorRef.current = onError;
+  });
 
   useEffect(() => {
     const sitekey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;

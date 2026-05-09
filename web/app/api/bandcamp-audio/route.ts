@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+
 import { extractBandcampAudio } from "@/lib/scrapers/bandcamp";
 
 export async function GET(req: NextRequest) {

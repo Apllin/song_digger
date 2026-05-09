@@ -4,8 +4,7 @@
  * Returns embedUrl or null.
  */
 
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
 interface EmbedResult {
   embedUrl: string | null;
@@ -23,16 +22,10 @@ function cleanArtist(artist: string): string {
   return artist.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
-async function tryYtmExact(
-  title: string,
-  cleanedArtist: string,
-): Promise<EmbedResult | null> {
+async function tryYtmExact(title: string, cleanedArtist: string): Promise<EmbedResult | null> {
   try {
     const params = new URLSearchParams({ title, artist: cleanedArtist });
-    const res = await fetch(
-      `${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`,
-      { signal: AbortSignal.timeout(8000) }
-    );
+    const res = await fetch(`${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.embedUrl) return null;
@@ -47,10 +40,7 @@ async function tryYtmExact(
   }
 }
 
-async function tryBandcamp(
-  title: string,
-  cleanedArtist: string,
-): Promise<EmbedResult | null> {
+async function tryBandcamp(title: string, cleanedArtist: string): Promise<EmbedResult | null> {
   try {
     const { searchBandcampSimilar } = await import("@/lib/scrapers/bandcamp");
     const query = `${cleanedArtist} - ${title}`;
@@ -65,9 +55,7 @@ async function tryBandcamp(
       const tTitle = t.title.toLowerCase();
       const tArtist = t.artist.toLowerCase();
       const titleMatch = tTitle.includes(titleLower) || titleLower.includes(tTitle);
-      const artistMatch = artistWords.some(
-        (w) => tArtist.includes(w) || tTitle.includes(w)
-      );
+      const artistMatch = artistWords.some((w) => tArtist.includes(w) || tTitle.includes(w));
       return titleMatch && artistMatch;
     });
     if (!match) return null;
@@ -82,19 +70,13 @@ async function tryBandcamp(
   }
 }
 
-export async function resolveEmbed(
-  title: string,
-  artist: string
-): Promise<EmbedResult> {
+export async function resolveEmbed(title: string, artist: string): Promise<EmbedResult> {
   const cleanedArtist = cleanArtist(artist);
 
   // Run both lookups in parallel, then prefer YTM when it has a hit.
   // Priority is preserved (YTM > Bandcamp); the Bandcamp work is "free"
   // when YTM hits, and saves the full YTM timeout when YTM misses.
-  const [ytm, bc] = await Promise.all([
-    tryYtmExact(title, cleanedArtist),
-    tryBandcamp(title, cleanedArtist),
-  ]);
+  const [ytm, bc] = await Promise.all([tryYtmExact(title, cleanedArtist), tryBandcamp(title, cleanedArtist)]);
 
   return ytm ?? bc ?? { embedUrl: null, source: null };
 }

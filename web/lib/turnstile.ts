@@ -9,8 +9,7 @@
 //   site key always-fail:    2x00000000000000000000AB
 //   secret key always-fail:  2x0000000000000000000000000000000AA
 
-const VERIFY_URL =
-  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 interface TurnstileVerifyResponse {
   success: boolean;
@@ -58,11 +57,7 @@ export async function verifyTurnstileToken(
     }
     const data = (await res.json()) as TurnstileVerifyResponse;
     if (!data.success) {
-      console.warn(
-        `[turnstile] verification failed: ${
-          data["error-codes"]?.join(", ") ?? "no error codes"
-        }`,
-      );
+      console.warn(`[turnstile] verification failed: ${data["error-codes"]?.join(", ") ?? "no error codes"}`);
     }
     return data.success === true;
   } catch (err) {

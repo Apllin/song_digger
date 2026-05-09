@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { usePlayer, type PlayerTrack } from "@/lib/atoms/player";
+import { useCallback, useState } from "react";
+
+import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
 
 interface Track {
   id: string;
@@ -48,14 +49,9 @@ export function TrackCard({
   // not-playing right after resolution.
   const isPlaying = player.track?.id === track.id;
 
-  const videoId =
-    track.source === "youtube_music"
-      ? track.sourceUrl.split("v=")[1]?.split("&")[0] ?? null
-      : null;
+  const videoId = track.source === "youtube_music" ? (track.sourceUrl.split("v=")[1]?.split("&")[0] ?? null) : null;
 
-  const effectiveCover =
-    track.coverUrl ??
-    (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
+  const effectiveCover = track.coverUrl ?? (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
 
   const handlePlay = useCallback(() => {
     if (isPlaying) {
@@ -73,7 +69,7 @@ export function TrackCard({
         embedUrl: track.embedUrl,
       },
       playlist,
-      trackIndex
+      trackIndex,
     );
   }, [isPlaying, track, playlist, trackIndex, player]);
 
@@ -94,8 +90,7 @@ export function TrackCard({
       style={{
         background: "rgba(36, 40, 60, 0.62)",
         borderColor: "rgba(255, 255, 255, 0.18)",
-        boxShadow:
-          "0 0 0 1px rgba(255,255,255,0.04) inset, 0 12px 32px rgba(0,0,0,0.35)",
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset, 0 12px 32px rgba(0,0,0,0.35)",
         backdropFilter: "blur(16px) saturate(140%)",
         WebkitBackdropFilter: "blur(16px) saturate(140%)",
       }}
@@ -104,12 +99,12 @@ export function TrackCard({
       <div
         className="relative aspect-square rounded-lg overflow-hidden"
         style={{
-          background:
-            "linear-gradient(135deg, rgba(185,163,232,0.10), rgba(180,120,80,0.06))",
+          background: "linear-gradient(135deg, rgba(185,163,232,0.10), rgba(180,120,80,0.06))",
           border: "1px solid var(--td-hair)",
         }}
       >
         {effectiveCover && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={effectiveCover}
             alt={`${track.title} cover`}
@@ -147,11 +142,7 @@ export function TrackCard({
             }}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              {isPlaying ? (
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-              ) : (
-                <path d="M8 5v14l11-7z" />
-              )}
+              {isPlaying ? <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /> : <path d="M8 5v14l11-7z" />}
             </svg>
           </span>
         </button>
@@ -183,12 +174,8 @@ export function TrackCard({
               }}
               className="w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
               style={{
-                background: isFavorite
-                  ? "rgba(112, 132, 255, 0.18)"
-                  : "rgba(15,13,16,0.7)",
-                border: `1px solid ${
-                  isFavorite ? "#7084ff" : "rgba(255,255,255,0.18)"
-                }`,
+                background: isFavorite ? "rgba(112, 132, 255, 0.18)" : "rgba(15,13,16,0.7)",
+                border: `1px solid ${isFavorite ? "#7084ff" : "rgba(255,255,255,0.18)"}`,
                 color: isFavorite ? "#7084ff" : "var(--td-fg)",
               }}
               aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -224,13 +211,7 @@ export function TrackCard({
               aria-label="Not interested"
               title="Dislike"
             >
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -244,10 +225,7 @@ export function TrackCard({
 
       {/* Info */}
       <div className="flex flex-col gap-0.5 min-w-0">
-        <p
-          className="text-[12px] font-medium leading-tight tracking-[-0.01em] text-td-fg truncate"
-          title={track.title}
-        >
+        <p className="text-[12px] font-medium leading-tight tracking-[-0.01em] text-td-fg truncate" title={track.title}>
           {track.title}
         </p>
         <div className="flex items-center gap-1 min-w-0">

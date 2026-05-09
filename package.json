@@ -2,24 +2,25 @@
   "name": "track-digger",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "turbo run build",
+    "codegen": "turbo run codegen",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "test": "turbo run test",
+    "lint:fix": "turbo run lint:fix && pnpm run sort-pkg",
     "setup": "turbo run setup",
-    "codegen": "turbo run codegen",
-    "stack:up": "pnpm codegen && docker-compose --env-file ./.env up --build",
-    "stack:down": "docker-compose --env-file ./.env down",
     "sort-pkg": "sort-package-json \"package.json\" \"web/package.json\" \"python-service/package.json\"",
-    "lint:fix": "turbo run lint:fix && pnpm run sort-pkg"
+    "stack:down": "docker-compose --env-file ./.env down",
+    "stack:up": "pnpm codegen && docker-compose --env-file ./.env up --build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",
     "sort-package-json": "^3.6.1",
     "turbo": "^2.9.6"
   },
+  "packageManager": "pnpm@10.33.2",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",

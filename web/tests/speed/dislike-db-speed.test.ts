@@ -11,7 +11,7 @@
  *
  * Run with:  pnpm test:speed
  */
-import { describe, it, expect, afterAll } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const SEED_ROWS = 200;
 const RUNS = 20;
@@ -21,7 +21,7 @@ const RUNS = 20;
 // not the SELECT itself. 250ms threshold catches a real regression
 // (query unindexed, N+1 introduced) without flapping on container NAT.
 const P95_THRESHOLD_MS = 250;
-const TEST_TAG = "speed-test-";  // marker on artistKey for clean teardown
+const TEST_TAG = "speed-test-"; // marker on artistKey for clean teardown
 
 let prisma: typeof import("@/lib/prisma").prisma | null = null;
 
@@ -85,9 +85,7 @@ describe("DislikedTrack query speed", () => {
     const p50 = sorted[Math.floor(RUNS / 2)];
     const p95Index = Math.max(0, Math.floor(RUNS * 0.95) - 1);
     const p95 = sorted[p95Index];
-    console.log(
-      `[dislike-db speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  rows=${SEED_ROWS}`,
-    );
+    console.log(`[dislike-db speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  rows=${SEED_ROWS}`);
     expect(p95).toBeLessThan(P95_THRESHOLD_MS);
   }, 60_000);
 });

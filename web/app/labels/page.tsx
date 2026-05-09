@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useRef, Suspense } from "react";
 import { useAtom, useSetAtom } from "jotai";
+import { Suspense, useEffect, useRef } from "react";
+
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
-import { useSearchHistory } from "@/lib/use-search-history";
-import { useDebounce } from "@/lib/use-debounce";
 import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
-import { labelsAtom, type Label } from "@/lib/atoms/labels";
 import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
+import { type Label, labelsAtom } from "@/lib/atoms/labels";
 import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
+import { useDebounce } from "@/lib/use-debounce";
+import { useSearchHistory } from "@/lib/use-search-history";
 
 const POPULAR_LABELS = [
-  "Tresor", "Ostgut Ton", "трип", "Lotus Parable",
-  "Hypnus Records", "Another Psyde Records", "SK_Eleven",
+  "Tresor",
+  "Ostgut Ton",
+  "трип",
+  "Lotus Parable",
+  "Hypnus Records",
+  "Another Psyde Records",
+  "SK_Eleven",
 ];
 
 const PAGE_SIZE = 15;
@@ -65,11 +71,7 @@ function LabelsContent() {
       loadingLabels: true,
     }));
     addToHistory(name);
-    fetchWithAnonGate(
-      `/api/discography/label/search?q=${encodeURIComponent(name)}`,
-      { signal: ac.signal },
-      onAnonLimit,
-    )
+    fetchWithAnonGate(`/api/discography/label/search?q=${encodeURIComponent(name)}`, { signal: ac.signal }, onAnonLimit)
       .then((r) => (r ? r.json() : null))
       .then((data: Label[] | null) => {
         if (ac.signal.aborted || !data) return;
@@ -132,7 +134,6 @@ function LabelsContent() {
   return (
     <div className="min-h-screen text-td-fg">
       <div className="max-w-7xl mx-auto px-4 sm:px-7 pt-8 sm:pt-16 pb-28 flex flex-col gap-5 sm:gap-7">
-
         {/* Hero: title + subtitle — same display family as the home
             page, scaled down so the inner page reads as secondary. */}
         <div className="pt-2 sm:pt-4">
@@ -147,16 +148,12 @@ function LabelsContent() {
           >
             Labels
           </h1>
-          <p className="mt-4 text-[18px] sm:text-[20px] font-semibold text-td-fg">
-            Browse releases by record label
-          </p>
+          <p className="mt-4 text-[18px] sm:text-[20px] font-semibold text-td-fg">Browse releases by record label</p>
         </div>
 
         {/* Popular labels — glass chips, same language as nav */}
         <div className="flex flex-col gap-3">
-          <p className="font-mono-td text-[10px] uppercase tracking-[0.14em] text-td-fg">
-            Popular techno labels
-          </p>
+          <p className="font-mono-td text-[10px] uppercase tracking-[0.14em] text-td-fg">Popular techno labels</p>
           <div className="flex flex-wrap gap-2 sm:gap-3">
             {POPULAR_LABELS.map((name) => {
               const active = s.selectedLabel?.name === name;
@@ -190,8 +187,7 @@ function LabelsContent() {
             style={{
               background: "rgba(14, 16, 28, 0.78)",
               borderColor: "rgba(255, 255, 255, 0.38)",
-              boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
+              boxShadow: "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
               backdropFilter: "blur(20px) saturate(140%)",
               WebkitBackdropFilter: "blur(20px) saturate(140%)",
             }}
@@ -231,11 +227,7 @@ function LabelsContent() {
               onKeyDown={(e) => {
                 const inHistory = s.showHistory && history.length > 0;
                 const inSuggestions = s.showSuggestions && s.suggestions.length > 0;
-                const items = inHistory
-                  ? history
-                  : inSuggestions
-                  ? s.suggestions.map((l) => l.name)
-                  : [];
+                const items = inHistory ? history : inSuggestions ? s.suggestions.map((l) => l.name) : [];
                 const dropdownOpen = inHistory || inSuggestions;
 
                 if (!dropdownOpen) {
@@ -267,7 +259,12 @@ function LabelsContent() {
             />
 
             {s.loadingLabels && (
-              <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+              <svg
+                className="w-5 h-5 animate-spin shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                style={{ color: "var(--td-accent)" }}
+              >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>
@@ -307,15 +304,26 @@ function LabelsContent() {
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => { e.preventDefault(); searchLabelByName(h); }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      searchLabelByName(h);
+                    }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
                       background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
                       color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
                     }}
                   >
-                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: "var(--td-fg-m)" }}>
-                      <circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+                    <svg
+                      className="w-3.5 h-3.5 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
+                      style={{ color: "var(--td-fg-m)" }}
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
                     </svg>
                     {h}
                   </button>
@@ -338,7 +346,10 @@ function LabelsContent() {
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => { e.preventDefault(); selectLabel(l); }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectLabel(l);
+                    }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
                       background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
@@ -362,9 +373,7 @@ function LabelsContent() {
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-display text-[20px] font-normal text-td-fg leading-tight">
-                  {s.selectedLabel.name}
-                </p>
+                <p className="font-display text-[20px] font-normal text-td-fg leading-tight">{s.selectedLabel.name}</p>
                 {!loadingReleases && releases.length > 0 && (
                   <p className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-fg-d mt-0.5">
                     {releases.length} release{releases.length !== 1 ? "s" : ""}
@@ -375,7 +384,12 @@ function LabelsContent() {
 
             {loadingReleases && (
               <div className="flex justify-center py-10">
-                <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
+                <svg
+                  className="w-6 h-6 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  style={{ color: "var(--td-accent)" }}
+                >
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
@@ -421,7 +435,9 @@ function LabelsContent() {
                 >
                   ← Prev
                 </button>
-                <span className="text-sm font-mono-td text-td-fg">{s.page} / {totalPages}</span>
+                <span className="text-sm font-mono-td text-td-fg">
+                  {s.page} / {totalPages}
+                </span>
                 <button
                   onClick={() => setS((prev) => ({ ...prev, page: Math.min(totalPages, prev.page + 1) }))}
                   disabled={s.page === totalPages}

@@ -1,11 +1,10 @@
-import type { TrackMeta } from "@/lib/python-client";
 import { cachedFetch } from "@/lib/dev-cache";
+import type { TrackMeta } from "@/lib/python-client";
 
 async function fetchHtml(url: string): Promise<string> {
   const res = await cachedFetch(url, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       Accept: "text/html,application/xhtml+xml",
     },
     signal: AbortSignal.timeout(10_000),
@@ -24,17 +23,14 @@ interface BcSearchResult {
   img?: string | null;
 }
 
-const BC_SEARCH_API =
-  "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic";
+const BC_SEARCH_API = "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic";
 
 /**
  * Bandcamp's HTML /search page is gated by an anti-bot JS challenge.
  * The undocumented JSON autocomplete API still works and returns the
  * track id directly (no need to parse search_item_id out of an href).
  */
-export async function searchBandcampSimilar(
-  query: string
-): Promise<TrackMeta[]> {
+export async function searchBandcampSimilar(query: string): Promise<TrackMeta[]> {
   try {
     const res = await fetch(BC_SEARCH_API, {
       method: "POST",
@@ -81,22 +77,16 @@ export async function searchBandcampSimilar(
  * JSON (`&quot;` not `"`); picks the first track's stream when given an
  * album page. URLs carry a short-lived token, so refetch each time.
  */
-export async function extractBandcampAudio(
-  url: string,
-): Promise<{ audioUrl: string; duration?: number } | null> {
+export async function extractBandcampAudio(url: string): Promise<{ audioUrl: string; duration?: number } | null> {
   try {
     const html = await fetchHtml(url);
-    const m =
-      html.match(/mp3-128&quot;\s*:\s*&quot;(.+?)&quot;/) ??
-      html.match(/"mp3-128"\s*:\s*"([^"]+)"/);
+    const m = html.match(/mp3-128&quot;\s*:\s*&quot;(.+?)&quot;/) ?? html.match(/"mp3-128"\s*:\s*"([^"]+)"/);
     if (!m) return null;
     const audioUrl = m[1]
       .replace(/&amp;/g, "&")
       .replace(/\\\//g, "/")
       .replace(/^http:/, "https:");
-    const durM =
-      html.match(/duration&quot;\s*:\s*([\d.]+)/) ??
-      html.match(/"duration"\s*:\s*([\d.]+)/);
+    const durM = html.match(/duration&quot;\s*:\s*([\d.]+)/) ?? html.match(/"duration"\s*:\s*([\d.]+)/);
     const duration = durM ? parseFloat(durM[1]) : undefined;
     return { audioUrl, duration };
   } catch (err) {
@@ -104,4 +94,3 @@ export async function extractBandcampAudio(
     return null;
   }
 }
-

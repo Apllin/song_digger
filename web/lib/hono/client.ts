@@ -1,5 +1,6 @@
 import { hc } from "hono/client";
-import { env } from "@/lib/env";
 import type { AppType } from "./app";
+
+import { env } from "@/lib/env";
 
 export const api = hc<AppType>(env.hostUrl).api;

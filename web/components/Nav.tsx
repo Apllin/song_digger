@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
 
 const TABS = [
@@ -47,9 +47,7 @@ function mobileChipStyle(active: boolean): React.CSSProperties {
     ...MOBILE_CHIP_BASE_STYLE,
     color: active ? "#7084ff" : "#ffffff",
     borderColor: active ? "#7084ff" : "rgba(255, 255, 255, 0.22)",
-    boxShadow: active
-      ? "0 0 0 1px rgba(112,132,255,0.35), 0 6px 18px rgba(0,0,0,0.35)"
-      : "0 6px 18px rgba(0,0,0,0.3)",
+    boxShadow: active ? "0 0 0 1px rgba(112,132,255,0.35), 0 6px 18px rgba(0,0,0,0.35)" : "0 6px 18px rgba(0,0,0,0.3)",
   };
 }
 
@@ -83,16 +81,8 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
     <>
       <nav className="relative z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-7 flex items-center gap-3 sm:gap-5 h-[68px] sm:h-[80px]">
-          <Link
-            href="/"
-            className="flex items-center group shrink-0"
-            aria-label="Track Digger — home"
-          >
-            <Logo
-              size={48}
-              wordmarkSize={26}
-              className="group-hover:opacity-90 transition-opacity"
-            />
+          <Link href="/" className="flex items-center group shrink-0" aria-label="Track Digger — home">
+            <Logo size={48} wordmarkSize={26} className="group-hover:opacity-90 transition-opacity" />
           </Link>
 
           {/* Desktop chips — long segmented control bar with a sliding
@@ -122,18 +112,8 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
             aria-controls="mobile-nav-drawer"
             onClick={() => setDrawerOpen(true)}
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
         </div>
@@ -172,18 +152,8 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
             aria-label="Close navigation"
             onClick={() => setDrawerOpen(false)}
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6 18L18 6M6 6l12 12"
-              />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -222,9 +192,7 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
 function DesktopChips({ pathname }: { pathname: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chipRefs = useRef<Array<HTMLAnchorElement | null>>([]);
-  const [pill, setPill] = useState<{ left: number; width: number } | null>(
-    null
-  );
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
   // First measurement should snap (no transition); subsequent ones animate.
   const [hasMeasured, setHasMeasured] = useState(false);
 

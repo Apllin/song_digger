@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   user: {
@@ -18,9 +18,7 @@ const sendPasswordResetEmail = vi.fn();
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendPasswordResetEmail }));
 
-const { forgotPasswordAction, resetPasswordAction } = await import(
-  "./password-reset"
-);
+const { forgotPasswordAction, resetPasswordAction } = await import("./password-reset");
 
 function fd(fields: Record<string, string>): FormData {
   const f = new FormData();
@@ -41,9 +39,7 @@ describe("forgotPasswordAction", () => {
 
   it("returns success silently for nonexistent user (no enumeration)", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
-    const result = await forgotPasswordAction(
-      fd({ email: "nobody@example.com" }),
-    );
+    const result = await forgotPasswordAction(fd({ email: "nobody@example.com" }));
     expect(result).toEqual({ success: true });
     expect(sendPasswordResetEmail).not.toHaveBeenCalled();
     expect(prismaMock.passwordResetToken.create).not.toHaveBeenCalled();
@@ -54,9 +50,7 @@ describe("forgotPasswordAction", () => {
       email: "admin@example.com",
       passwordHash: null,
     });
-    const result = await forgotPasswordAction(
-      fd({ email: "admin@example.com" }),
-    );
+    const result = await forgotPasswordAction(fd({ email: "admin@example.com" }));
     expect(result).toEqual({ success: true });
     expect(sendPasswordResetEmail).not.toHaveBeenCalled();
   });
@@ -69,9 +63,7 @@ describe("forgotPasswordAction", () => {
     prismaMock.passwordResetToken.findFirst.mockResolvedValueOnce({
       createdAt: new Date(Date.now() - 30 * 1000),
     });
-    const result = await forgotPasswordAction(
-      fd({ email: "user@example.com" }),
-    );
+    const result = await forgotPasswordAction(fd({ email: "user@example.com" }));
     expect(result).toEqual({ success: true });
     expect(sendPasswordResetEmail).not.toHaveBeenCalled();
     expect(prismaMock.passwordResetToken.create).not.toHaveBeenCalled();
@@ -89,9 +81,7 @@ describe("forgotPasswordAction", () => {
     });
     prismaMock.passwordResetToken.create.mockResolvedValueOnce({});
 
-    const result = await forgotPasswordAction(
-      fd({ email: "user@example.com" }),
-    );
+    const result = await forgotPasswordAction(fd({ email: "user@example.com" }));
     expect(result).toEqual({ success: true });
 
     const [emailArg, tokenArg] = sendPasswordResetEmail.mock.calls[0];
@@ -115,9 +105,7 @@ describe("forgotPasswordAction", () => {
     prismaMock.passwordResetToken.findFirst.mockResolvedValueOnce(null);
     sendPasswordResetEmail.mockRejectedValueOnce(new Error("Resend down"));
 
-    const result = await forgotPasswordAction(
-      fd({ email: "user@example.com" }),
-    );
+    const result = await forgotPasswordAction(fd({ email: "user@example.com" }));
     expect(result).toEqual({ success: true }); // still no enum
     expect(prismaMock.passwordResetToken.create).not.toHaveBeenCalled();
   });
@@ -129,25 +117,19 @@ describe("resetPasswordAction", () => {
   });
 
   it("rejects short password", async () => {
-    const result = await resetPasswordAction(
-      fd({ token: "a".repeat(64), password: "short" }),
-    );
+    const result = await resetPasswordAction(fd({ token: "a".repeat(64), password: "short" }));
     expect(result).toEqual({ error: "Invalid token or password" });
     expect(prismaMock.passwordResetToken.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects short token", async () => {
-    const result = await resetPasswordAction(
-      fd({ token: "a".repeat(8), password: "validpassword" }),
-    );
+    const result = await resetPasswordAction(fd({ token: "a".repeat(8), password: "validpassword" }));
     expect(result).toEqual({ error: "Invalid token or password" });
   });
 
   it("rejects nonexistent token", async () => {
     prismaMock.passwordResetToken.findUnique.mockResolvedValueOnce(null);
-    const result = await resetPasswordAction(
-      fd({ token: "a".repeat(64), password: "validpassword" }),
-    );
+    const result = await resetPasswordAction(fd({ token: "a".repeat(64), password: "validpassword" }));
     expect(result).toEqual({
       error: "Reset link invalid or expired. Request a new one.",
     });
@@ -160,9 +142,7 @@ describe("resetPasswordAction", () => {
       token: "a".repeat(64),
       expires: new Date(Date.now() - 60 * 1000),
     });
-    const result = await resetPasswordAction(
-      fd({ token: "a".repeat(64), password: "validpassword" }),
-    );
+    const result = await resetPasswordAction(fd({ token: "a".repeat(64), password: "validpassword" }));
     expect(result).toEqual({
       error: "Reset link invalid or expired. Request a new one.",
     });
@@ -180,9 +160,7 @@ describe("resetPasswordAction", () => {
       count: 1,
     });
 
-    const result = await resetPasswordAction(
-      fd({ token: "a".repeat(64), password: "validpassword" }),
-    );
+    const result = await resetPasswordAction(fd({ token: "a".repeat(64), password: "validpassword" }));
     expect(result).toEqual({ success: true });
 
     expect(prismaMock.user.update).toHaveBeenCalledOnce();

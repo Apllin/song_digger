@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { registerAction } from "@/app/actions/register";
+import { useState } from "react";
 import { TurnstileWidget } from "./TurnstileWidget";
+
+import { registerAction } from "@/app/actions/register";
 
 export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);

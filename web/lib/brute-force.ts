@@ -27,9 +27,7 @@ export const BRUTE_FORCE_CONSTANTS = {
   NOTIFY_THRESHOLD,
 };
 
-export async function checkIpRateLimit(
-  ip: string,
-): Promise<{ blocked: boolean; attemptsInWindow: number }> {
+export async function checkIpRateLimit(ip: string): Promise<{ blocked: boolean; attemptsInWindow: number }> {
   const since = new Date(Date.now() - IP_WINDOW_MS);
   const attemptsInWindow = await prisma.loginAttempt.count({
     where: { ip, success: false, createdAt: { gte: since } },
@@ -60,17 +58,11 @@ export async function shouldRequireCaptcha(email: string): Promise<boolean> {
 // THIS attempt (i.e., the current attempt is the NOTIFY_THRESHOLD-th
 // failure). Caller is responsible for sending the email — the
 // helper returns a boolean so the test surface is pure.
-export function shouldNotifyOnThisFailure(
-  prevFailedCount: number,
-): boolean {
+export function shouldNotifyOnThisFailure(prevFailedCount: number): boolean {
   return prevFailedCount + 1 === NOTIFY_THRESHOLD;
 }
 
-export async function recordLoginAttempt(
-  ip: string,
-  email: string | null,
-  success: boolean,
-): Promise<void> {
+export async function recordLoginAttempt(ip: string, email: string | null, success: boolean): Promise<void> {
   await prisma.loginAttempt.create({
     data: { ip, email, success },
   });

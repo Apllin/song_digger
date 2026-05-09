@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MOCK_QUERY, MOCK_TRACKS, SOURCE_LABEL, type MockTrack } from "../data";
+import { MOCK_QUERY, MOCK_TRACKS, type MockTrack, SOURCE_LABEL } from "../data";
 
 export default function LightPrototype() {
   const [query, setQuery] = useState(MOCK_QUERY);
@@ -47,7 +47,9 @@ function LightCard({ track }: { track: MockTrack }) {
 
       <div className="flex flex-col gap-2 p-3">
         <div className="min-w-0">
-          <p className="font-medium text-sm text-zinc-900 truncate" title={track.title}>{track.title}</p>
+          <p className="font-medium text-sm text-zinc-900 truncate" title={track.title}>
+            {track.title}
+          </p>
           <p className="text-xs text-zinc-500 truncate">{track.artist}</p>
         </div>
 
@@ -71,7 +73,9 @@ function LightCard({ track }: { track: MockTrack }) {
 function PrototypeHeader() {
   return (
     <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-zinc-400">
-      <Link href="/prototypes" className="hover:text-zinc-700">← All prototypes</Link>
+      <Link href="/prototypes" className="hover:text-zinc-700">
+        ← All prototypes
+      </Link>
       <span>Light</span>
     </div>
   );

@@ -20,12 +20,7 @@ function isEnabled(): boolean {
 }
 
 function keyOf(input: RequestInfo | URL, init?: RequestInit): string {
-  const url =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.toString()
-        : input.url;
+  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const method = (init?.method ?? "GET").toUpperCase();
   const body = init?.body ? String(init.body) : "";
   return `${method} ${url} ${body}`;
@@ -50,10 +45,7 @@ export function devCacheSize(): number {
   return cache.size;
 }
 
-export async function cachedFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
+export async function cachedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   if (!isEnabled()) return fetch(input, init);
 
   const k = keyOf(input, init);

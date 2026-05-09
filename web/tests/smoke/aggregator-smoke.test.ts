@@ -8,14 +8,9 @@
  *
  * Run with:  pnpm test:smoke
  */
-import { describe, it, expect } from "vitest";
-import {
-  aggregateTracks,
-  rrfFuse,
-  normalizeArtist,
-  normalizeTitle,
-  type SourceList,
-} from "@/lib/aggregator";
+import { describe, expect, it } from "vitest";
+
+import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse, type SourceList } from "@/lib/aggregator";
 import type { TrackMeta } from "@/lib/python-client";
 
 function track(overrides: Partial<TrackMeta> = {}): TrackMeta {
@@ -62,10 +57,8 @@ describe("aggregator smoke — artist diversification", () => {
   it("limits a single artist to 2 consecutive in the top-N", () => {
     // Five tracks by the same artist all top-ranked in one source —
     // diversification should interleave others so we never see 3 in a row.
-    const samey = (n: number) =>
-      track({ title: `S${n}`, artist: "Same Artist" });
-    const filler = (n: number) =>
-      track({ title: `F${n}`, artist: `Filler ${n}` });
+    const samey = (n: number) => track({ title: `S${n}`, artist: "Same Artist" });
+    const filler = (n: number) => track({ title: `F${n}`, artist: `Filler ${n}` });
 
     const lists: SourceList[] = [
       {

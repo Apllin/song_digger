@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
 // Discogs numeric IDs are bounded; we cap to int <= 10^9 to avoid
 // pathological strings landing in the upstream URL.
@@ -24,9 +23,7 @@ export async function GET(req: NextRequest) {
   }
   const { artistId, page, perPage } = parsed.data;
 
-  const res = await fetch(
-    `${PYTHON_SERVICE_URL}/discogs/artist/${artistId}/releases?page=${page}&per_page=${perPage}`
-  );
+  const res = await fetch(`${PYTHON_SERVICE_URL}/discogs/artist/${artistId}/releases?page=${page}&per_page=${perPage}`);
   if (!res.ok) return Response.json({ error: "upstream error" }, { status: 502 });
   return Response.json(await res.json());
 }

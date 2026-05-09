@@ -1,12 +1,13 @@
 "use server";
 
-import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+import { getRequestIp } from "@/lib/anonymous-counter";
 import { generateVerificationCode, hashCode } from "@/lib/auth-tokens";
 import { sendVerificationCode } from "@/lib/email";
+import { prisma } from "@/lib/prisma";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-import { getRequestIp } from "@/lib/anonymous-counter";
 
 const RegisterSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -17,13 +18,9 @@ const RegisterSchema = z.object({
   turnstileToken: z.string().optional(),
 });
 
-type RegisterResult =
-  | { success: true; email: string }
-  | { error: string };
+type RegisterResult = { success: true; email: string } | { error: string };
 
-export async function registerAction(
-  formData: FormData,
-): Promise<RegisterResult> {
+export async function registerAction(formData: FormData): Promise<RegisterResult> {
   // Honeypot: real users never fill the off-screen, aria-hidden
   // "website" field. A non-empty value is a bot fingerprint. Return
   // a fake success so the bot sees no signal it was detected — they

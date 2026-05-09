@@ -14,9 +14,7 @@ export default async function VerifyEmailPage({
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold">Verify your email</h1>
-          <p className="text-sm text-zinc-400 mt-2">
-            We sent a 6-digit code to {email || "your email"}
-          </p>
+          <p className="text-sm text-zinc-400 mt-2">We sent a 6-digit code to {email || "your email"}</p>
         </div>
         <VerifyEmailForm email={email} />
       </div>

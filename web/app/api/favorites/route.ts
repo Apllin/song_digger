@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+
 import { requireUser } from "@/lib/auth-utils";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   let user;
@@ -56,9 +57,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const parsed = FavoriteSchema.shape.trackId.safeParse(
-    searchParams.get("trackId"),
-  );
+  const parsed = FavoriteSchema.shape.trackId.safeParse(searchParams.get("trackId"));
   if (!parsed.success) {
     return Response.json({ error: "trackId required" }, { status: 400 });
   }

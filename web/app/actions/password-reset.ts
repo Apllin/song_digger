@@ -1,18 +1,17 @@
 "use server";
 
-import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
 import { generateResetToken } from "@/lib/auth-tokens";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { prisma } from "@/lib/prisma";
 
 const ForgotSchema = z.object({ email: z.string().email().toLowerCase() });
 
 type ForgotResult = { success: true } | { error: string };
 
-export async function forgotPasswordAction(
-  formData: FormData,
-): Promise<ForgotResult> {
+export async function forgotPasswordAction(formData: FormData): Promise<ForgotResult> {
   const parsed = ForgotSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: "Invalid email" };
 
@@ -57,9 +56,7 @@ const ResetSchema = z.object({
 
 type ResetResult = { success: true } | { error: string };
 
-export async function resetPasswordAction(
-  formData: FormData,
-): Promise<ResetResult> {
+export async function resetPasswordAction(formData: FormData): Promise<ResetResult> {
   const parsed = ResetSchema.safeParse({
     token: formData.get("token"),
     password: formData.get("password"),

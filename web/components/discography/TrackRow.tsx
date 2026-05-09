@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
 import { EmbedPlayer } from "@/components/EmbedPlayer";
 
 interface Track {
@@ -36,17 +37,14 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
   const controlled = onPlayToggle !== undefined;
   const showEmbed = controlled ? (isPlaying ?? false) : internalShow;
 
-  const artist =
-    track.artists.length > 0
-      ? track.artists.join(", ")
-      : track.albumArtist ?? "";
+  const artist = track.artists.length > 0 ? track.artists.join(", ") : (track.albumArtist ?? "");
 
   async function fetchEmbed(): Promise<EmbedResult | null> {
     if (embedResult) return embedResult;
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/embed?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(artist)}`
+        `/api/embed?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(artist)}`,
       );
       const data: EmbedResult = await res.json();
       setEmbedResult(data);
@@ -66,12 +64,14 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
 
   async function handlePlay() {
     if (showEmbed) {
-      controlled ? onPlayToggle?.() : setInternalShow(false);
+      if (controlled) onPlayToggle?.();
+      else setInternalShow(false);
       return;
     }
     const data = await fetchEmbed();
     if (data?.embedUrl) {
-      controlled ? onPlayToggle?.() : setInternalShow(true);
+      if (controlled) onPlayToggle?.();
+      else setInternalShow(true);
     }
   }
 
@@ -79,9 +79,7 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
     <div className="flex flex-col">
       <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 group transition-colors">
         {/* Position */}
-        <span className="w-6 text-center text-xs text-zinc-600 shrink-0">
-          {track.position}
-        </span>
+        <span className="w-6 text-center text-xs text-zinc-600 shrink-0">{track.position}</span>
 
         {/* Play button */}
         <button
@@ -109,20 +107,14 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
         {/* Title + artist */}
         <div className="flex-1 min-w-0">
           <p className="text-sm text-zinc-200 truncate">{track.title}</p>
-          {artist && (
-            <p className="text-xs text-zinc-500 truncate">{artist}</p>
-          )}
+          {artist && <p className="text-xs text-zinc-500 truncate">{artist}</p>}
         </div>
 
         {/* Duration */}
-        {track.duration && (
-          <span className="text-xs text-zinc-600 shrink-0">{track.duration}</span>
-        )}
+        {track.duration && <span className="text-xs text-zinc-600 shrink-0">{track.duration}</span>}
 
         {/* No embed badge */}
-        {embedResult && !embedResult.embedUrl && (
-          <span className="text-[10px] text-zinc-600 shrink-0">no player</span>
-        )}
+        {embedResult && !embedResult.embedUrl && <span className="text-[10px] text-zinc-600 shrink-0">no player</span>}
       </div>
 
       {/* Inline embed */}
@@ -133,7 +125,10 @@ export function TrackRow({ track, isPlaying, onPlayToggle, onPrev, onNext }: Tra
             embedUrl={embedResult.embedUrl}
             title={track.title}
             artist={artist}
-            sourceUrl={embedResult.sourceUrl ?? `https://music.youtube.com/search?q=${encodeURIComponent(artist + " " + track.title)}`}
+            sourceUrl={
+              embedResult.sourceUrl ??
+              `https://music.youtube.com/search?q=${encodeURIComponent(artist + " " + track.title)}`
+            }
             onPrev={onPrev}
             onNext={onNext}
           />

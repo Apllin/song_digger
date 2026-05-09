@@ -3,19 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "with-env": "dotenv -e ../.env --",
-    "dev": "pnpm run with-env next dev",
     "build": "pnpm run with-env next build",
-    "start": "pnpm run with-env next start",
+    "codegen": "kubb",
+    "dev": "pnpm run with-env next dev",
     "lint": "pnpm run with-env eslint",
     "lint:fix": "pnpm run with-env eslint --fix",
+    "start": "pnpm run with-env next start",
     "test": "vitest run",
-    "test:watch": "vitest",
+    "test:all": "pnpm test && pnpm test:smoke && pnpm test:speed",
     "test:smoke": "pnpm run with-env vitest run --config vitest.smoke.config.ts",
     "test:speed": "pnpm run with-env vitest run --config vitest.speed.config.ts",
-    "test:all": "pnpm test && pnpm test:smoke && pnpm test:speed",
-    "codegen": "kubb"
+    "test:watch": "vitest",
+    "with-env": "dotenv -e ../.env --"
   },
+  "prettier": "@vanya2h/prettier-config",
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@hono/zod-validator": "^0.7.6",
@@ -43,7 +44,6 @@
     "three": "^0.184.0",
     "zod": "^4.3.6"
   },
-  "prettier": "@vanya2h/prettier-config",
   "devDependencies": {
     "@kubb/cli": "^4.37.5",
     "@kubb/core": "^4.37.5",
@@ -55,9 +55,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vanya2h/eslint-config": "^0.6.0-rc.0",
-    "@vanya2h/prettier-config": "^0.6.0-rc.0",
-    "@vanya2h/typescript-config": "^0.6.0-rc.0",
+    "@vanya2h/eslint-config": "^0.6.0-rc.1",
+    "@vanya2h/prettier-config": "^0.6.0-rc.1",
+    "@vanya2h/typescript-config": "^0.6.0-rc.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "prettier": "^3.8.3",

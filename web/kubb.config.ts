@@ -1,8 +1,8 @@
 import { defineConfig } from "@kubb/core";
+import { pluginClient } from "@kubb/plugin-client";
 import { pluginOas } from "@kubb/plugin-oas";
 import { pluginTs } from "@kubb/plugin-ts";
 import { pluginZod } from "@kubb/plugin-zod";
-import { pluginClient } from "@kubb/plugin-client";
 
 export default defineConfig({
   root: ".",

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   user: {
@@ -38,17 +38,13 @@ describe("registerAction", () => {
   });
 
   it("rejects invalid email", async () => {
-    const result = await registerAction(
-      fd({ email: "not-an-email", password: "longenough" }),
-    );
+    const result = await registerAction(fd({ email: "not-an-email", password: "longenough" }));
     expect(result).toEqual({ error: "Invalid email or password format" });
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects password under 8 chars", async () => {
-    const result = await registerAction(
-      fd({ email: "user@example.com", password: "short" }),
-    );
+    const result = await registerAction(fd({ email: "user@example.com", password: "short" }));
     expect(result).toEqual({ error: "Invalid email or password format" });
   });
 
@@ -59,9 +55,7 @@ describe("registerAction", () => {
       passwordHash: "$2a$10$...",
       emailVerified: new Date(),
     });
-    const result = await registerAction(
-      fd({ email: "taken@example.com", password: "validpassword" }),
-    );
+    const result = await registerAction(fd({ email: "taken@example.com", password: "validpassword" }));
     expect(result).toEqual({ error: "Email already registered" });
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(sendVerificationCode).not.toHaveBeenCalled();
@@ -74,9 +68,7 @@ describe("registerAction", () => {
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
     sendVerificationCode.mockResolvedValueOnce(undefined);
 
-    const result = await registerAction(
-      fd({ email: "fresh@example.com", password: "validpassword" }),
-    );
+    const result = await registerAction(fd({ email: "fresh@example.com", password: "validpassword" }));
     expect(result).toEqual({ success: true, email: "fresh@example.com" });
 
     expect(prismaMock.user.create).toHaveBeenCalledOnce();
@@ -102,9 +94,7 @@ describe("registerAction", () => {
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
 
-    const result = await registerAction(
-      fd({ email: "daebatzaebis@gmail.com", password: "validpassword" }),
-    );
+    const result = await registerAction(fd({ email: "daebatzaebis@gmail.com", password: "validpassword" }));
     expect(result).toEqual({ success: true, email: "daebatzaebis@gmail.com" });
 
     expect(prismaMock.user.create).not.toHaveBeenCalled();
@@ -112,9 +102,7 @@ describe("registerAction", () => {
     expect(prismaMock.user.update.mock.calls[0][0].where).toEqual({
       email: "daebatzaebis@gmail.com",
     });
-    expect(prismaMock.user.update.mock.calls[0][0].data.passwordHash).toMatch(
-      /^\$2[aby]\$/,
-    );
+    expect(prismaMock.user.update.mock.calls[0][0].data.passwordHash).toMatch(/^\$2[aby]\$/);
   });
 
   it("normalizes email to lowercase before lookup and storage", async () => {
@@ -123,27 +111,19 @@ describe("registerAction", () => {
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
 
-    await registerAction(
-      fd({ email: "Mixed@Example.COM", password: "validpassword" }),
-    );
+    await registerAction(fd({ email: "Mixed@Example.COM", password: "validpassword" }));
 
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
       where: { email: "mixed@example.com" },
     });
-    expect(prismaMock.user.create.mock.calls[0][0].data.email).toBe(
-      "mixed@example.com",
-    );
+    expect(prismaMock.user.create.mock.calls[0][0].data.email).toBe("mixed@example.com");
   });
 
   it("does not write to DB if email send fails", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
-    sendVerificationCode.mockRejectedValueOnce(
-      new Error("Resend send failed (validation_error): bad sandbox"),
-    );
+    sendVerificationCode.mockRejectedValueOnce(new Error("Resend send failed (validation_error): bad sandbox"));
 
-    const result = await registerAction(
-      fd({ email: "x@example.com", password: "validpassword" }),
-    );
+    const result = await registerAction(fd({ email: "x@example.com", password: "validpassword" }));
     expect(result).toEqual({
       error: "We couldn't send your verification email. Please try again.",
     });
@@ -233,9 +213,7 @@ describe("registerAction", () => {
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
 
-    await registerAction(
-      fd({ email: "user@example.com", password: "validpassword" }),
-    );
+    await registerAction(fd({ email: "user@example.com", password: "validpassword" }));
 
     const stored = prismaMock.verificationCode.create.mock.calls[0][0].data;
     // bcrypt-hashed, not the raw 6-digit code

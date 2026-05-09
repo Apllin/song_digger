@@ -25,11 +25,7 @@ export default async function LoginPage({
         <div className="text-center">
           <h1 className="text-2xl font-semibold">Sign in</h1>
         </div>
-        {justVerified && (
-          <p className="text-sm text-center text-green-400">
-            Email verified! Sign in to continue.
-          </p>
-        )}
+        {justVerified && <p className="text-sm text-center text-green-400">Email verified! Sign in to continue.</p>}
         <LoginForm initialEmail={initialEmail} autoFocusPassword={justVerified} />
       </div>
     </main>

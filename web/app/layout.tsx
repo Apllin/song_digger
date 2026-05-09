@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono, Inter, Raleway } from "next/font/google";
 import Script from "next/script";
-import { Inter, Geist, Geist_Mono, Raleway } from "next/font/google";
+import "cal-sans/index.css";
+import "./globals.css";
+
+import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
+import { CookieConsentHost } from "@/components/CookieConsentHost";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
 import { PlayerProvider } from "@/components/PlayerProvider";
 import { QueryProvider } from "@/components/QueryProvider";
-import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
-import { CookieConsentHost } from "@/components/CookieConsentHost";
-import "cal-sans/index.css";
-import "./globals.css";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -71,10 +72,7 @@ export default function RootLayout({
             Cloudflare requires the script come from this exact URL with
             no proxy/cache, so we use the Script component but let it
             ship as a regular external script. ADR-0021. */}
-        <Script
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-          strategy="afterInteractive"
-        />
+        <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
       </body>
     </html>
   );

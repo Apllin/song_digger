@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   externalApiCache: {
@@ -48,9 +48,7 @@ describe("lookupCache", () => {
     });
     const result = await lookupCache<{ url: string }>("itunes_cover", "k1");
     expect(result).toEqual({ url: "https://example/cover.jpg" });
-    expect(consoleSpy.log.mock.calls.map((c) => c[0]).join("\n")).toContain(
-      "outcome=HIT",
-    );
+    expect(consoleSpy.log.mock.calls.map((c) => c[0]).join("\n")).toContain("outcome=HIT");
   });
 
   it("returns the payload on hit when within TTL", async () => {
@@ -58,11 +56,7 @@ describe("lookupCache", () => {
       payload: [{ id: 1 }],
       updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day old
     });
-    const result = await lookupCache<{ id: number }[]>(
-      "discogs_artist_releases",
-      "k",
-      30 * 86400,
-    );
+    const result = await lookupCache<{ id: number }[]>("discogs_artist_releases", "k", 30 * 86400);
     expect(result).toEqual([{ id: 1 }]);
   });
 
@@ -71,11 +65,7 @@ describe("lookupCache", () => {
       payload: { stale: true },
       updatedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
     });
-    const result = await lookupCache(
-      "discogs_artist_releases",
-      "k",
-      30 * 86400,
-    );
+    const result = await lookupCache("discogs_artist_releases", "k", 30 * 86400);
     expect(result).toBeNull();
     const logged = consoleSpy.log.mock.calls.map((c) => c[0]).join("\n");
     expect(logged).toContain("outcome=STALE");
@@ -101,9 +91,7 @@ describe("lookupCache", () => {
   });
 
   it("returns null when Prisma throws (soft-degrade)", async () => {
-    prismaMock.externalApiCache.findUnique.mockRejectedValueOnce(
-      new Error("connection refused"),
-    );
+    prismaMock.externalApiCache.findUnique.mockRejectedValueOnce(new Error("connection refused"));
     const result = await lookupCache("itunes_cover", "k");
     expect(result).toBeNull();
     expect(consoleSpy.error).toHaveBeenCalled();
@@ -152,9 +140,7 @@ describe("upsertCache", () => {
   });
 
   it("swallows DB errors (caller must always succeed)", async () => {
-    prismaMock.externalApiCache.upsert.mockRejectedValueOnce(
-      new Error("connection refused"),
-    );
+    prismaMock.externalApiCache.upsert.mockRejectedValueOnce(new Error("connection refused"));
     await expect(upsertCache("s", "k", { x: 1 })).resolves.toBeUndefined();
     expect(consoleSpy.error).toHaveBeenCalled();
   });

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useSearchHistory } from "@/lib/use-search-history";
+import { useEffect, useRef, useState } from "react";
+
 import { useDebounce } from "@/lib/use-debounce";
+import { useSearchHistory } from "@/lib/use-search-history";
 
 interface SearchBarProps {
   value: string;
@@ -51,19 +52,20 @@ function SuggestionIcon({ isTrack }: { isTrack: boolean }) {
 
 function ClockIcon() {
   return (
-    <svg className="w-3.5 h-3.5 shrink-0 text-zinc-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <svg
+      className="w-3.5 h-3.5 shrink-0 text-zinc-600"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+    >
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
     </svg>
   );
 }
 
-export function SearchBar({
-  value,
-  onChange,
-  onSubmit,
-  loading,
-}: SearchBarProps) {
+export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -80,7 +82,8 @@ export function SearchBar({
   const dropdownItems: { text: string; isHistory: boolean }[] = showHistory
     ? history.map((h) => ({ text: h, isHistory: true }))
     : suggestions.map((s) => ({ text: s, isHistory: false }));
-  const dropdownVisible = !loading && ((showHistory && history.length > 0) || (showSuggestions && suggestions.length > 0));
+  const dropdownVisible =
+    !loading && ((showHistory && history.length > 0) || (showSuggestions && suggestions.length > 0));
 
   // Fetch suggestions — with AbortController to cancel stale requests
   useEffect(() => {
@@ -196,8 +199,7 @@ export function SearchBar({
         style={{
           background: "rgba(14, 16, 28, 0.78)",
           border: "2px solid rgba(255, 255, 255, 0.55)",
-          boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
+          boxShadow: "0 0 0 1px rgba(255,255,255,0.10), 0 20px 60px rgba(0,0,0,0.55)",
           backdropFilter: "blur(20px) saturate(140%)",
           WebkitBackdropFilter: "blur(20px) saturate(140%)",
         }}
@@ -304,19 +306,11 @@ export function SearchBar({
                   }}
                   className="w-full flex items-center gap-3 text-left px-5 py-3 text-sm transition-colors"
                   style={{
-                    background:
-                      i === activeIndex
-                        ? "rgba(255, 255, 255, 0.10)"
-                        : "transparent",
-                    color:
-                      i === activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
+                    background: i === activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
+                    color: i === activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
                   }}
                 >
-                  {item.isHistory ? (
-                    <ClockIcon />
-                  ) : (
-                    <SuggestionIcon isTrack={isTrackSuggestion(item.text)} />
-                  )}
+                  {item.isHistory ? <ClockIcon /> : <SuggestionIcon isTrack={isTrackSuggestion(item.text)} />}
                   <HighlightMatch text={item.text} query={value} />
                 </button>
               </li>

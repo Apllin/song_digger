@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
+import { prisma } from "@/lib/prisma";
 
 export interface EmbedCacheEntry {
   embedUrl: string | null;
@@ -47,10 +47,7 @@ function isStaleNegative(row: { embedUrl: string | null; updatedAt: Date }): boo
  * behavior of normalize* on degenerate input. We never write empty keys,
  * so we never read them either.
  */
-export async function lookupEmbedCache(
-  artist: string,
-  title: string,
-): Promise<EmbedCacheEntry | null> {
+export async function lookupEmbedCache(artist: string, title: string): Promise<EmbedCacheEntry | null> {
   const { artistKey, titleKey } = embedCacheKey(artist, title);
   if (!artistKey || !titleKey) return null;
 
@@ -85,11 +82,7 @@ export async function lookupEmbedCache(
  * the negative-TTL check keys off, so a stale-negative re-resolution that
  * still returns null correctly resets the 7-day window.
  */
-export async function upsertEmbedCache(
-  artist: string,
-  title: string,
-  result: EmbedCacheEntry,
-): Promise<void> {
+export async function upsertEmbedCache(artist: string, title: string, result: EmbedCacheEntry): Promise<void> {
   const { artistKey, titleKey } = embedCacheKey(artist, title);
   if (!artistKey || !titleKey) return;
 
@@ -120,7 +113,14 @@ export async function upsertEmbedCache(
  * /api/embed shouldn't be clobbered by a stale search result.
  */
 export async function warmEmbedCache(
-  tracks: Array<{ artist: string; title: string; embedUrl?: string | null; sourceUrl?: string | null; source?: string | null; coverUrl?: string | null }>,
+  tracks: Array<{
+    artist: string;
+    title: string;
+    embedUrl?: string | null;
+    sourceUrl?: string | null;
+    source?: string | null;
+    coverUrl?: string | null;
+  }>,
 ): Promise<void> {
   const rows = tracks
     .filter((t) => t.embedUrl)

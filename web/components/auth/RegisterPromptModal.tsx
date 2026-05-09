@@ -48,9 +48,8 @@ export function RegisterPromptModal({ open, onClose }: Props) {
           Sign up to keep digging
         </h2>
         <p className="text-[15px] leading-relaxed mb-7" style={{ color: "var(--td-fg-d)" }}>
-          You&rsquo;ve used your 5&nbsp;free searches. Create a free account to
-          keep exploring music &mdash; you&rsquo;ll be able to save
-          favorite tracks and much more.
+          You&rsquo;ve used your 5&nbsp;free searches. Create a free account to keep exploring music &mdash;
+          you&rsquo;ll be able to save favorite tracks and much more.
         </p>
         <div className="flex flex-col gap-3">
           <a

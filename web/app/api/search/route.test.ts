@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Route module imports prisma + auth + python-client at module scope; mock
 // them so this unit test stays offline. We're only exercising the pure
@@ -18,33 +18,23 @@ const { searchCacheKey, _internals } = await import("./route");
 
 describe("searchCacheKey", () => {
   it("prefixes with the version constant", () => {
-    expect(searchCacheKey("Mulero", "Voices")).toBe(
-      `${_internals.SEARCH_CACHE_VERSION}:mulero|voices`,
-    );
+    expect(searchCacheKey("Mulero", "Voices")).toBe(`${_internals.SEARCH_CACHE_VERSION}:mulero|voices`);
   });
 
   it("normalizes diacritics on the artist", () => {
-    expect(searchCacheKey("Óscar Mulero", "Voices")).toBe(
-      searchCacheKey("Oscar Mulero", "Voices"),
-    );
+    expect(searchCacheKey("Óscar Mulero", "Voices")).toBe(searchCacheKey("Oscar Mulero", "Voices"));
   });
 
   it("collapses case and whitespace differences via normalize*", () => {
-    expect(searchCacheKey("OSCAR MULERO", "VOICES")).toBe(
-      searchCacheKey("oscar mulero", "voices"),
-    );
+    expect(searchCacheKey("OSCAR MULERO", "VOICES")).toBe(searchCacheKey("oscar mulero", "voices"));
   });
 
   it("strips '(Original Mix)' from track via normalizeTitle", () => {
-    expect(searchCacheKey("Mulero", "Voices (Original Mix)")).toBe(
-      searchCacheKey("Mulero", "Voices"),
-    );
+    expect(searchCacheKey("Mulero", "Voices (Original Mix)")).toBe(searchCacheKey("Mulero", "Voices"));
   });
 
   it("uses '_' sentinel for artist-only searches (track=null)", () => {
-    expect(searchCacheKey("Mulero", null)).toBe(
-      `${_internals.SEARCH_CACHE_VERSION}:mulero|_`,
-    );
+    expect(searchCacheKey("Mulero", null)).toBe(`${_internals.SEARCH_CACHE_VERSION}:mulero|_`);
   });
 
   it("artist-only and (artist, '') produce the same effective key (both = sentinel)", () => {
@@ -53,21 +43,15 @@ describe("searchCacheKey", () => {
   });
 
   it("artist-only key differs from (artist, track) key", () => {
-    expect(searchCacheKey("Mulero", null)).not.toBe(
-      searchCacheKey("Mulero", "Voices"),
-    );
+    expect(searchCacheKey("Mulero", null)).not.toBe(searchCacheKey("Mulero", "Voices"));
   });
 
   it("different artists produce different keys", () => {
-    expect(searchCacheKey("Mulero", "Voices")).not.toBe(
-      searchCacheKey("Charlton", "Voices"),
-    );
+    expect(searchCacheKey("Mulero", "Voices")).not.toBe(searchCacheKey("Charlton", "Voices"));
   });
 
   it("different tracks produce different keys", () => {
-    expect(searchCacheKey("Mulero", "Voices")).not.toBe(
-      searchCacheKey("Mulero", "Horses"),
-    );
+    expect(searchCacheKey("Mulero", "Voices")).not.toBe(searchCacheKey("Mulero", "Horses"));
   });
 });
 

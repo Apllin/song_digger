@@ -1,10 +1,5 @@
-import { describe, it, expect } from "vitest";
-import {
-  aggregateTracks,
-  rrfFuse,
-  normalizeTitle,
-  normalizeArtist,
-} from "./aggregator";
+import { describe, expect, it } from "vitest";
+import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
 import type { SourceList, TrackMeta } from "./python-client";
 
 function makeTrack(overrides: Partial<TrackMeta> = {}): TrackMeta {
@@ -54,9 +49,9 @@ describe("rrfFuse", () => {
     const trackD = makeTrack({ title: "D", artist: "ArtistD" });
 
     const lists: SourceList[] = [
-      { source: "cosine", tracks: [trackA, trackB] },     // A=1, B=2
-      { source: "lastfm", tracks: [trackB, trackC] },     // B=1, C=2
-      { source: "ytm",    tracks: [trackB, trackD] },     // B=1, D=2
+      { source: "cosine", tracks: [trackA, trackB] }, // A=1, B=2
+      { source: "lastfm", tracks: [trackB, trackC] }, // B=1, C=2
+      { source: "ytm", tracks: [trackB, trackD] }, // B=1, D=2
     ];
     const result = rrfFuse(lists);
     expect(result[0].title).toBe("B"); // appears in 3 sources
@@ -110,7 +105,7 @@ describe("rrfFuse", () => {
 
     const lists = [
       { source: "cosine", tracks: [] },
-      { source: "ytm",    tracks: [trackA, trackB] },
+      { source: "ytm", tracks: [trackA, trackB] },
       { source: "lastfm", tracks: [trackA, trackC] },
     ];
     const result = rrfFuse(lists);
@@ -122,7 +117,7 @@ describe("rrfFuse", () => {
     const trackA = makeTrack({ title: "A", artist: "ArtistA" });
     const lists = [
       { source: "cosine", tracks: [trackA] },
-      { source: "ytm",    tracks: [makeTrack({ title: "Other" }), trackA] },
+      { source: "ytm", tracks: [makeTrack({ title: "Other" }), trackA] },
     ];
     const result = rrfFuse(lists);
     expect(result[0].appearances).toEqual([
@@ -179,7 +174,7 @@ describe("aggregateTracks — artist diversity", () => {
       makeTrack({ sourceUrl: "a1", artist: "Surgeon", title: "S1" }),
       makeTrack({ sourceUrl: "a2", artist: "Surgeon", title: "S2" }),
       makeTrack({ sourceUrl: "a3", artist: "Surgeon", title: "S3" }),
-      makeTrack({ sourceUrl: "b1", artist: "Mulero",  title: "M1" }),
+      makeTrack({ sourceUrl: "b1", artist: "Mulero", title: "M1" }),
     ];
     const result = aggregateTracks([listOf("cosine_club", ...tracks)]);
     const artists = result.map((t) => t.artist);

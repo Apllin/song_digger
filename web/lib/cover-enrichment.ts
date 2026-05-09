@@ -13,8 +13,8 @@
 // keeps the cache table small.
 
 import type { FusedCandidate } from "@/lib/aggregator";
-import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
+import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 
 const ITUNES_ENDPOINT = "https://itunes.apple.com/search";
 const REQUEST_TIMEOUT_MS = 1500;
@@ -59,7 +59,7 @@ async function lookupOne(artist: string, title: string): Promise<string | null> 
     const data = (await res.json()) as ITunesResponse;
     const art = data.results?.[0]?.artworkUrl100;
     if (!art) return null;
-    const upscaled = art.replace(/\/\d+x\d+([a-z\-]*)\.(jpg|png)$/i, "/600x600$1.$2");
+    const upscaled = art.replace(/\/\d+x\d+([a-z-]*)\.(jpg|png)$/i, "/600x600$1.$2");
     if (key !== "|") {
       // Best-effort write; failures don't deny the user the cover this round.
       upsertCache<CachedCover>(CACHE_SOURCE, key, { url: upscaled }).catch(() => {});

@@ -57,13 +57,7 @@ export function RadarSweepMark({
   const reactId = useId();
   const id = gradientId ?? `td-radar-${reactId.replace(/:/g, "")}`;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 46 46"
-      aria-hidden="true"
-      className="shrink-0"
-    >
+    <svg width={size} height={size} viewBox="0 0 46 46" aria-hidden="true" className="shrink-0">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#d8c8ff" />
@@ -91,11 +85,7 @@ export function RadarSweepMark({
       <circle cx="23" cy="23" r="11" fill="none" stroke="#efeaf3" strokeOpacity="0.16" strokeWidth="1" />
 
       {/* Radar sweep wedge — lavender gradient */}
-      <path
-        d="M23 23 L23 3 A20 20 0 0 1 38 11 Z"
-        fill={`url(#${id})`}
-        fillOpacity="0.85"
-      />
+      <path d="M23 23 L23 3 A20 20 0 0 1 38 11 Z" fill={`url(#${id})`} fillOpacity="0.85" />
 
       {/* Center label cap */}
       <circle cx="23" cy="23" r="6.5" fill={`url(#${id})`} />

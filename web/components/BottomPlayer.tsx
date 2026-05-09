@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+
 import { usePlayer } from "@/lib/atoms/player";
 import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
@@ -61,8 +62,8 @@ export function BottomPlayer() {
     track?.source === "youtube_music"
       ? (track.sourceUrl.split("v=")[1]?.split("&")[0] ?? null)
       : track?.embedUrl
-      ? (track.embedUrl.split("/embed/")[1]?.split("?")[0] ?? null)
-      : null;
+        ? (track.embedUrl.split("/embed/")[1]?.split("?")[0] ?? null)
+        : null;
 
   // When track changes: load new video or reset state
   useEffect(() => {
@@ -82,7 +83,11 @@ export function BottomPlayer() {
     // later re-init lands in a detached node with no audio). Reset transport
     // state so the bandcamp <audio> drives it cleanly.
     if (track.source !== "youtube_music") {
-      try { playerRef.current?.pauseVideo(); } catch {}
+      try {
+        playerRef.current?.pauseVideo();
+      } catch {
+        // YT player may throw if already destroyed; safe to ignore
+      }
       setPlaying(false);
       setReady(false);
       setCurrentTime(0);
@@ -126,15 +131,16 @@ export function BottomPlayer() {
           },
         });
       });
-      return () => { destroyed = true; };
+      return () => {
+        destroyed = true;
+      };
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.sourceUrl, track?.source]);
 
   // Reset the cover-error guard when the track changes, otherwise one broken
   // image would suppress every subsequent track's cover.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCoverFailed(false);
   }, [track?.id]);
 
@@ -150,19 +156,20 @@ export function BottomPlayer() {
     if (track.source === "unavailable") return;
 
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResolving(true);
 
     const params = new URLSearchParams({ title: track.title, artist: track.artist });
     fetch(`/api/embed?${params}`)
       .then((r) => (r.ok ? r.json() : null))
       .then(
-        (data: {
-          embedUrl: string | null;
-          source: string | null;
-          sourceUrl: string | null;
-          coverUrl: string | null;
-        } | null) => {
+        (
+          data: {
+            embedUrl: string | null;
+            source: string | null;
+            sourceUrl: string | null;
+            coverUrl: string | null;
+          } | null,
+        ) => {
           if (cancelled) return;
           if (data?.embedUrl && data.source) {
             // Keep the cover the user already sees on the TrackCard — the
@@ -179,7 +186,7 @@ export function BottomPlayer() {
           } else {
             swapTrack({ source: "unavailable", embedUrl: null });
           }
-        }
+        },
       )
       .catch((err) => {
         if (cancelled) return;
@@ -244,7 +251,9 @@ export function BottomPlayer() {
           setDuration(dur);
           clearInterval(checkReady);
         }
-      } catch { clearInterval(checkReady); }
+      } catch {
+        clearInterval(checkReady);
+      }
     }, 200);
     return () => clearInterval(checkReady);
   }, [videoId]);
@@ -265,7 +274,8 @@ export function BottomPlayer() {
 
   const toggle = () => {
     if (!playerRef.current) return;
-    playing ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
+    if (playing) playerRef.current.pauseVideo();
+    else playerRef.current.playVideo();
   };
 
   // Spacebar globally toggles play/pause. Skip when typing into an input,
@@ -332,7 +342,9 @@ export function BottomPlayer() {
         navigator.mediaSession.setActionHandler("pause", null);
         navigator.mediaSession.setActionHandler("nexttrack", null);
         navigator.mediaSession.setActionHandler("previoustrack", null);
-      } catch {}
+      } catch {
+        // Ignore if Media Session API is unavailable or handlers not set
+      }
     };
   }, [track, playing, playingIndex, playlist.length, playNext, playPrev]);
 
@@ -346,7 +358,9 @@ export function BottomPlayer() {
         position: Math.min(currentTime, duration),
         playbackRate: 1,
       });
-    } catch {}
+    } catch {
+      // Ignore if setPositionState is unsupported
+    }
   }, [track, currentTime, duration]);
 
   const seek = (pct: number) => {
@@ -373,9 +387,7 @@ export function BottomPlayer() {
   const hasNext = playingIndex !== null && playingIndex < playlist.length - 1;
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  const coverUrl =
-    track?.coverUrl ??
-    (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
+  const coverUrl = track?.coverUrl ?? (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
 
   if (!track) return null;
 
@@ -420,6 +432,7 @@ export function BottomPlayer() {
         <div className="flex items-center gap-3">
           {/* Cover thumbnail */}
           {coverUrl && !coverFailed ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={coverUrl}
               alt=""
@@ -431,15 +444,13 @@ export function BottomPlayer() {
             <div
               className="w-[36px] h-[36px] rounded-lg shrink-0 relative overflow-hidden"
               style={{
-                background:
-                  "linear-gradient(135deg, rgba(185,163,232,0.35), rgba(58,36,64,0.6))",
+                background: "linear-gradient(135deg, rgba(185,163,232,0.35), rgba(58,36,64,0.6))",
               }}
             >
               <div
                 className="absolute inset-0"
                 style={{
-                  background:
-                    "radial-gradient(circle at 70% 30%, var(--td-accent-soft), transparent 50%)",
+                  background: "radial-gradient(circle at 70% 30%, var(--td-accent-soft), transparent 50%)",
                 }}
               />
             </div>
@@ -451,7 +462,7 @@ export function BottomPlayer() {
             <p className="text-[11px] text-td-fg-m truncate">
               {track.artist}
               <span className="ml-2" style={{ color: "var(--td-fg-m)" }}>
-                · {resolving ? "Finding playable source…" : SOURCE_LABELS[track.source] ?? track.source}
+                · {resolving ? "Finding playable source…" : (SOURCE_LABELS[track.source] ?? track.source)}
               </span>
             </p>
           </div>
@@ -470,39 +481,40 @@ export function BottomPlayer() {
               </svg>
             </button>
 
-            {(track.source === "youtube_music" || track.source === "bandcamp") && (() => {
-              const isBc = track.source === "bandcamp";
-              const isReady = isBc ? !!bcAudioUrl : ready;
-              const onClick = isBc ? bcToggle : toggle;
-              return (
-                <button
-                  onClick={onClick}
-                  disabled={!isReady}
-                  className="w-[34px] h-[34px] flex items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
-                  style={{
-                    background: "var(--td-accent)",
-                    color: "var(--td-bg)",
-                    boxShadow: "0 0 18px var(--td-accent-soft)",
-                  }}
-                  aria-label={playing ? "Pause" : "Play"}
-                >
-                  {!isReady ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                  ) : playing ? (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  )}
-                </button>
-              );
-            })()}
+            {(track.source === "youtube_music" || track.source === "bandcamp") &&
+              (() => {
+                const isBc = track.source === "bandcamp";
+                const isReady = isBc ? !!bcAudioUrl : ready;
+                const onClick = isBc ? bcToggle : toggle;
+                return (
+                  <button
+                    onClick={onClick}
+                    disabled={!isReady}
+                    className="w-[34px] h-[34px] flex items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
+                    style={{
+                      background: "var(--td-accent)",
+                      color: "var(--td-bg)",
+                      boxShadow: "0 0 18px var(--td-accent-soft)",
+                    }}
+                    aria-label={playing ? "Pause" : "Play"}
+                  >
+                    {!isReady ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                    ) : playing ? (
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })()}
 
             <button
               onClick={() => playNext()}
@@ -528,15 +540,15 @@ export function BottomPlayer() {
                 >
                   {volume === 0 ? (
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0017.73 18l2 2L21 18.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                      <path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0017.73 18l2 2L21 18.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
                     </svg>
                   ) : volume < 50 ? (
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M18.5 12A4.5 4.5 0 0016 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/>
+                      <path d="M18.5 12A4.5 4.5 0 0016 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" />
                     </svg>
                   ) : (
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
                     </svg>
                   )}
                 </button>
@@ -568,7 +580,11 @@ export function BottomPlayer() {
               aria-label="Open on source"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
             </a>
 
@@ -623,15 +639,12 @@ export function BottomPlayer() {
                   style={{
                     background: "#ffffff",
                     border: "2px solid var(--td-accent)",
-                    boxShadow:
-                      "0 0 0 1px rgba(0,0,0,0.3), 0 0 12px var(--td-accent-soft)",
+                    boxShadow: "0 0 0 1px rgba(0,0,0,0.3), 0 0 12px var(--td-accent-soft)",
                   }}
                 />
               </div>
             </div>
-            <span className="text-[10px] text-td-fg-m tabular-nums w-8 shrink-0">
-              {formatTime(duration)}
-            </span>
+            <span className="text-[10px] text-td-fg-m tabular-nums w-8 shrink-0">{formatTime(duration)}</span>
           </div>
         )}
       </div>

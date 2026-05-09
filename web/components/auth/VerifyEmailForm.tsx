@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  verifyEmailAction,
-  resendVerificationCodeAction,
-} from "@/app/actions/verify-email";
+
+import { resendVerificationCodeAction, verifyEmailAction } from "@/app/actions/verify-email";
 
 export function VerifyEmailForm({ email }: { email: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -28,9 +26,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
       // state where the password field looks filled but the value isn't
       // actually committed, causing the first sign-in attempt to fail.
       // Pass the email through so the user only has to type the password.
-      window.location.replace(
-        `/login?verified=true&email=${encodeURIComponent(email)}`,
-      );
+      window.location.replace(`/login?verified=true&email=${encodeURIComponent(email)}`);
     }
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   trackEmbed: {
@@ -10,8 +10,7 @@ const prismaMock = {
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
-const { embedCacheKey, lookupEmbedCache, upsertEmbedCache, warmEmbedCache } =
-  await import("./embed-cache");
+const { embedCacheKey, lookupEmbedCache, upsertEmbedCache, warmEmbedCache } = await import("./embed-cache");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -171,10 +170,7 @@ describe("warmEmbedCache", () => {
     const args = prismaMock.trackEmbed.createMany.mock.calls[0][0];
     expect(args.skipDuplicates).toBe(true);
     expect(args.data).toHaveLength(2);
-    expect(args.data.map((r: { artistKey: string }) => r.artistKey)).toEqual([
-      "mulero",
-      "lewisfautzi",
-    ]);
+    expect(args.data.map((r: { artistKey: string }) => r.artistKey)).toEqual(["mulero", "lewisfautzi"]);
   });
 
   it("no-ops when nothing has an embedUrl (avoids empty createMany)", async () => {

@@ -1,18 +1,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
 const ParamSchema = z.string().trim().min(1).max(500);
 
 export async function GET(req: NextRequest) {
-  const artist = ParamSchema.safeParse(
-    req.nextUrl.searchParams.get("artist") ?? "",
-  );
-  const title = ParamSchema.safeParse(
-    req.nextUrl.searchParams.get("title") ?? "",
-  );
+  const artist = ParamSchema.safeParse(req.nextUrl.searchParams.get("artist") ?? "");
+  const title = ParamSchema.safeParse(req.nextUrl.searchParams.get("title") ?? "");
   if (!artist.success || !title.success) {
     return Response.json({ found: false }, { status: 400 });
   }

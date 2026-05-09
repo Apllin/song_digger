@@ -1,17 +1,18 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { fetchSimilarTracks } from "@/lib/python-client";
-import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
+
 import type { FusedCandidate } from "@/lib/aggregator";
-import { enrichMissingCovers } from "@/lib/cover-enrichment";
-import { parseQuery } from "@/lib/parse-query";
-import type { SimilarResponse, SourceList } from "@/lib/python-client";
-import { auth } from "@/lib/auth";
+import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { gateAnonymousRequest } from "@/lib/anonymous-counter";
+import { auth } from "@/lib/auth";
+import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } from "@/lib/embed-cache";
 import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
+import { parseQuery } from "@/lib/parse-query";
+import { prisma } from "@/lib/prisma";
+import type { SimilarResponse, SourceList } from "@/lib/python-client";
+import { fetchSimilarTracks } from "@/lib/python-client";
 
 const SearchRequestSchema = z.object({
   input: z.string().trim().min(1).max(500),
@@ -65,10 +66,7 @@ export async function POST(req: NextRequest) {
   const parsed = SearchRequestSchema.safeParse(body);
 
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid request", details: parsed.error.flatten() },
-      { status: 400 }
-    );
+    return Response.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
 
   const { input } = parsed.data;
@@ -85,10 +83,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     const gate = await gateAnonymousRequest();
     if (!gate.ok) {
-      return Response.json(
-        { error: "ANONYMOUS_LIMIT_REACHED" },
-        { status: 429 },
-      );
+      return Response.json({ error: "ANONYMOUS_LIMIT_REACHED" }, { status: 429 });
     }
   }
 
@@ -98,9 +93,7 @@ export async function POST(req: NextRequest) {
 
   runSearch(searchQuery.id, input, artist, track, userId).catch((err) => {
     console.error(`[Search] background error for ${searchQuery.id}:`, err);
-    prisma.searchQuery
-      .update({ where: { id: searchQuery.id }, data: { status: "error" } })
-      .catch(console.error);
+    prisma.searchQuery.update({ where: { id: searchQuery.id }, data: { status: "error" } }).catch(console.error);
   });
 
   return Response.json({ id: searchQuery.id, status: "running" });
@@ -156,10 +149,7 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
   const backfills = tracks.filter((t) => {
     const row = urlToRow.get(t.sourceUrl);
     if (!row) return false;
-    return (
-      (row.coverUrl == null && t.coverUrl != null) ||
-      (row.embedUrl == null && t.embedUrl != null)
-    );
+    return (row.coverUrl == null && t.coverUrl != null) || (row.embedUrl == null && t.embedUrl != null);
   });
   if (backfills.length) {
     await prisma.$transaction(
@@ -193,9 +183,7 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
   //    (YTM/Bandcamp adapters set it during /similar). Cross-feature win:
   //    a discography click on the same song later hits cache without a
   //    live YTM lookup. Best-effort, never blocks the search response.
-  warmEmbedCache(tracks).catch((err) =>
-    console.error("[embed-cache] warm failed:", err),
-  );
+  warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
 }
 
 // BottomPlayer plays youtube_music and bandcamp directly; yandex tracks fall
@@ -203,16 +191,10 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
 // lookup. Run that lookup at search time for any yandex track no other source
 // confirmed, drop the ones that resolve to nothing, and write the embed cache
 // so the eventual click is just a Postgres select.
-async function dropUnplayableYandex(
-  candidates: FusedCandidate[],
-): Promise<FusedCandidate[]> {
+async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<FusedCandidate[]> {
   const checks = candidates.map(async (t) => {
     if (t.source !== "yandex_music") return t;
-    if (
-      t.appearances.some(
-        (a) => a.source === "youtube_music" || a.source === "bandcamp",
-      )
-    ) {
+    if (t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp")) {
       return t;
     }
 
@@ -236,24 +218,14 @@ async function dropUnplayableYandex(
   return settled.filter((t): t is FusedCandidate => t !== null);
 }
 
-async function runSearch(
-  searchId: string,
-  input: string,
-  artist: string,
-  track: string | null,
-  userId: string | null,
-) {
+async function runSearch(searchId: string, input: string, artist: string, track: string | null, userId: string | null) {
   // ── Look up cache + load dislikes in parallel. ───────────────────────────
   // Cache lookup is one Postgres SELECT (~30-80ms RTT to Neon); dislikes is
   // another. Parallelism saves one round-trip worth of wall-clock. On a hit
   // we skip the 3-8s Python fan-out entirely.
   const cacheKey = searchCacheKey(artist, track);
   const [cached, dislikes] = await Promise.all([
-    lookupCache<SimilarResponse>(
-      SEARCH_CACHE_SOURCE,
-      cacheKey,
-      SEARCH_CACHE_TTL_SECONDS,
-    ),
+    lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS),
     userId
       ? prisma.dislikedTrack.findMany({
           where: { userId },
@@ -296,14 +268,10 @@ async function runSearch(
   // identity is in DislikedTrack before fusion. Filtering at the source-list
   // level (not post-fusion) means a disliked track from one source can't pull
   // in RRF contribution from another source's copy.
-  const dislikedKeys = new Set(
-    dislikes.map((d) => `${d.artistKey}|${d.titleKey}`),
-  );
+  const dislikedKeys = new Set(dislikes.map((d) => `${d.artistKey}|${d.titleKey}`));
   const filteredSourceLists: SourceList[] = pythonResult.source_lists.map((sl) => ({
     source: sl.source,
-    tracks: sl.tracks.filter(
-      (t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`),
-    ),
+    tracks: sl.tracks.filter((t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`)),
   }));
 
   const aggregated = aggregateTracks(filteredSourceLists);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const MAX_HISTORY = 5;
 
@@ -21,10 +21,7 @@ export function useSearchHistory(storageKey: string) {
       const trimmed = query.trim();
       if (!trimmed) return;
       setHistory((prev) => {
-        const deduped = [trimmed, ...prev.filter((h) => h !== trimmed)].slice(
-          0,
-          MAX_HISTORY
-        );
+        const deduped = [trimmed, ...prev.filter((h) => h !== trimmed)].slice(0, MAX_HISTORY);
         try {
           localStorage.setItem(storageKey, JSON.stringify(deduped));
         } catch {
@@ -33,7 +30,7 @@ export function useSearchHistory(storageKey: string) {
         return deduped;
       });
     },
-    [storageKey]
+    [storageKey],
   );
 
   return { history, addToHistory };

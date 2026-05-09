@@ -1,7 +1,7 @@
-import NextAuth, { CredentialsSignin } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import NextAuth, { CredentialsSignin } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 
 // Subclass so the `code` field reaches the client unchanged. NextAuth
 // turns plain `throw new Error(...)` into a generic CredentialsSignin
@@ -12,7 +12,6 @@ class RateLimitError extends CredentialsSignin {
 class CaptchaRequiredError extends CredentialsSignin {
   code = "CAPTCHA_REQUIRED";
 }
-import { prisma } from "@/lib/prisma";
 import { getRequestIp } from "@/lib/anonymous-counter";
 import {
   checkIpRateLimit,
@@ -23,8 +22,9 @@ import {
   shouldNotifyOnThisFailure,
   shouldRequireCaptcha,
 } from "@/lib/brute-force";
-import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendLoginAttemptsWarning } from "@/lib/email";
+import { prisma } from "@/lib/prisma";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 // Auth.js v5 (Credentials + JWT). The PrismaAdapter is wired even though
 // Credentials never writes through it — it's there so a future OAuth
@@ -59,10 +59,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const email = String(credentials.email).toLowerCase();
         const password = String(credentials.password);
-        const turnstileToken =
-          typeof credentials.turnstileToken === "string"
-            ? credentials.turnstileToken
-            : "";
+        const turnstileToken = typeof credentials.turnstileToken === "string" ? credentials.turnstileToken : "";
 
         const ip = await getRequestIp();
 
@@ -80,9 +77,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // before the bcrypt compare so a botnet can't drain CPU on
         // password tries. Skipped only when the server isn't
         // configured for Turnstile.
-        const requireCaptcha =
-          !!process.env.TURNSTILE_SECRET_KEY &&
-          (await shouldRequireCaptcha(email));
+        const requireCaptcha = !!process.env.TURNSTILE_SECRET_KEY && (await shouldRequireCaptcha(email));
         if (requireCaptcha) {
           const captchaOk = await verifyTurnstileToken(turnstileToken, {
             remoteIp: ip === "unknown" ? undefined : ip,
@@ -104,9 +99,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
-        const passwordOk =
-          user?.passwordHash &&
-          (await bcrypt.compare(password, user.passwordHash));
+        const passwordOk = user?.passwordHash && (await bcrypt.compare(password, user.passwordHash));
         const verified = !!user?.emailVerified;
 
         if (!user || !passwordOk || !verified) {

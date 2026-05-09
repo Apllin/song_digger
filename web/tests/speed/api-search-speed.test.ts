@@ -14,7 +14,7 @@
  *
  * Run with:  pnpm test:speed
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const WEB_URL = "http://localhost:3000";
 const POLL_INTERVAL_MS = 250;
@@ -27,9 +27,7 @@ let serverUp = false;
 
 beforeAll(async () => {
   try {
-    serverUp = (
-      await fetch(`${WEB_URL}/api/dislikes`, { signal: AbortSignal.timeout(2000) })
-    ).ok;
+    serverUp = (await fetch(`${WEB_URL}/api/dislikes`, { signal: AbortSignal.timeout(2000) })).ok;
   } catch {
     serverUp = false;
   }

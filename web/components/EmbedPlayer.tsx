@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+
 import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
 function formatTime(s: number): string {
@@ -179,7 +180,11 @@ function PlayerBar({
               </svg>
             ) : (
               <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
             )}
           </a>
@@ -207,23 +212,14 @@ function PlayerBar({
             <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-zinc-100 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity shadow" />
           </div>
         </div>
-        <span className="text-[10px] text-zinc-600 tabular-nums w-7 shrink-0">
-          {formatTime(duration)}
-        </span>
+        <span className="text-[10px] text-zinc-600 tabular-nums w-7 shrink-0">{formatTime(duration)}</span>
       </div>
     </div>
   );
 }
 
 // ─── YouTube player ───────────────────────────────────────────────────────────
-function YouTubePlayer({
-  embedUrl,
-  title,
-  artist,
-  sourceUrl,
-  onPrev,
-  onNext,
-}: Omit<EmbedPlayerProps, "source">) {
+function YouTubePlayer({ embedUrl, title, artist, sourceUrl, onPrev, onNext }: Omit<EmbedPlayerProps, "source">) {
   const holderRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -280,7 +276,8 @@ function YouTubePlayer({
 
   const toggle = () => {
     if (!playerRef.current) return;
-    playing ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
+    if (playing) playerRef.current.pauseVideo();
+    else playerRef.current.playVideo();
   };
 
   const seek = (pct: number) => {
@@ -331,13 +328,7 @@ function YouTubePlayer({
 // Mirrors BottomPlayer's Bandcamp path: extract a streamable mp3 from the
 // source page via /api/bandcamp-audio and drive playback through a hidden
 // <audio> element so transport / seek / volume live in our PlayerBar.
-function BandcampPlayer({
-  title,
-  artist,
-  sourceUrl,
-  onPrev,
-  onNext,
-}: Omit<EmbedPlayerProps, "source">) {
+function BandcampPlayer({ title, artist, sourceUrl, onPrev, onNext }: Omit<EmbedPlayerProps, "source">) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -348,7 +339,6 @@ function BandcampPlayer({
   useEffect(() => {
     if (!sourceUrl) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAudioUrl(null);
     setCurrentTime(0);
     setDuration(0);

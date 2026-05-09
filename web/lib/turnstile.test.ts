@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.fn();
 const originalFetch = globalThis.fetch;
@@ -37,17 +37,13 @@ describe("verifyTurnstileToken", () => {
   });
 
   it("returns true on { success: true } from Cloudflare", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
     const verify = await loadVerify();
     expect(await verify("good-token")).toBe(true);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-    );
+    expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
     expect(init.method).toBe("POST");
     const body = init.body as FormData;
     expect(body.get("secret")).toBe("test-secret");
@@ -56,10 +52,7 @@ describe("verifyTurnstileToken", () => {
 
   it("returns false on { success: false }", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ success: false, "error-codes": ["bad-request"] }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ success: false, "error-codes": ["bad-request"] }), { status: 200 }),
     );
     const verify = await loadVerify();
     expect(await verify("bad-token")).toBe(false);
@@ -78,9 +71,7 @@ describe("verifyTurnstileToken", () => {
   });
 
   it("forwards remoteip and idempotency_key when provided", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
     const verify = await loadVerify();
     await verify("tok", {
       remoteIp: "203.0.113.5",

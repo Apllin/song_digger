@@ -1,5 +1,15 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "AUTH_URL",
+    "DATABASE_URL",
+    "DEV_CACHE",
+    "EMAIL_FROM",
+    "NODE_ENV",
+    "PYTHON_SERVICE_URL",
+    "RESEND_API_KEY",
+    "TURNSTILE_SECRET_KEY"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "codegen"],
@@ -12,6 +22,7 @@
     },
     "lint": {},
     "lint:fix": {},
+    "typecheck": {},
     "test": {},
     "setup": {
       "cache": false

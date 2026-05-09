@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { defineConfig } from "vitest/config";
 
 // Smoke suite — opt-in via `pnpm test:smoke`. Some tests hit the dev
 // servers (uvicorn + next dev); others verify pure aggregator behavior

@@ -11,9 +11,7 @@ function getResend(): Resend {
   if (!resendInstance) {
     const key = process.env.RESEND_API_KEY;
     if (!key) {
-      throw new Error(
-        "RESEND_API_KEY is not set — email sending is disabled in this environment",
-      );
+      throw new Error("RESEND_API_KEY is not set — email sending is disabled in this environment");
     }
     resendInstance = new Resend(key);
   }
@@ -24,11 +22,7 @@ function getResend(): Resend {
 // the result silently swallows API errors (invalid key, free-tier
 // sandbox limits, unverified `from` domain). Throw so callers can
 // surface a real failure instead of a phantom success.
-async function send(opts: {
-  to: string;
-  subject: string;
-  html: string;
-}): Promise<void> {
+async function send(opts: { to: string; subject: string; html: string }): Promise<void> {
   const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
   const { error } = await getResend().emails.send({
     from: FROM,
@@ -37,16 +31,11 @@ async function send(opts: {
     html: opts.html,
   });
   if (error) {
-    throw new Error(
-      `Resend send failed (${error.name ?? "unknown"}): ${error.message}`,
-    );
+    throw new Error(`Resend send failed (${error.name ?? "unknown"}): ${error.message}`);
   }
 }
 
-export async function sendVerificationCode(
-  email: string,
-  code: string,
-): Promise<void> {
+export async function sendVerificationCode(email: string, code: string): Promise<void> {
   await send({
     to: email,
     subject: "Your Track Digger verification code",
@@ -63,10 +52,7 @@ export async function sendVerificationCode(
   });
 }
 
-export async function sendLoginAttemptsWarning(
-  email: string,
-  ip: string,
-): Promise<void> {
+export async function sendLoginAttemptsWarning(email: string, ip: string): Promise<void> {
   const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/forgot-password`;
   await send({
     to: email,
@@ -87,10 +73,7 @@ export async function sendLoginAttemptsWarning(
   });
 }
 
-export async function sendPasswordResetEmail(
-  email: string,
-  token: string,
-): Promise<void> {
+export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
   const resetUrl = `${process.env.AUTH_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
   await send({
     to: email,

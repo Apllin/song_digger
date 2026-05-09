@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { requireUser } from "@/lib/auth-utils";
+import { prisma } from "@/lib/prisma";
 
 // Length caps protect against pathological strings (a 10MB title
 // would still upsert successfully and bloat the index). 500 covers
