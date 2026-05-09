@@ -81,7 +81,7 @@ Target a single package:
 
 ```bash
 pnpm turbo run dev --filter=web
-pnpm turbo run test --filter=@track-digger/python-service
+pnpm turbo run test --filter=@trackdigger/python-service
 ```
 
 Only run tasks for packages affected by changes since the default branch:
@@ -167,6 +167,73 @@ Stage J ([ADR-0021](web/docs/decisions/0021-anonymous-limits-and-security.md)) h
 - **Honeypot fields** on register and login; bots that auto-fill every input get a fake-success and never reach the DB.
 - **Zod-validated inputs** on every API entry point.
 
+## Release process
+
+Releases use [Changesets](https://github.com/changesets/changesets) in pre-release `rc` mode. Both packages version independently — no npm publishing; the stable release triggers a Railway deployment.
+
+### Overview
+
+```
+feature branch  →  PR to develop          (via /pr)
+   develop      →  merged to staging  →   RC version bump + git tag (auto)
+   staging      →  /release-docs      →   PR to main  →  stable release + Railway deploy (auto)
+```
+
+### 1. Develop on a feature branch
+
+Make changes on a feature branch off `develop`. When ready to commit, use `/commit` — it analyzes your changes, generates an appropriate changeset, and commits everything together.
+
+Open a PR to `develop` using `/pr` from your feature branch, then merge it.
+
+### 2. Trigger an RC release
+
+When ready to cut a release candidate, merge `develop` into `staging`:
+
+```sh
+git checkout staging
+git merge develop
+git push
+```
+
+The `rc-release.yml` workflow runs automatically and:
+
+1. Enters pre-release mode if not already active (`changeset pre enter rc`)
+2. Runs `changeset version` — bumps affected packages to `X.Y.Z-rc.N`
+3. Creates a git tag (e.g. `v0.2.0-rc.0`)
+4. Syncs the version bump commit back to `develop`
+
+For follow-up fixes, repeat step 1 on a new feature branch and merge to `develop`, then merge `develop` to `staging` again. Each push to `staging` increments the RC counter (`rc.0`, `rc.1`, …).
+
+### 3. Generate release notes and open the stable release PR
+
+Once the RC is verified, run from `staging`:
+
+```
+/release-docs
+```
+
+This creates `docs/releases/YYYY-MM-DD.md` and opens a PR against `main` with the release notes as the body.
+
+### 4. Publish the stable release
+
+Merge the release PR into `main`. The `release.yml` workflow runs automatically and:
+
+1. Exits pre-release mode (`changeset pre exit`)
+2. Runs `changeset version` — strips the `-rc.N` suffix, producing `X.Y.Z`
+3. Creates a stable git tag (e.g. `v0.2.0`)
+4. Pushes to the `production` branch → **Railway deploys**
+5. Syncs the version bump commit back to `staging` and `develop`
+
+### Reference
+
+| Command | Purpose |
+| ------- | ------- |
+| `/commit` | Commit changes with an auto-generated changeset |
+| `/pr` | Open a PR to `develop` |
+| `/release-docs` | Generate release notes and open a PR to `main` |
+
+Release notes live in [`docs/releases/`](docs/releases/).
+
 ## Project structure
 
 ```
@@ -204,7 +271,7 @@ pnpm --filter web add -D <package>    # dev dep
 Edit [python-service/requirements.txt](python-service/requirements.txt), then:
 
 ```bash
-pnpm --filter @track-digger/python-service run setup
+pnpm --filter @trackdigger/python-service run setup
 ```
 
 ## Approving package build scripts

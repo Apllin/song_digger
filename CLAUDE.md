@@ -50,6 +50,34 @@ pnpm exec prisma generate       # regenerate client into app/generated/prisma
 
 Postgres runs via `docker-compose up postgres` (or the full stack with `docker-compose up`). Copy `.env.example` to `.env` first — the compose file reads `POSTGRES_*`, and the web/python services read `DATABASE_URL`, `PYTHON_SERVICE_URL`, `COSINE_CLUB_API_KEY`, `YANDEX_MUSIC_TOKEN`, `LASTFM_API_KEY`, plus the Stage I auth env: `AUTH_SECRET` (generate with `openssl rand -base64 32`), `AUTH_URL` (e.g. `http://localhost:3000`), `RESEND_API_KEY` (from resend.com), `EMAIL_FROM` (defaults to `onboarding@resend.dev` for sandbox; set to `auth@<your-verified-domain>` for full sending), plus the Stage J Turnstile env: `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (test keys `1x00...AA` work in dev; production keys from https://dash.cloudflare.com → Turnstile). There is a single shared `.env` at the repo root; `python-service/app/config.py` resolves it via an absolute path so it works regardless of cwd.
 
+## Slash commands
+
+Project-specific commands live in [.claude/commands/](.claude/commands/). Use them instead of ad-hoc git/gh invocations:
+
+| Command | When to use |
+| --- | --- |
+| `/commit` | Commit staged/unstaged changes — analyzes the diff, generates a changeset, asks for approval before executing |
+| `/pr` | Open a PR to `develop` — derives a branch name, generates a changeset if needed, commits any uncommitted work, and creates the PR |
+| `/pr-update` | Update an existing PR description after new commits — also updates or creates a changeset for newly affected packages |
+| `/release-docs` | Run from `staging` — generates `docs/releases/YYYY-MM-DD.md` from changes since the last release and opens a PR to `main` |
+
+## Release cycle
+
+Branches: `develop` (integration) → `staging` (RC) → `main` (stable) → `production` (Railway deploy target).
+
+```
+feature branch  →  PR to develop      (/pr)
+   develop      →  merge to staging   →  RC version bump + git tag  (rc-release.yml, auto)
+   staging      →  /release-docs      →  PR to main  →  stable tag + Railway deploy  (release.yml, auto)
+```
+
+Key facts for giving accurate guidance:
+- Changesets drive all version bumps — there is no npm publish; packages are private.
+- `rc-release.yml` puts both packages into pre-release mode (`X.Y.Z-rc.N`) on every `staging` push and syncs the bump back to `develop`.
+- `release.yml` exits pre-release mode, creates a `vX.Y.Z` tag, and pushes `main → production` to trigger Railway.
+- Always add a changeset when user-visible behavior changes. Use `/commit` or `/pr` — both handle this automatically.
+- Full details: [README.md § Release process](README.md#release-process).
+
 ## Architecture
 
 ### Python service (`python-service/app`)
