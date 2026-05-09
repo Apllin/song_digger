@@ -27,6 +27,7 @@ export type GetArtistReleasesQueryParams = {
    * @type integer | undefined
    */
   per_page?: number;
+  role?: string | null;
 };
 
 /**

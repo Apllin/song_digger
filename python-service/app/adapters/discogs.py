@@ -97,15 +97,17 @@ class DiscogsAdapter:
         return out
 
     async def get_releases(
-        self, artist_id: int, page: int = 1, per_page: int = 20
+        self, artist_id: int, page: int = 1, per_page: int = 20, role: str | None = None
     ) -> dict:
         """
         Get paginated list of artist releases.
+        Optional `role` filter (e.g. "Main") is forwarded to Discogs as a
+        native query param so the server returns only matching releases.
         Returns: { releases, pagination: { page, pages, total } }
         """
         if not settings.discogs_token:
             return {"releases": [], "pagination": {}}
-        cache_key = f"{artist_id}|{page}|{per_page}"
+        cache_key = f"{artist_id}|{page}|{per_page}|{role or ''}"
         cached = await fetch_external_cache(
             source="discogs_artist_releases",
             cache_key=cache_key,
@@ -113,14 +115,17 @@ class DiscogsAdapter:
         )
         if cached is not None:
             return cached
+        params: dict[str, str | int] = {
+            "sort": "year",
+            "sort_order": "desc",
+            "page": page,
+            "per_page": per_page,
+        }
+        if role:
+            params["role"] = role
         resp = await self._get(
             f"/artists/{artist_id}/releases",
-            params={
-                "sort": "year",
-                "sort_order": "desc",
-                "page": page,
-                "per_page": per_page,
-            },
+            params=params,
         )
         data = resp.json()
         releases = [

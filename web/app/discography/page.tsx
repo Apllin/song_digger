@@ -1,6 +1,5 @@
 "use client";
 
-import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
@@ -9,41 +8,11 @@ import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
-import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
 
 const PAGE_SIZE = 15;
-
-async function fetchAllReleases(artistId: number): Promise<ArtistRelease[]> {
-  const PER_PAGE = 100;
-  const first = await parseResponse(
-    api.discography.releases.$get({
-      query: { artistId: String(artistId), page: "1", perPage: String(PER_PAGE) },
-    }),
-  );
-
-  const releases: ArtistRelease[] = [...first.releases];
-  const totalPages = first.pagination.pages;
-
-  if (totalPages > 1) {
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, i) =>
-        parseResponse(
-          api.discography.releases.$get({
-            query: { artistId: String(artistId), page: String(i + 2), perPage: String(PER_PAGE) },
-          }),
-        ),
-      ),
-    );
-    for (const page of rest) {
-      releases.push(...page.releases);
-    }
-  }
-
-  return releases;
-}
 
 export default function DiscographyPage() {
   return (
@@ -71,6 +40,7 @@ function DiscographyContent() {
       activeIndex: -1,
       releases: [],
       page: 1,
+      totalItems: 0,
     }));
   }
 
@@ -81,6 +51,7 @@ function DiscographyContent() {
       selectedArtist: null,
       releases: [],
       page: 1,
+      totalItems: 0,
       showHistory: false,
       showSuggestions: false,
       loadingArtists: true,
@@ -143,26 +114,45 @@ function DiscographyContent() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
 
-  // Load all releases when artist is selected
+  // Server pagination: fetch one page when artist / role filter / page changes.
+  // Discogs handles sort=year and role=Main natively, so the client just renders
+  // what came back without filtering or sorting.
+  const artistId = s.selectedArtist?.id ?? null;
   useEffect(() => {
-    if (!s.selectedArtist) return;
+    if (artistId == null) return;
+    const controller = new AbortController();
     setS((prev) => ({ ...prev, loadingReleases: true }));
-    fetchAllReleases(s.selectedArtist.id)
-      .then((all) => setS((prev) => ({ ...prev, releases: all })))
-      .catch(() => setS((prev) => ({ ...prev, releases: [] })))
-      .finally(() => setS((prev) => ({ ...prev, loadingReleases: false })));
-  }, [s.selectedArtist, setS]);
+    fetchApi(
+      api.discography.releases.$get(
+        {
+          query: {
+            artistId: String(artistId),
+            page: String(s.page),
+            perPage: String(PAGE_SIZE),
+            ...(s.roleFilter === "main" ? { role: "Main" as const } : {}),
+          },
+        },
+        { init: { signal: controller.signal } },
+      ),
+    )
+      .then((data) => {
+        if (controller.signal.aborted || !data) return;
+        setS((prev) => ({
+          ...prev,
+          releases: data.releases,
+          totalItems: data.pagination.items ?? 0,
+          loadingReleases: false,
+        }));
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setS((prev) => ({ ...prev, releases: [], totalItems: 0, loadingReleases: false }));
+      });
+    return () => controller.abort();
+  }, [artistId, s.roleFilter, s.page, setS]);
 
-  const filteredReleases = (s.roleFilter === "main" ? s.releases.filter((r) => r.role === "Main") : s.releases)
-    .slice()
-    .sort((a, b) => {
-      if (a.year == null && b.year == null) return 0;
-      if (a.year == null) return 1;
-      if (b.year == null) return -1;
-      return b.year - a.year;
-    });
-  const totalPages = Math.ceil(filteredReleases.length / PAGE_SIZE);
-  const pagedReleases = filteredReleases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
+  const totalPages = Math.ceil(s.totalItems / PAGE_SIZE);
+  const pagedReleases = s.releases;
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -430,9 +420,9 @@ function DiscographyContent() {
                   <h2 className="font-display text-[22px] sm:text-[32px] md:text-[40px] font-normal leading-[1.05] m-0 mt-1 break-words">
                     {s.selectedArtist.name}
                   </h2>
-                  {!s.loadingReleases && s.releases.length > 0 && (
+                  {!s.loadingReleases && s.totalItems > 0 && (
                     <div className="font-mono-td text-[12px] text-td-fg-d mt-1">
-                      {s.releases.length} release{s.releases.length !== 1 ? "s" : ""}
+                      {s.totalItems} release{s.totalItems !== 1 ? "s" : ""}
                     </div>
                   )}
                 </div>
@@ -446,7 +436,7 @@ function DiscographyContent() {
                   return (
                     <button
                       key={f}
-                      onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1 }))}
+                      onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1, releases: [], totalItems: 0 }))}
                       className="px-3 py-1.5 text-[11px] rounded-full transition-colors whitespace-nowrap"
                       style={{
                         border: `1px solid ${active ? "var(--td-accent)" : "rgba(255, 255, 255, 0.22)"}`,
@@ -475,7 +465,7 @@ function DiscographyContent() {
               </div>
             )}
 
-            {!s.loadingReleases && filteredReleases.length === 0 && (
+            {!s.loadingReleases && s.totalItems === 0 && (
               <p className="text-sm text-td-fg-m text-center py-10">No releases found</p>
             )}
 
