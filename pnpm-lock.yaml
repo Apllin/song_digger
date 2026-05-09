@@ -129,14 +129,14 @@ importers:
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
       '@vanya2h/eslint-config':
-        specifier: ^0.6.0-rc.1
-        version: 0.6.0-rc.1(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(turbo@2.9.6)(typescript@5.9.3)
+        specifier: ^0.7.0
+        version: 0.7.0(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(turbo@2.9.6)(typescript@5.9.3)
       '@vanya2h/prettier-config':
-        specifier: ^0.6.0-rc.1
-        version: 0.6.0-rc.1(prettier@3.8.3)
+        specifier: ^0.7.0
+        version: 0.7.0(prettier@3.8.3)
       '@vanya2h/typescript-config':
-        specifier: ^0.6.0-rc.1
-        version: 0.6.0-rc.1(typescript@5.9.3)
+        specifier: ^0.7.0
+        version: 0.7.0(typescript@5.9.3)
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.6.1)
@@ -1437,19 +1437,19 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vanya2h/eslint-config@0.6.0-rc.1':
-    resolution: {integrity: sha512-P1V3889z1oSQRpoYPPUQqUudIYwJACWPX6uMNbvG8iCa8ZSTMmx1jr48NXPkw906dh588gIH45+DEijAlcttHA==}
+  '@vanya2h/eslint-config@0.7.0':
+    resolution: {integrity: sha512-Oa4mPyi2s3pZrrH77TytlBDsPZAyHfHWAuI3LbFUmuecsBLYplVItqFSnJvbaIPBDwIQldLD2Hy2b6Gg0tjKuA==}
     peerDependencies:
       eslint: ^9.0.0
       typescript: ^5.0.0
 
-  '@vanya2h/prettier-config@0.6.0-rc.1':
-    resolution: {integrity: sha512-7d80xO0vjV4dNONymTCBhWB3ZINz4RxDOacp6WfYwUpSU8Qu2hQdmcnawulGpWl9Psq0fEC+WRdEJ65849pwjQ==}
+  '@vanya2h/prettier-config@0.7.0':
+    resolution: {integrity: sha512-ELiIuhVtI/Dk6h29SybAsUvoYe4KK1raA12NSfUSGrcW2un+k3vM3xKRtQFNIo4Y67HE262o7NZBItN93PJq7Q==}
     peerDependencies:
       prettier: ^3.0.0
 
-  '@vanya2h/typescript-config@0.6.0-rc.1':
-    resolution: {integrity: sha512-eTG8gcUDvrvEid593aZziOUYdyHCLxiFxGG+3y/mh+iDy++j2+OPbCeAKbT5udtOL+elk/9FE+wlhK4kAcr8eA==}
+  '@vanya2h/typescript-config@0.7.0':
+    resolution: {integrity: sha512-Qlskshj6HZrZuGgYV7mF78Pu2QpIFJVh51WCAYI7Imuoo6F73yDbpqXpQu2JiE902nH/Al0d3SCaNYKThZ0fZA==}
     peerDependencies:
       typescript: ^5.0.0
 
@@ -5211,13 +5211,13 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
 
-  '@vanya2h/eslint-config@0.6.0-rc.1(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(turbo@2.9.6)(typescript@5.9.3)':
+  '@vanya2h/eslint-config@0.7.0(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(turbo@2.9.6)(typescript@5.9.3)':
     dependencies:
       '@eslint/js': 9.39.4
       '@next/eslint-plugin-next': 16.2.6
       '@typescript-eslint/eslint-plugin': 8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser': 8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@vanya2h/prettier-config': 0.6.0-rc.1(prettier@3.8.3)
+      '@vanya2h/prettier-config': 0.7.0(prettier@3.8.3)
       eslint: 9.39.4(jiti@2.6.1)
       eslint-config-prettier: 10.1.8(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-n: 17.24.0(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
@@ -5235,11 +5235,11 @@ snapshots:
       - supports-color
       - turbo
 
-  '@vanya2h/prettier-config@0.6.0-rc.1(prettier@3.8.3)':
+  '@vanya2h/prettier-config@0.7.0(prettier@3.8.3)':
     dependencies:
       prettier: 3.8.3
 
-  '@vanya2h/typescript-config@0.6.0-rc.1(typescript@5.9.3)':
+  '@vanya2h/typescript-config@0.7.0(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
