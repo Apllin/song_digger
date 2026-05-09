@@ -1,18 +1,14 @@
 import { zValidator } from "@hono/zod-validator";
 import bcrypt from "bcryptjs";
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import { z } from "zod";
 
 import { generateResetToken, generateVerificationCode, hashCode, verifyCode } from "@/lib/auth-tokens";
 import { shouldRequireCaptcha } from "@/lib/brute-force";
-import { COOKIE_CONSENT_NAME } from "@/lib/cookie-consent";
 import { sendPasswordResetEmail, sendVerificationCode } from "@/lib/email";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-
-const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 const RegisterSchema = z.object({
   email: z.email().toLowerCase(),
@@ -200,13 +196,4 @@ export const authApi = new Hono<AppEnv>()
     const { email } = c.req.valid("json");
     const requireCaptcha = await shouldRequireCaptcha(email);
     return c.json({ requireCaptcha });
-  })
-  .post("/auth/cookie-consent", async (c) => {
-    setCookie(c, COOKIE_CONSENT_NAME, "accepted", {
-      maxAge: ONE_YEAR_SECONDS,
-      path: "/",
-      sameSite: "Lax",
-      secure: process.env.NODE_ENV === "production",
-    });
-    return c.json({ ok: true as const });
   });

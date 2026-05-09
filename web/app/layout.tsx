@@ -6,7 +6,6 @@ import "./globals.css";
 
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
 import { RateLimitModalHost } from "@/components/auth/RateLimitModalHost";
-import { CookieConsentHost } from "@/components/CookieConsentHost";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
@@ -70,7 +69,6 @@ export default function RootLayout({
             </PlayerProvider>
           </QueryProvider>
         </div>
-        <CookieConsentHost />
         {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout
             level so any mounted widget can find window.turnstile.
             Cloudflare requires the script come from this exact URL with
