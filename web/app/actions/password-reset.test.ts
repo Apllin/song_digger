@@ -84,11 +84,11 @@ describe("forgotPasswordAction", () => {
     const result = await forgotPasswordAction(fd({ email: "user@example.com" }));
     expect(result).toEqual({ success: true });
 
-    const [emailArg, tokenArg] = sendPasswordResetEmail.mock.calls[0];
+    const [emailArg, tokenArg] = sendPasswordResetEmail.mock.calls[0]!;
     expect(emailArg).toBe("user@example.com");
     expect(tokenArg).toMatch(/^[0-9a-f]{64}$/); // 32 bytes hex = 64 chars
 
-    const stored = prismaMock.passwordResetToken.create.mock.calls[0][0].data;
+    const stored = prismaMock.passwordResetToken.create.mock.calls[0]![0].data;
     expect(stored.email).toBe("user@example.com");
     expect(stored.token).toBe(tokenArg);
     // 1-hour window
@@ -164,7 +164,7 @@ describe("resetPasswordAction", () => {
     expect(result).toEqual({ success: true });
 
     expect(prismaMock.user.update).toHaveBeenCalledOnce();
-    const updateCall = prismaMock.user.update.mock.calls[0][0];
+    const updateCall = prismaMock.user.update.mock.calls[0]![0];
     expect(updateCall.where).toEqual({ email: "user@example.com" });
     expect(updateCall.data.passwordHash).toMatch(/^\$2[aby]\$/);
 

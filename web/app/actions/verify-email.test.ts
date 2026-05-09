@@ -99,7 +99,7 @@ describe("verifyEmailAction", () => {
     // Verify the where clause; we trust Prisma to filter correctly.
     prismaMock.verificationCode.findMany.mockResolvedValueOnce([]);
     await verifyEmailAction(fd({ email: "user@example.com", code: "123456" }));
-    const call = prismaMock.verificationCode.findMany.mock.calls[0][0];
+    const call = prismaMock.verificationCode.findMany.mock.calls[0]![0];
     expect(call.where.email).toBe("user@example.com");
     expect(call.where.expires).toEqual({ gt: expect.any(Date) });
   });
@@ -155,11 +155,11 @@ describe("resendVerificationCodeAction", () => {
     const result = await resendVerificationCodeAction(fd({ email: "user@example.com" }));
     expect(result).toEqual({ success: true });
 
-    const [emailArg, codeArg] = sendVerificationCode.mock.calls[0];
+    const [emailArg, codeArg] = sendVerificationCode.mock.calls[0]!;
     expect(emailArg).toBe("user@example.com");
     expect(codeArg).toMatch(/^\d{6}$/);
 
-    const stored = prismaMock.verificationCode.create.mock.calls[0][0].data;
+    const stored = prismaMock.verificationCode.create.mock.calls[0]![0].data;
     expect(stored.code).toMatch(/^\$2[aby]\$/);
     expect(stored.code).not.toMatch(/^\d{6}$/);
   });

@@ -42,7 +42,7 @@ describe("verifyTurnstileToken", () => {
     expect(await verify("good-token")).toBe(true);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
     expect(init.method).toBe("POST");
     const body = init.body as FormData;
@@ -77,7 +77,7 @@ describe("verifyTurnstileToken", () => {
       remoteIp: "203.0.113.5",
       idempotencyKey: "abc-123",
     });
-    const body = fetchMock.mock.calls[0][1].body as FormData;
+    const body = fetchMock.mock.calls[0]![1].body as FormData;
     expect(body.get("remoteip")).toBe("203.0.113.5");
     expect(body.get("idempotency_key")).toBe("abc-123");
   });

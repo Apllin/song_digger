@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    environment: main
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Exit pre-release mode
+        run: |
+          if [ -f .changeset/pre.json ]; then
+            npx changeset pre exit
+            git add .changeset/pre.json
+            git commit -m "chore: exit pre-release mode [skip ci]"
+          fi
+
+      - name: Version packages
+        run: npx changeset version
+
+      - name: Push version bumps
+        run: git push
+
+      - name: Re-install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Publish packages
+        run: pnpm changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push release tags
+        run: git push --follow-tags
+
+      - name: Sync version bumps to staging and develop
+        run: |
+          for branch in staging develop; do
+            git fetch origin $branch
+            git checkout $branch
+            git merge main --no-edit -X theirs
+            git push origin $branch
+          done

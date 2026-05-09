@@ -67,7 +67,7 @@ describe("incrementAnonymousCounter", () => {
     prismaMock.anonymousRequest.upsert.mockResolvedValueOnce({});
     await incrementAnonymousCounter("9.9.9.9");
     expect(prismaMock.anonymousRequest.upsert).toHaveBeenCalledOnce();
-    const args = prismaMock.anonymousRequest.upsert.mock.calls[0][0];
+    const args = prismaMock.anonymousRequest.upsert.mock.calls[0]![0];
     expect(args.where).toEqual({ ip: "9.9.9.9" });
     expect(args.create).toEqual({ ip: "9.9.9.9", count: 1 });
     expect(args.update.count).toEqual({ increment: 1 });

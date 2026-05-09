@@ -100,7 +100,7 @@ describe("lookupCache", () => {
   it("uses composite (source, cacheKey) key in lookup", async () => {
     prismaMock.externalApiCache.findUnique.mockResolvedValueOnce(null);
     await lookupCache("discogs_tracklist", "12345|release");
-    const args = prismaMock.externalApiCache.findUnique.mock.calls[0][0];
+    const args = prismaMock.externalApiCache.findUnique.mock.calls[0]![0];
     expect(args.where.source_cacheKey).toEqual({
       source: "discogs_tracklist",
       cacheKey: "12345|release",
@@ -119,7 +119,7 @@ describe("upsertCache", () => {
     prismaMock.externalApiCache.upsert.mockResolvedValueOnce({});
     await upsertCache("itunes_cover", "k1", { url: "u1" });
     expect(prismaMock.externalApiCache.upsert).toHaveBeenCalledOnce();
-    const args = prismaMock.externalApiCache.upsert.mock.calls[0][0];
+    const args = prismaMock.externalApiCache.upsert.mock.calls[0]![0];
     expect(args.where.source_cacheKey).toEqual({
       source: "itunes_cover",
       cacheKey: "k1",
@@ -135,7 +135,7 @@ describe("upsertCache", () => {
   it("persists empty arrays as valid cache values", async () => {
     prismaMock.externalApiCache.upsert.mockResolvedValueOnce({});
     await upsertCache("discogs_search_artist", "k", []);
-    const args = prismaMock.externalApiCache.upsert.mock.calls[0][0];
+    const args = prismaMock.externalApiCache.upsert.mock.calls[0]![0];
     expect(args.create.payload).toEqual([]);
   });
 

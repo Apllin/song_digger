@@ -10,7 +10,7 @@
       "source": "vanya2h/common",
       "sourceType": "github",
       "skillPath": "skills/integrate-configs/SKILL.md",
-      "computedHash": "95571e6932150b0be592215e28ffe3d73a5e9871625400b696f5b68bdcb1af27"
+      "computedHash": "6b2717846d49c29b2e7249fa33c2021fb1f2126659285ed0eea608b3f6826378"
     },
     "turborepo": {
       "source": "vercel/turborepo",

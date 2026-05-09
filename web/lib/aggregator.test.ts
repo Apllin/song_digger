@@ -54,8 +54,8 @@ describe("rrfFuse", () => {
       { source: "ytm", tracks: [trackB, trackD] }, // B=1, D=2
     ];
     const result = rrfFuse(lists);
-    expect(result[0].title).toBe("B"); // appears in 3 sources
-    expect(result[0].rrfScore).toBeGreaterThan(result[1].rrfScore);
+    expect(result[0]!.title).toBe("B"); // appears in 3 sources
+    expect(result[0]!.rrfScore).toBeGreaterThan(result[1]!.rrfScore);
   });
 
   it("merges coverUrl across sources (cosine cover fills ytm null)", () => {
@@ -72,7 +72,7 @@ describe("rrfFuse", () => {
     ];
     const result = rrfFuse(lists);
     expect(result).toHaveLength(1);
-    expect(result[0].coverUrl).toBe("https://i.example/cosine.jpg");
+    expect(result[0]!.coverUrl).toBe("https://i.example/cosine.jpg");
   });
 
   it("identical track via slightly different titles still fuses (Original Mix)", () => {
@@ -84,7 +84,7 @@ describe("rrfFuse", () => {
     ];
     const result = rrfFuse(lists);
     expect(result).toHaveLength(1);
-    expect(result[0].appearances).toHaveLength(2);
+    expect(result[0]!.appearances).toHaveLength(2);
   });
 
   it("empty source list contributes nothing", () => {
@@ -95,7 +95,7 @@ describe("rrfFuse", () => {
     ];
     const result = rrfFuse(lists);
     expect(result).toHaveLength(1);
-    expect(result[0].rrfScore).toBeCloseTo(1 / 61, 10);
+    expect(result[0]!.rrfScore).toBeCloseTo(1 / 61, 10);
   });
 
   it("graceful when cosine is silent (the main goal)", () => {
@@ -109,7 +109,7 @@ describe("rrfFuse", () => {
       { source: "lastfm", tracks: [trackA, trackC] },
     ];
     const result = rrfFuse(lists);
-    expect(result[0].title).toBe("A"); // dual confirmation
+    expect(result[0]!.title).toBe("A"); // dual confirmation
     expect(result.length).toBe(3);
   });
 
@@ -120,7 +120,7 @@ describe("rrfFuse", () => {
       { source: "ytm", tracks: [makeTrack({ title: "Other" }), trackA] },
     ];
     const result = rrfFuse(lists);
-    expect(result[0].appearances).toEqual([
+    expect(result[0]!.appearances).toEqual([
       { source: "cosine", rank: 1 },
       { source: "ytm", rank: 2 },
     ]);
@@ -150,8 +150,8 @@ describe("aggregateTracks — basic pipeline", () => {
   it("attaches a numeric score (rrfScore) to every returned track", () => {
     const t = makeTrack();
     const result = aggregateTracks([listOf("ytm", t)]);
-    expect(typeof result[0].score).toBe("number");
-    expect(result[0].score).toBeGreaterThan(0);
+    expect(typeof result[0]!.score).toBe("number");
+    expect(result[0]!.score).toBeGreaterThan(0);
   });
 
   it("multi-source confirmation outranks single-source top hit", () => {
@@ -162,7 +162,7 @@ describe("aggregateTracks — basic pipeline", () => {
       listOf("cosine_club", solo, dual),
       listOf("youtube_music", dual),
     ]);
-    expect(result[0].title).toBe("Dual");
+    expect(result[0]!.title).toBe("Dual");
   });
 });
 

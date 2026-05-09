@@ -45,7 +45,7 @@ describe("aggregator smoke — multi-source agreement boost", () => {
     ];
 
     const result = aggregateTracks(lists);
-    expect(result[0].title.toLowerCase()).toBe("shared");
+    expect(result[0]!.title.toLowerCase()).toBe("shared");
     // shared appears in 3 sources, onlyA in 2, onlyB in 1
     const titles = result.map((t) => t.title.toLowerCase());
     expect(titles.indexOf("shared")).toBe(0);
@@ -125,7 +125,7 @@ describe("aggregator smoke — identity dedup across sources", () => {
       { source: "lastfm", tracks: [b] },
     ]);
     expect(result).toHaveLength(1);
-    expect(result[0].appearances).toHaveLength(2);
+    expect(result[0]!.appearances).toHaveLength(2);
     // Sanity-check that normalize* still does what fuse depends on
     expect(normalizeTitle("Grid (Original Mix)")).toBe("grid");
     expect(normalizeArtist("Surgeon")).toBe("surgeon");

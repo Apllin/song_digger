@@ -105,7 +105,7 @@ function DiscographyContent() {
       .then((data: Artist[] | null) => {
         if (!data || data.length === 0) return;
         const exact = data.find((a) => a.name.toLowerCase() === artistParam.toLowerCase());
-        selectArtist(exact ?? data[0]);
+        selectArtist(exact ?? data[0]!);
       })
       .catch(() => {})
       .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
@@ -248,8 +248,8 @@ function DiscographyContent() {
                   e.preventDefault();
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                   if (s.activeIndex >= 0) {
-                    if (inHistory) searchArtistByName(items[s.activeIndex]);
-                    else selectArtist(s.artistSuggestions[s.activeIndex]);
+                    if (inHistory) searchArtistByName(items[s.activeIndex]!);
+                    else selectArtist(s.artistSuggestions[s.activeIndex]!);
                   } else if (s.query.trim()) {
                     searchArtistByName(s.query.trim());
                   }
@@ -485,7 +485,7 @@ function DiscographyContent() {
                 />
                 <div className="flex flex-col gap-2">
                   {pagedReleases.map((r, i) => {
-                    const prevYear = i > 0 ? pagedReleases[i - 1].year : undefined;
+                    const prevYear = i > 0 ? pagedReleases[i - 1]!.year : undefined;
                     const showYear = i === 0 || prevYear !== r.year;
                     return (
                       <div key={r.id} className="flex items-start relative gap-6">
