@@ -41,7 +41,7 @@ const data = await getLabelReleases(
 
 - Wraps axios under the hood. Pass `{ baseURL }` on every call — typically `c.var.pythonServiceUrl` from the Hono context (see `lib/hono/types.ts`).
 - The client validates the response via the generated Zod schema before returning. Drift between FastAPI and the consumer surfaces as an exception at the seam, not a silent type lie ten frames deeper.
-- Generated files live under `web/lib/python-api/generated/{types,zod,clients}/` and are **gitignored**. Run `pnpm codegen` after touching FastAPI routes or Pydantic models.
+- Generated files live under `web/lib/python-api/generated/{types,zod,clients}/` and are **committed to git** (treated like any other source file: PR review surfaces drift, no special CI step needed). Run `pnpm codegen` after touching FastAPI routes or Pydantic models, then commit the regenerated files alongside the route change.
 
 **Adding an endpoint**: annotate the FastAPI route with `operation_id="..."` and `response_model=...` (a Pydantic model). Without `response_model`, kubb generates `any` for the response and the typed client buys you nothing. Then `pnpm codegen` and the new `<operationId>.ts` appears under `clients/`.
 
