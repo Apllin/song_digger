@@ -1,9 +1,10 @@
 "use client";
 
+import { DetailedError, parseResponse } from "hono/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { resetPasswordAction } from "@/app/actions/password-reset";
+import { api } from "@/lib/hono/client";
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -13,8 +14,17 @@ export function ResetPasswordForm({ token }: { token: string }) {
   async function handleSubmit(formData: FormData) {
     setPending(true);
     setError(null);
-    formData.set("token", token);
-    const result = await resetPasswordAction(formData);
+    let result;
+    try {
+      result = await parseResponse(
+        api.auth["reset-password"].$post({ json: { token, password: String(formData.get("password") ?? "") } }),
+      );
+    } catch (err) {
+      setPending(false);
+      const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;
+      setError(data?.error ?? "Something went wrong. Please try again.");
+      return;
+    }
     setPending(false);
 
     if ("error" in result) {

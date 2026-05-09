@@ -19,33 +19,44 @@ const sendVerificationCode = vi.fn();
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendVerificationCode }));
 
-const { verifyEmailAction, resendVerificationCodeAction } = await import("./verify-email");
+const { authApi } = await import("./authApi");
 
-function fd(fields: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.set(k, v);
-  return f;
+async function postVerify(body: Record<string, unknown>): Promise<Response> {
+  return authApi.request("/auth/verify-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
-describe("verifyEmailAction", () => {
+async function postResend(body: Record<string, unknown>): Promise<Response> {
+  return authApi.request("/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("POST /auth/verify-email", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("rejects malformed code", async () => {
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "abc" }));
-    expect(result).toEqual({ error: "Invalid email or code format" });
+  it("returns 400 for malformed code", async () => {
+    const res = await postVerify({ email: "user@example.com", code: "abc" });
+    expect(res.status).toBe(400);
     expect(prismaMock.verificationCode.findMany).not.toHaveBeenCalled();
   });
 
-  it("rejects 5-digit code", async () => {
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "12345" }));
-    expect(result).toEqual({ error: "Invalid email or code format" });
+  it("returns 400 for 5-digit code", async () => {
+    const res = await postVerify({ email: "user@example.com", code: "12345" });
+    expect(res.status).toBe(400);
   });
 
   it("rejects when no pending codes exist (expired or never created)", async () => {
     prismaMock.verificationCode.findMany.mockResolvedValueOnce([]);
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "123456" }));
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+    const result = await res.json();
     expect(result).toEqual({
       error: "Code expired or not found. Please request a new one.",
     });
@@ -56,7 +67,8 @@ describe("verifyEmailAction", () => {
     prismaMock.verificationCode.findMany.mockResolvedValueOnce([
       { code: wrongHash, expires: new Date(Date.now() + 60_000) },
     ]);
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "123456" }));
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+    const result = await res.json();
     expect(result).toEqual({ error: "Invalid code" });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
@@ -69,7 +81,8 @@ describe("verifyEmailAction", () => {
     prismaMock.user.update.mockResolvedValueOnce({});
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
 
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "123456" }));
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+    const result = await res.json();
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { email: "user@example.com" },
@@ -90,29 +103,29 @@ describe("verifyEmailAction", () => {
     prismaMock.user.update.mockResolvedValueOnce({});
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 2 });
 
-    // User uses the OLDER code — still works
-    const result = await verifyEmailAction(fd({ email: "user@example.com", code: "111111" }));
+    const res = await postVerify({ email: "user@example.com", code: "111111" });
+    const result = await res.json();
     expect(result).toEqual({ success: true });
   });
 
-  it("expired codes are filtered before comparison (Prisma where clause)", async () => {
-    // Verify the where clause; we trust Prisma to filter correctly.
+  it("filters expired codes via Prisma where clause", async () => {
     prismaMock.verificationCode.findMany.mockResolvedValueOnce([]);
-    await verifyEmailAction(fd({ email: "user@example.com", code: "123456" }));
+    await postVerify({ email: "user@example.com", code: "123456" });
     const call = prismaMock.verificationCode.findMany.mock.calls[0]![0];
     expect(call.where.email).toBe("user@example.com");
     expect(call.where.expires).toEqual({ gt: expect.any(Date) });
   });
 });
 
-describe("resendVerificationCodeAction", () => {
+describe("POST /auth/resend-verification", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("returns success silently for nonexistent user (no enumeration)", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
-    const result = await resendVerificationCodeAction(fd({ email: "nobody@example.com" }));
+    const res = await postResend({ email: "nobody@example.com" });
+    const result = await res.json();
     expect(result).toEqual({ success: true });
     expect(sendVerificationCode).not.toHaveBeenCalled();
   });
@@ -122,7 +135,8 @@ describe("resendVerificationCodeAction", () => {
       email: "verified@example.com",
       emailVerified: new Date(),
     });
-    const result = await resendVerificationCodeAction(fd({ email: "verified@example.com" }));
+    const res = await postResend({ email: "verified@example.com" });
+    const result = await res.json();
     expect(result).toEqual({ error: "Email already verified" });
     expect(sendVerificationCode).not.toHaveBeenCalled();
   });
@@ -135,7 +149,8 @@ describe("resendVerificationCodeAction", () => {
     prismaMock.verificationCode.findFirst.mockResolvedValueOnce({
       createdAt: new Date(Date.now() - 30 * 1000),
     });
-    const result = await resendVerificationCodeAction(fd({ email: "user@example.com" }));
+    const res = await postResend({ email: "user@example.com" });
+    const result = await res.json();
     expect(result).toEqual({
       error: "Please wait a minute before requesting another code",
     });
@@ -152,7 +167,8 @@ describe("resendVerificationCodeAction", () => {
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
 
-    const result = await resendVerificationCodeAction(fd({ email: "user@example.com" }));
+    const res = await postResend({ email: "user@example.com" });
+    const result = await res.json();
     expect(result).toEqual({ success: true });
 
     const [emailArg, codeArg] = sendVerificationCode.mock.calls[0]!;
@@ -172,7 +188,8 @@ describe("resendVerificationCodeAction", () => {
     prismaMock.verificationCode.findFirst.mockResolvedValueOnce(null);
     sendVerificationCode.mockRejectedValueOnce(new Error("Resend down"));
 
-    const result = await resendVerificationCodeAction(fd({ email: "user@example.com" }));
+    const res = await postResend({ email: "user@example.com" });
+    const result = await res.json();
     expect(result).toEqual({
       error: "We couldn't send the email. Please try again.",
     });

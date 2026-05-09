@@ -1,8 +1,9 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useState, useTransition } from "react";
 
-import { acceptCookieConsentAction } from "@/app/actions/cookie-consent";
+import { api } from "@/lib/hono/client";
 
 export function CookieConsentBanner() {
   const [dismissed, setDismissed] = useState(false);
@@ -12,7 +13,7 @@ export function CookieConsentBanner() {
 
   const onAccept = () => {
     startTransition(async () => {
-      await acceptCookieConsentAction();
+      await parseResponse(api.auth["cookie-consent"].$post({}));
       setDismissed(true);
     });
   };
