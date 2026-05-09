@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "./types";
 
+import { authApi } from "@/features/auth/server/authApi";
 import { bandcampAudioApi } from "@/features/bandcampAudio/server/bandcampAudioApi";
 import { discographyApi } from "@/features/discography/server/discographyApi";
 import { dislikeApi } from "@/features/dislike/server/dislikeApi";
@@ -17,6 +18,7 @@ export const app = new Hono<AppEnv>()
     c.set("pythonServiceUrl", process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000");
     await next();
   })
+  .route("/", authApi)
   .route("/", bandcampAudioApi)
   .route("/", discographyApi)
   .route("/", dislikeApi)

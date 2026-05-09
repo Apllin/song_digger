@@ -14,38 +14,37 @@ const prismaMock = {
 
 const sendVerificationCode = vi.fn();
 const verifyTurnstileToken = vi.fn();
-const getRequestIp = vi.fn(async () => "unknown");
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendVerificationCode }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken }));
-vi.mock("@/lib/anonymous-counter", () => ({ getRequestIp }));
 
-// Default to no Turnstile env so the existing tests stay valid.
 delete process.env.TURNSTILE_SECRET_KEY;
 
-const { registerAction } = await import("./register");
+const { authApi } = await import("./authApi");
 
-function fd(fields: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.set(k, v);
-  return f;
+async function post(body: Record<string, unknown>): Promise<Response> {
+  return authApi.request("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
-describe("registerAction", () => {
+describe("POST /auth/register", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("rejects invalid email", async () => {
-    const result = await registerAction(fd({ email: "not-an-email", password: "longenough" }));
-    expect(result).toEqual({ error: "Invalid email or password format" });
+  it("returns 400 for invalid email", async () => {
+    const res = await post({ email: "not-an-email", password: "longenough" });
+    expect(res.status).toBe(400);
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("rejects password under 8 chars", async () => {
-    const result = await registerAction(fd({ email: "user@example.com", password: "short" }));
-    expect(result).toEqual({ error: "Invalid email or password format" });
+  it("returns 400 for short password", async () => {
+    const res = await post({ email: "user@example.com", password: "short" });
+    expect(res.status).toBe(400);
   });
 
   it("rejects email already registered (existing passwordHash)", async () => {
@@ -55,7 +54,8 @@ describe("registerAction", () => {
       passwordHash: "$2a$10$...",
       emailVerified: new Date(),
     });
-    const result = await registerAction(fd({ email: "taken@example.com", password: "validpassword" }));
+    const res = await post({ email: "taken@example.com", password: "validpassword" });
+    const result = await res.json();
     expect(result).toEqual({ error: "Email already registered" });
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(sendVerificationCode).not.toHaveBeenCalled();
@@ -68,7 +68,8 @@ describe("registerAction", () => {
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
     sendVerificationCode.mockResolvedValueOnce(undefined);
 
-    const result = await registerAction(fd({ email: "fresh@example.com", password: "validpassword" }));
+    const res = await post({ email: "fresh@example.com", password: "validpassword" });
+    const result = await res.json();
     expect(result).toEqual({ success: true, email: "fresh@example.com" });
 
     expect(prismaMock.user.create).toHaveBeenCalledOnce();
@@ -93,8 +94,10 @@ describe("registerAction", () => {
     prismaMock.user.update.mockResolvedValueOnce({});
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
+    sendVerificationCode.mockResolvedValueOnce(undefined);
 
-    const result = await registerAction(fd({ email: "daebatzaebis@gmail.com", password: "validpassword" }));
+    const res = await post({ email: "daebatzaebis@gmail.com", password: "validpassword" });
+    const result = await res.json();
     expect(result).toEqual({ success: true, email: "daebatzaebis@gmail.com" });
 
     expect(prismaMock.user.create).not.toHaveBeenCalled();
@@ -110,8 +113,9 @@ describe("registerAction", () => {
     prismaMock.user.create.mockResolvedValueOnce({});
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
+    sendVerificationCode.mockResolvedValueOnce(undefined);
 
-    await registerAction(fd({ email: "Mixed@Example.COM", password: "validpassword" }));
+    await post({ email: "Mixed@Example.COM", password: "validpassword" });
 
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
       where: { email: "mixed@example.com" },
@@ -123,7 +127,8 @@ describe("registerAction", () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
     sendVerificationCode.mockRejectedValueOnce(new Error("Resend send failed (validation_error): bad sandbox"));
 
-    const result = await registerAction(fd({ email: "x@example.com", password: "validpassword" }));
+    const res = await post({ email: "x@example.com", password: "validpassword" });
+    const result = await res.json();
     expect(result).toEqual({
       error: "We couldn't send your verification email. Please try again.",
     });
@@ -134,16 +139,13 @@ describe("registerAction", () => {
 
   describe("honeypot", () => {
     it("returns fake success and writes nothing when 'website' is filled", async () => {
-      const result = await registerAction(
-        fd({
-          email: "bot@example.com",
-          password: "validpassword",
-          website: "https://spam.example",
-        }),
-      );
-      // Looks like success — bot can't tell it was detected.
+      const res = await post({
+        email: "bot@example.com",
+        password: "validpassword",
+        website: "https://spam.example",
+      });
+      const result = await res.json();
       expect(result).toEqual({ success: true, email: "bot@example.com" });
-      // No DB call, no email send.
       expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
       expect(prismaMock.user.create).not.toHaveBeenCalled();
       expect(sendVerificationCode).not.toHaveBeenCalled();
@@ -161,13 +163,12 @@ describe("registerAction", () => {
 
     it("rejects when Turnstile verification fails", async () => {
       verifyTurnstileToken.mockResolvedValueOnce(false);
-      const result = await registerAction(
-        fd({
-          email: "user@example.com",
-          password: "validpassword",
-          turnstileToken: "bad",
-        }),
-      );
+      const res = await post({
+        email: "user@example.com",
+        password: "validpassword",
+        turnstileToken: "bad",
+      });
+      const result = await res.json();
       expect(result).toEqual({
         error: "CAPTCHA verification failed. Please try again.",
       });
@@ -183,26 +184,23 @@ describe("registerAction", () => {
       prismaMock.verificationCode.create.mockResolvedValueOnce({});
       sendVerificationCode.mockResolvedValueOnce(undefined);
 
-      const result = await registerAction(
-        fd({
-          email: "user@example.com",
-          password: "validpassword",
-          turnstileToken: "good",
-        }),
-      );
+      const res = await post({
+        email: "user@example.com",
+        password: "validpassword",
+        turnstileToken: "good",
+      });
+      const result = await res.json();
       expect(result).toEqual({ success: true, email: "user@example.com" });
       expect(verifyTurnstileToken).toHaveBeenCalledWith("good", expect.any(Object));
     });
 
     it("fails CAPTCHA gate before checking existence (no enumeration)", async () => {
       verifyTurnstileToken.mockResolvedValueOnce(false);
-      await registerAction(
-        fd({
-          email: "taken@example.com",
-          password: "validpassword",
-          turnstileToken: "bad",
-        }),
-      );
+      await post({
+        email: "taken@example.com",
+        password: "validpassword",
+        turnstileToken: "bad",
+      });
       expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
     });
   });
@@ -212,14 +210,13 @@ describe("registerAction", () => {
     prismaMock.user.create.mockResolvedValueOnce({});
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     prismaMock.verificationCode.create.mockResolvedValueOnce({});
+    sendVerificationCode.mockResolvedValueOnce(undefined);
 
-    await registerAction(fd({ email: "user@example.com", password: "validpassword" }));
+    await post({ email: "user@example.com", password: "validpassword" });
 
     const stored = prismaMock.verificationCode.create.mock.calls[0]![0].data;
-    // bcrypt-hashed, not the raw 6-digit code
     expect(stored.code).toMatch(/^\$2[aby]\$/);
     expect(stored.code).not.toMatch(/^\d{6}$/);
-    // 15-minute window
     const ttl = stored.expires.getTime() - Date.now();
     expect(ttl).toBeGreaterThan(14 * 60 * 1000);
     expect(ttl).toBeLessThanOrEqual(15 * 60 * 1000);
