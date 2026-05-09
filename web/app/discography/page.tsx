@@ -5,14 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
+import { useArtistReleases } from "@/features/discography/hooks/useArtistReleases";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
-
-const PAGE_SIZE = 15;
 
 export default function DiscographyPage() {
   return (
@@ -30,6 +29,12 @@ function DiscographyContent() {
   const didAutoLoad = useRef(false);
   const { history, addToHistory } = useSearchHistory("discography-history");
 
+  const { releases, totalItems, totalPages, loadingReleases } = useArtistReleases(
+    s.selectedArtist?.id,
+    s.page,
+    s.roleFilter,
+  );
+
   function selectArtist(artist: DiscogsArtist) {
     setS((prev) => ({
       ...prev,
@@ -38,9 +43,7 @@ function DiscographyContent() {
       showSuggestions: false,
       showHistory: false,
       activeIndex: -1,
-      releases: [],
       page: 1,
-      totalItems: 0,
     }));
   }
 
@@ -49,9 +52,7 @@ function DiscographyContent() {
       ...prev,
       query: name,
       selectedArtist: null,
-      releases: [],
       page: 1,
-      totalItems: 0,
       showHistory: false,
       showSuggestions: false,
       loadingArtists: true,
@@ -113,46 +114,6 @@ function DiscographyContent() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
-
-  // Server pagination: fetch one page when artist / role filter / page changes.
-  // Discogs handles sort=year and role=Main natively, so the client just renders
-  // what came back without filtering or sorting.
-  const artistId = s.selectedArtist?.id ?? null;
-  useEffect(() => {
-    if (artistId == null) return;
-    const controller = new AbortController();
-    setS((prev) => ({ ...prev, loadingReleases: true }));
-    fetchApi(
-      api.discography.releases.$get(
-        {
-          query: {
-            artistId: String(artistId),
-            page: String(s.page),
-            perPage: String(PAGE_SIZE),
-            ...(s.roleFilter === "main" ? { role: "Main" as const } : {}),
-          },
-        },
-        { init: { signal: controller.signal } },
-      ),
-    )
-      .then((data) => {
-        if (controller.signal.aborted || !data) return;
-        setS((prev) => ({
-          ...prev,
-          releases: data.releases,
-          totalItems: data.pagination.items ?? 0,
-          loadingReleases: false,
-        }));
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setS((prev) => ({ ...prev, releases: [], totalItems: 0, loadingReleases: false }));
-      });
-    return () => controller.abort();
-  }, [artistId, s.roleFilter, s.page, setS]);
-
-  const totalPages = Math.ceil(s.totalItems / PAGE_SIZE);
-  const pagedReleases = s.releases;
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -420,9 +381,9 @@ function DiscographyContent() {
                   <h2 className="font-display text-[22px] sm:text-[32px] md:text-[40px] font-normal leading-[1.05] m-0 mt-1 break-words">
                     {s.selectedArtist.name}
                   </h2>
-                  {!s.loadingReleases && s.totalItems > 0 && (
+                  {!loadingReleases && totalItems > 0 && (
                     <div className="font-mono-td text-[12px] text-td-fg-d mt-1">
-                      {s.totalItems} release{s.totalItems !== 1 ? "s" : ""}
+                      {totalItems} release{totalItems !== 1 ? "s" : ""}
                     </div>
                   )}
                 </div>
@@ -436,7 +397,7 @@ function DiscographyContent() {
                   return (
                     <button
                       key={f}
-                      onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1, releases: [], totalItems: 0 }))}
+                      onClick={() => setS((prev) => ({ ...prev, roleFilter: f, page: 1 }))}
                       className="px-3 py-1.5 text-[11px] rounded-full transition-colors whitespace-nowrap"
                       style={{
                         border: `1px solid ${active ? "var(--td-accent)" : "rgba(255, 255, 255, 0.22)"}`,
@@ -451,7 +412,7 @@ function DiscographyContent() {
               </div>
             </div>
 
-            {s.loadingReleases && (
+            {loadingReleases && (
               <div className="flex justify-center py-10">
                 <svg
                   className="w-6 h-6 animate-spin"
@@ -465,19 +426,19 @@ function DiscographyContent() {
               </div>
             )}
 
-            {!s.loadingReleases && s.totalItems === 0 && (
+            {!loadingReleases && totalItems === 0 && (
               <p className="text-sm text-td-fg-m text-center py-10">No releases found</p>
             )}
 
-            {pagedReleases.length > 0 && (
+            {releases.length > 0 && (
               <div className="relative">
                 <div
                   className="absolute top-6 bottom-6 w-px pointer-events-none"
                   style={{ left: "52px", background: "var(--td-hair-2)" }}
                 />
                 <div className="flex flex-col gap-2">
-                  {pagedReleases.map((r, i) => {
-                    const prevYear = i > 0 ? pagedReleases[i - 1]!.year : undefined;
+                  {releases.map((r, i) => {
+                    const prevYear = i > 0 ? releases[i - 1]!.year : undefined;
                     const showYear = i === 0 || prevYear !== r.year;
                     return (
                       <div key={r.id} className="flex items-start relative gap-6">
