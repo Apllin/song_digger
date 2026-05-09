@@ -73,10 +73,9 @@ async function tryBandcamp(title: string, cleanedArtist: string): Promise<EmbedR
 export async function resolveEmbed(title: string, artist: string): Promise<EmbedResult> {
   const cleanedArtist = cleanArtist(artist);
 
-  // Run both lookups in parallel, then prefer YTM when it has a hit.
-  // Priority is preserved (YTM > Bandcamp); the Bandcamp work is "free"
-  // when YTM hits, and saves the full YTM timeout when YTM misses.
-  const [ytm, bc] = await Promise.all([tryYtmExact(title, cleanedArtist), tryBandcamp(title, cleanedArtist)]);
+  const ytm = await tryYtmExact(title, cleanedArtist);
+  if (ytm) return ytm;
 
-  return ytm ?? bc ?? { embedUrl: null, source: null };
+  const bc = await tryBandcamp(title, cleanedArtist);
+  return bc ?? { embedUrl: null, source: null };
 }
