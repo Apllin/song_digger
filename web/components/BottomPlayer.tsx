@@ -1,8 +1,10 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useEffect, useRef, useState } from "react";
 
 import { usePlayer } from "@/lib/atoms/player";
+import { api } from "@/lib/hono/client";
 import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
 function formatTime(s: number): string {
@@ -158,36 +160,25 @@ export function BottomPlayer() {
     let cancelled = false;
     setResolving(true);
 
-    const params = new URLSearchParams({ title: track.title, artist: track.artist });
-    fetch(`/api/embed?${params}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (
-          data: {
-            embedUrl: string | null;
-            source: string | null;
-            sourceUrl: string | null;
-            coverUrl: string | null;
-          } | null,
-        ) => {
-          if (cancelled) return;
-          if (data?.embedUrl && data.source) {
-            // Keep the cover the user already sees on the TrackCard — the
-            // YTM/Bandcamp resolver's thumbnail is often a channel avatar
-            // or a low-res alternate that visibly differs from the original
-            // artwork. Fall back to the resolved cover only when the
-            // original is missing.
-            swapTrack({
-              source: data.source,
-              embedUrl: data.embedUrl,
-              sourceUrl: data.sourceUrl ?? track.sourceUrl,
-              coverUrl: track.coverUrl ?? data.coverUrl,
-            });
-          } else {
-            swapTrack({ source: "unavailable", embedUrl: null });
-          }
-        },
-      )
+    parseResponse(api.embed.$get({ query: { title: track.title, artist: track.artist } }))
+      .then((data) => {
+        if (cancelled) return;
+        if (data.embedUrl && data.source) {
+          // Keep the cover the user already sees on the TrackCard — the
+          // YTM/Bandcamp resolver's thumbnail is often a channel avatar
+          // or a low-res alternate that visibly differs from the original
+          // artwork. Fall back to the resolved cover only when the
+          // original is missing.
+          swapTrack({
+            source: data.source,
+            embedUrl: data.embedUrl,
+            sourceUrl: data.sourceUrl ?? track.sourceUrl,
+            coverUrl: track.coverUrl ?? data.coverUrl,
+          });
+        } else {
+          swapTrack({ source: "unavailable", embedUrl: null });
+        }
+      })
       .catch((err) => {
         if (cancelled) return;
         console.error("[/api/embed] resolve failed:", err);
@@ -216,24 +207,13 @@ export function BottomPlayer() {
     setBcAudioUrl(null);
     setCurrentTime(0);
     setDuration(0);
-    fetch(`/api/bandcamp-audio?url=${encodeURIComponent(track.sourceUrl)}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          console.error("[Bandcamp] /api/bandcamp-audio failed:", r.status, await r.text().catch(() => ""));
-          return null;
-        }
-        return r.json();
-      })
+    parseResponse(api["bandcamp-audio"].$get({ query: { url: track.sourceUrl } }))
       .then((data) => {
         if (cancelled) return;
-        if (!data?.audioUrl) {
-          console.error("[Bandcamp] no audioUrl in response:", data);
-          return;
-        }
-        setBcAudioUrl(data.audioUrl as string);
+        setBcAudioUrl(data.audioUrl);
         if (typeof data.duration === "number") setDuration(data.duration);
       })
-      .catch((err) => console.error("[Bandcamp] audio fetch error:", err));
+      .catch((err) => console.error("[Bandcamp] /api/bandcamp-audio failed:", err));
     return () => {
       cancelled = true;
     };
