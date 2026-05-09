@@ -14,6 +14,7 @@ import { favoritesAtom } from "@/lib/atoms/favorites";
 import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
 import { api } from "@/lib/hono/client";
+import { withAnonGate } from "@/lib/with-anon-gate";
 
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 90_000;
@@ -80,9 +81,7 @@ function HomeContent() {
         }
 
         try {
-          const res = await fetch(`/api/search/${searchId}`);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
+          const data = await parseResponse(api.search[":id"].$get({ param: { id: searchId } }));
 
           if (currentSearchIdRef.current !== searchId) return;
 
@@ -136,21 +135,11 @@ function HomeContent() {
       }));
 
       try {
-        const res = await fetch("/api/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: q.trim() }),
+        const data = await withAnonGate(parseResponse(api.search.$post({ json: { input: q.trim() } })), () => {
+          setShowRegisterPrompt(true);
+          setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
         });
-        if (res.status === 429) {
-          const body = await res.json().catch(() => ({}));
-          if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
-            setShowRegisterPrompt(true);
-            setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
-            return;
-          }
-        }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        if (!data) return;
         pollSearch(data.id);
       } catch (err) {
         console.error("[search] error:", err);
@@ -176,22 +165,12 @@ function HomeContent() {
     setSearch((prev) => ({ ...prev, status: "running", errorMsg: "" }));
 
     try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: q }),
+      const data = await withAnonGate(parseResponse(api.search.$post({ json: { input: q } })), () => {
+        setShowRegisterPrompt(true);
+        appendModeRef.current = false;
+        setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
       });
-      if (res.status === 429) {
-        const body = await res.json().catch(() => ({}));
-        if (body?.error === "ANONYMOUS_LIMIT_REACHED") {
-          setShowRegisterPrompt(true);
-          appendModeRef.current = false;
-          setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
-          return;
-        }
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      if (!data) return;
       pollSearch(data.id);
     } catch (err) {
       console.error("[loadMore] error:", err);

@@ -1,106 +1,31 @@
-import { NextRequest } from "next/server";
+import { zValidator } from "@hono/zod-validator";
+import { Hono } from "hono";
 import { z } from "zod";
 
+import {
+  PYTHON_LIMIT_PER_SOURCE,
+  SEARCH_CACHE_SOURCE,
+  SEARCH_CACHE_TTL_SECONDS,
+  searchCacheKey,
+} from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-import { gateAnonymousRequest } from "@/lib/anonymous-counter";
 import { auth } from "@/lib/auth";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } from "@/lib/embed-cache";
 import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
+import { anonGate } from "@/lib/hono/anonGate";
+import type { AppEnv } from "@/lib/hono/types";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
 import type { SimilarResponse } from "@/lib/python-api/generated/types/SimilarResponse";
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
-
-const SearchRequestSchema = z.object({
+const SearchBodySchema = z.object({
   input: z.string().trim().min(1).max(500),
 });
-
-// ── Search response cache ────────────────────────────────────────────────────
-// Caches the Python `/similar` response (SourceList[]) for repeat searches of
-// the same (artist, track) pair. The dominant cost in the search pipeline is
-// the Python adapter fan-out (Cosine + YTM-radio + Yandex are unavoidable
-// 3-8s); RRF + saveTracks are sub-second. Caching the upstream response
-// short-circuits the heavy part while RRF and dislike filter still run fresh
-// per request, so cross-user cache sharing is correctness-safe.
-//
-// TTL = 14 days. Source data drift (new tracks on Cosine/YTM) within 2 weeks
-// is small for the underground-techno catalogue.
-//
-// **When to bump SEARCH_CACHE_VERSION:** ANYTHING that changes what Python
-// `/similar` returns. That includes: adding/removing an adapter from the
-// fan-out in `python-service/app/api/routes/similar.py`, changing filtering
-// or source ordering inside that route, modifying any adapter's
-// `find_similar()` shape or ordering, or changing `limit_per_source` /
-// request shape in [web/lib/python-client.ts](web/lib/python-client.ts).
-// Bumping the version means old keys are never read again — no SQL flush.
-//
-// **Does NOT need a bump:** changes to `lib/aggregator.ts` (RRF formula,
-// tiebreaker, artist diversification), the dislike filter, cover enrichment,
-// or any saveTracks logic. All of these run fresh on every request and
-// re-process the cached `source_lists`.
-const SEARCH_CACHE_SOURCE = "search_response";
-const SEARCH_CACHE_VERSION = "v5";
-const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
-const PYTHON_LIMIT_PER_SOURCE = 40;
-
-export function searchCacheKey(artist: string, track: string | null): string {
-  // Reuse the same normalization as DislikedTrack identity matching so two
-  // typings with the same parsed pair share a cache entry. Sentinel "_" for
-  // artist-only search avoids colliding with empty-track variants.
-  const a = normalizeArtist(artist);
-  const t = track ? normalizeTitle(track) : "_";
-  return `${SEARCH_CACHE_VERSION}:${a}|${t}`;
-}
-
-export const _internals = {
-  SEARCH_CACHE_SOURCE,
-  SEARCH_CACHE_VERSION,
-  SEARCH_CACHE_TTL_SECONDS,
-};
-
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null);
-  const parsed = SearchRequestSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return Response.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const { input } = parsed.data;
-  const { artist, track } = parseQuery(input);
-
-  // Capture the user at request time. runSearch is fire-and-forget on
-  // a background task, so we resolve the session here and pass userId
-  // through. Anonymous users get an empty dislike set (no filtering).
-  const session = await auth();
-  const userId = session?.user?.id ?? null;
-
-  // Anonymous users get 10 free requests pooled across search +
-  // discography + labels (ADR-0021). Authenticated users bypass.
-  if (!userId) {
-    const gate = await gateAnonymousRequest();
-    if (!gate.ok) {
-      return Response.json({ error: "ANONYMOUS_LIMIT_REACHED" }, { status: 429 });
-    }
-  }
-
-  const searchQuery = await prisma.searchQuery.create({
-    data: { input, status: "running" },
-  });
-
-  runSearch(searchQuery.id, input, artist, track, userId).catch((err) => {
-    console.error(`[Search] background error for ${searchQuery.id}:`, err);
-    prisma.searchQuery.update({ where: { id: searchQuery.id }, data: { status: "error" } }).catch(console.error);
-  });
-
-  return Response.json({ id: searchQuery.id, status: "running" });
-}
 
 // Backfill update has to wait for slow-DB days. Cap loose enough to not mask
 // real hangs but high enough to survive a cold Neon connection.
@@ -221,7 +146,14 @@ async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<Fused
   return settled.filter((t): t is FusedCandidate => t !== null);
 }
 
-async function runSearch(searchId: string, input: string, artist: string, track: string | null, userId: string | null) {
+async function runSearch(
+  searchId: string,
+  input: string,
+  artist: string,
+  track: string | null,
+  userId: string | null,
+  pythonServiceUrl: string,
+) {
   // ── Look up cache + load dislikes in parallel. ───────────────────────────
   // Cache lookup is one Postgres SELECT (~30-80ms RTT to Neon); dislikes is
   // another. Parallelism saves one round-trip worth of wall-clock. On a hit
@@ -243,7 +175,7 @@ async function runSearch(searchId: string, input: string, artist: string, track:
   } else {
     pythonResult = await findSimilar(
       { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: PYTHON_SERVICE_URL, signal: AbortSignal.timeout(90_000) },
+      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
     ).catch((err: unknown) => {
       console.error("[Search] Python stage failed:", err);
       return null;
@@ -286,3 +218,56 @@ async function runSearch(searchId: string, input: string, artist: string, track:
     data: { status: "done" },
   });
 }
+
+export const searchApi = new Hono<AppEnv>()
+  .post("/search", anonGate, zValidator("json", SearchBodySchema), async (c) => {
+    const { input } = c.req.valid("json");
+    const { artist, track } = parseQuery(input);
+
+    // Capture the user at request time. runSearch is fire-and-forget on
+    // a background task, so we resolve the session here and pass userId
+    // through. Anonymous users get an empty dislike set (no filtering).
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
+
+    const searchQuery = await prisma.searchQuery.create({
+      data: { input, status: "running" },
+    });
+
+    const pythonServiceUrl = c.var.pythonServiceUrl;
+    runSearch(searchQuery.id, input, artist, track, userId, pythonServiceUrl).catch((err) => {
+      console.error(`[Search] background error for ${searchQuery.id}:`, err);
+      prisma.searchQuery.update({ where: { id: searchQuery.id }, data: { status: "error" } }).catch(console.error);
+    });
+
+    return c.json({ id: searchQuery.id, status: "running" as const });
+  })
+  .get("/search/:id", async (c) => {
+    const id = c.req.param("id");
+    const searchQuery = await prisma.searchQuery.findUnique({
+      where: { id },
+      include: {
+        results: {
+          orderBy: { score: "desc" },
+          include: { track: true },
+        },
+      },
+    });
+
+    if (!searchQuery) {
+      return c.json({ error: "Search not found" } as const, 404);
+    }
+
+    return c.json({
+      id: searchQuery.id,
+      status: searchQuery.status,
+      tracks: searchQuery.results.map((r) => ({
+        ...r.track,
+        score: r.score,
+        // Multiple adapter sources can surface the same identity; the chip-row
+        // in the UI renders one chip per entry. Old SearchResult rows from
+        // before this column existed default to [] — UI falls back to [source].
+        sources: r.sources.length ? r.sources : [r.track.source],
+      })),
+    });
+  });

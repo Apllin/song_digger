@@ -8,6 +8,7 @@ import { embedApi } from "@/features/embed/server/embedApi";
 import { favoriteApi } from "@/features/favorite/server/favoriteApi";
 import { healthApi } from "@/features/health/server/healthApi";
 import { labelApi } from "@/features/label/server/labelApi";
+import { searchApi } from "@/features/search/server/searchApi";
 import { suggestionApi } from "@/features/suggestion/server/suggestionApi";
 
 export const app = new Hono<AppEnv>()
@@ -23,6 +24,7 @@ export const app = new Hono<AppEnv>()
   .route("/", favoriteApi)
   .route("/", healthApi)
   .route("/", labelApi)
+  .route("/", searchApi)
   .route("/", suggestionApi);
 
 export type AppType = typeof app;

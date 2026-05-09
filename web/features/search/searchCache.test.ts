@@ -1,24 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-
-// Route module imports prisma + auth + the kubb-generated Python client at
-// module scope; mock them so this unit test stays offline. We're only
-// exercising the pure cache-key helper + the version/source/TTL constants.
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/python-api/generated/clients/findSimilar", () => ({ findSimilar: vi.fn() }));
-vi.mock("@/lib/external-api-cache", () => ({
-  lookupCache: vi.fn(),
-  upsertCache: vi.fn(),
-}));
-vi.mock("@/lib/embed-cache", () => ({ warmEmbedCache: vi.fn() }));
-vi.mock("@/lib/cover-enrichment", () => ({ enrichMissingCovers: vi.fn() }));
-vi.mock("@/lib/anonymous-counter", () => ({ gateAnonymousRequest: vi.fn() }));
-
-const { searchCacheKey, _internals } = await import("./route");
+import { describe, expect, it } from "vitest";
+import { SEARCH_CACHE_SOURCE, SEARCH_CACHE_TTL_SECONDS, SEARCH_CACHE_VERSION, searchCacheKey } from "./searchCache";
 
 describe("searchCacheKey", () => {
   it("prefixes with the version constant", () => {
-    expect(searchCacheKey("Mulero", "Voices")).toBe(`${_internals.SEARCH_CACHE_VERSION}:mulero|voices`);
+    expect(searchCacheKey("Mulero", "Voices")).toBe(`${SEARCH_CACHE_VERSION}:mulero|voices`);
   });
 
   it("normalizes diacritics on the artist", () => {
@@ -34,7 +19,7 @@ describe("searchCacheKey", () => {
   });
 
   it("uses '_' sentinel for artist-only searches (track=null)", () => {
-    expect(searchCacheKey("Mulero", null)).toBe(`${_internals.SEARCH_CACHE_VERSION}:mulero|_`);
+    expect(searchCacheKey("Mulero", null)).toBe(`${SEARCH_CACHE_VERSION}:mulero|_`);
   });
 
   it("artist-only and (artist, '') produce the same effective key (both = sentinel)", () => {
@@ -57,18 +42,15 @@ describe("searchCacheKey", () => {
 
 describe("search cache invariants", () => {
   it("source identifier is stable (never refactor without flushing the table)", () => {
-    expect(_internals.SEARCH_CACHE_SOURCE).toBe("search_response");
+    expect(SEARCH_CACHE_SOURCE).toBe("search_response");
   });
 
   it("TTL is 14 days in seconds", () => {
-    expect(_internals.SEARCH_CACHE_TTL_SECONDS).toBe(14 * 24 * 60 * 60);
+    expect(SEARCH_CACHE_TTL_SECONDS).toBe(14 * 24 * 60 * 60);
   });
 
   it("version constant is part of the key — bumping it forces fresh keys", () => {
-    // Sanity: if someone mutates SEARCH_CACHE_VERSION, all keys change.
-    // We're not testing that here (would need module reload); instead we
-    // verify the prefix is non-empty and present in the rendered key.
-    expect(_internals.SEARCH_CACHE_VERSION).toMatch(/^v\d+$/);
-    expect(searchCacheKey("a", "b")).toContain(`${_internals.SEARCH_CACHE_VERSION}:`);
+    expect(SEARCH_CACHE_VERSION).toMatch(/^v\d+$/);
+    expect(searchCacheKey("a", "b")).toContain(`${SEARCH_CACHE_VERSION}:`);
   });
 });
