@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { SourceList } from "../types/SourceList";
 import { trackMetaSchema } from "./trackMetaSchema";
+import { z } from "zod/v4";
 
 export const sourceListSchema = z.object({
   source: z.string(),

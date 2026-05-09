@@ -1,15 +1,18 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useAtom, useSetAtom } from "jotai";
 import { Suspense, useEffect, useRef } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
 import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
-import { type Label, labelsAtom } from "@/lib/atoms/labels";
-import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
+import { labelsAtom } from "@/lib/atoms/labels";
+import { api } from "@/lib/hono/client";
+import type { DiscogsLabel } from "@/lib/python-api/generated/types/DiscogsLabel";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
+import { withAnonGate } from "@/lib/with-anon-gate";
 
 const POPULAR_LABELS = [
   "Tresor",
@@ -42,7 +45,7 @@ function LabelsContent() {
 
   const onAnonLimit = () => setShowRegisterPrompt(true);
 
-  function selectLabel(label: Label) {
+  function selectLabel(label: DiscogsLabel) {
     setS((prev) => ({
       ...prev,
       selectedLabel: label,
@@ -71,9 +74,11 @@ function LabelsContent() {
       loadingLabels: true,
     }));
     addToHistory(name);
-    fetchWithAnonGate(`/api/discography/label/search?q=${encodeURIComponent(name)}`, { signal: ac.signal }, onAnonLimit)
-      .then((r) => (r ? r.json() : null))
-      .then((data: Label[] | null) => {
+    withAnonGate(
+      parseResponse(api.discography.label.search.$get({ query: { q: name } }, { init: { signal: ac.signal } })),
+      onAnonLimit,
+    )
+      .then((data) => {
         if (ac.signal.aborted || !data) return;
         const exact = data.find((l) => l.name.toLowerCase() === name.toLowerCase());
         const pick = exact ?? data[0];
@@ -96,13 +101,13 @@ function LabelsContent() {
     const ac = new AbortController();
     autocompleteAbortRef.current = ac;
     setS((prev) => ({ ...prev, loadingLabels: true }));
-    fetchWithAnonGate(
-      `/api/discography/label/search?q=${encodeURIComponent(debouncedQuery)}`,
-      { signal: ac.signal },
+    withAnonGate(
+      parseResponse(
+        api.discography.label.search.$get({ query: { q: debouncedQuery } }, { init: { signal: ac.signal } }),
+      ),
       onAnonLimit,
     )
-      .then((r) => (r ? r.json() : null))
-      .then((data: Label[] | null) => {
+      .then((data) => {
         if (ac.signal.aborted || !data) return;
         setS((prev) => ({ ...prev, suggestions: data, showSuggestions: true }));
       })

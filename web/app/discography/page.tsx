@@ -1,35 +1,45 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useAtom, useSetAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { showRegisterPromptAtom } from "@/lib/atoms/anon-limit";
-import { type Artist, discographyAtom, type Release } from "@/lib/atoms/discography";
-import { fetchWithAnonGate } from "@/lib/fetch-with-anon-gate";
+import { discographyAtom } from "@/lib/atoms/discography";
+import { api } from "@/lib/hono/client";
+import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
+import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
 import { useSearchHistory } from "@/lib/use-search-history";
+import { withAnonGate } from "@/lib/with-anon-gate";
 
 const PAGE_SIZE = 15;
 
-async function fetchAllReleases(artistId: number): Promise<Release[]> {
+async function fetchAllReleases(artistId: number): Promise<ArtistRelease[]> {
   const PER_PAGE = 100;
-  const first = await fetch(`/api/discography/releases?artistId=${artistId}&page=1&perPage=${PER_PAGE}`).then((r) =>
-    r.json(),
+  const first = await parseResponse(
+    api.discography.releases.$get({
+      query: { artistId: String(artistId), page: "1", perPage: String(PER_PAGE) },
+    }),
   );
 
-  const releases: Release[] = first.releases ?? [];
-  const totalPages: number = first.pagination?.pages ?? 1;
+  const releases: ArtistRelease[] = [...first.releases];
+  const totalPages = first.pagination.pages;
 
   if (totalPages > 1) {
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, i) =>
-        fetch(`/api/discography/releases?artistId=${artistId}&page=${i + 2}&perPage=${PER_PAGE}`).then((r) => r.json()),
+        parseResponse(
+          api.discography.releases.$get({
+            query: { artistId: String(artistId), page: String(i + 2), perPage: String(PER_PAGE) },
+          }),
+        ),
       ),
     );
     for (const page of rest) {
-      releases.push(...(page.releases ?? []));
+      releases.push(...page.releases);
     }
   }
 
@@ -55,7 +65,7 @@ function DiscographyContent() {
 
   const onAnonLimit = () => setShowRegisterPrompt(true);
 
-  function selectArtist(artist: Artist) {
+  function selectArtist(artist: DiscogsArtist) {
     setS((prev) => ({
       ...prev,
       selectedArtist: artist,
@@ -80,9 +90,8 @@ function DiscographyContent() {
       loadingArtists: true,
     }));
     addToHistory(name);
-    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(name)}`, undefined, onAnonLimit)
-      .then((r) => (r ? r.json() : null))
-      .then((data: Artist[] | null) => {
+    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: name } })), onAnonLimit)
+      .then((data) => {
         if (!data) return;
         const exact = data.find((a) => a.name.toLowerCase() === name.toLowerCase());
         const pick = exact ?? data[0];
@@ -100,12 +109,11 @@ function DiscographyContent() {
     didAutoLoad.current = true;
 
     setS((prev) => ({ ...prev, query: artistParam, loadingArtists: true }));
-    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(artistParam)}`, undefined, onAnonLimit)
-      .then((r) => (r ? r.json() : null))
-      .then((data: Artist[] | null) => {
+    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: artistParam } })), onAnonLimit)
+      .then((data) => {
         if (!data || data.length === 0) return;
         const exact = data.find((a) => a.name.toLowerCase() === artistParam.toLowerCase());
-        selectArtist(exact ?? data[0]);
+        selectArtist(exact ?? data[0]!);
       })
       .catch(() => {})
       .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
@@ -119,9 +127,8 @@ function DiscographyContent() {
       return;
     }
     setS((prev) => ({ ...prev, loadingArtists: true }));
-    fetchWithAnonGate(`/api/discography/search?q=${encodeURIComponent(debouncedQuery)}`, undefined, onAnonLimit)
-      .then((r) => (r ? r.json() : null))
-      .then((data: Artist[] | null) => {
+    withAnonGate(parseResponse(api.discography.search.$get({ query: { q: debouncedQuery } })), onAnonLimit)
+      .then((data) => {
         if (!data) return;
         setS((prev) => ({ ...prev, artistSuggestions: data, showSuggestions: true }));
       })

@@ -1,3 +1,7 @@
+export type { ArtistRelease } from "./ArtistRelease";
+export type { ArtistReleasesResponse } from "./ArtistReleasesResponse";
+export type { DiscogsArtist } from "./DiscogsArtist";
+export type { DiscogsLabel } from "./DiscogsLabel";
 export type {
   FindSimilarSimilarPost200,
   FindSimilarSimilarPost422,
@@ -5,6 +9,14 @@ export type {
   FindSimilarSimilarPostMutationRequest,
   FindSimilarSimilarPostMutationResponse,
 } from "./FindSimilarSimilarPost";
+export type {
+  GetArtistReleases200,
+  GetArtistReleases422,
+  GetArtistReleasesPathParams,
+  GetArtistReleasesQuery,
+  GetArtistReleasesQueryParams,
+  GetArtistReleasesQueryResponse,
+} from "./GetArtistReleases";
 export type {
   GetLabelReleases200,
   GetLabelReleases422,
@@ -14,13 +26,13 @@ export type {
   GetLabelReleasesQueryResponse,
 } from "./GetLabelReleases";
 export type {
-  GetReleasesDiscogsArtistArtistIdReleasesGet200,
-  GetReleasesDiscogsArtistArtistIdReleasesGet422,
-  GetReleasesDiscogsArtistArtistIdReleasesGetPathParams,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQuery,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQueryParams,
-  GetReleasesDiscogsArtistArtistIdReleasesGetQueryResponse,
-} from "./GetReleasesDiscogsArtistArtistIdReleasesGet";
+  GetReleaseTracklist200,
+  GetReleaseTracklist422,
+  GetReleaseTracklistPathParams,
+  GetReleaseTracklistQuery,
+  GetReleaseTracklistQueryParams,
+  GetReleaseTracklistQueryResponse,
+} from "./GetReleaseTracklist";
 export type {
   GetSuggestionsSuggestionsGet200,
   GetSuggestionsSuggestionsGet422,
@@ -28,16 +40,8 @@ export type {
   GetSuggestionsSuggestionsGetQueryParams,
   GetSuggestionsSuggestionsGetQueryResponse,
 } from "./GetSuggestionsSuggestionsGet";
-export type {
-  GetTracklistDiscogsReleaseReleaseIdTracklistGet200,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGet422,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetPathParams,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQuery,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQueryParams,
-  GetTracklistDiscogsReleaseReleaseIdTracklistGetQueryResponse,
-} from "./GetTracklistDiscogsReleaseReleaseIdTracklistGet";
-export type { HealthHealthGet200, HealthHealthGetQuery, HealthHealthGetQueryResponse } from "./HealthHealthGet";
 export type { HTTPValidationError } from "./HTTPValidationError";
+export type { HealthHealthGet200, HealthHealthGetQuery, HealthHealthGetQueryResponse } from "./HealthHealthGet";
 export type { LabelRelease } from "./LabelRelease";
 export type { LabelReleasesPagination } from "./LabelReleasesPagination";
 export type { LabelReleasesResponse } from "./LabelReleasesResponse";
@@ -49,12 +53,12 @@ export type {
   PlayLookupPlayLookupGetQueryResponse,
 } from "./PlayLookupPlayLookupGet";
 export type {
-  SearchArtistDiscogsSearchGet200,
-  SearchArtistDiscogsSearchGet422,
-  SearchArtistDiscogsSearchGetQuery,
-  SearchArtistDiscogsSearchGetQueryParams,
-  SearchArtistDiscogsSearchGetQueryResponse,
-} from "./SearchArtistDiscogsSearchGet";
+  SearchArtists200,
+  SearchArtists422,
+  SearchArtistsQuery,
+  SearchArtistsQueryParams,
+  SearchArtistsQueryResponse,
+} from "./SearchArtists";
 export type {
   SearchExactYtmSearchExactGet200,
   SearchExactYtmSearchExactGet422,
@@ -63,14 +67,15 @@ export type {
   SearchExactYtmSearchExactGetQueryResponse,
 } from "./SearchExactYtmSearchExactGet";
 export type {
-  SearchLabelDiscogsLabelSearchGet200,
-  SearchLabelDiscogsLabelSearchGet422,
-  SearchLabelDiscogsLabelSearchGetQuery,
-  SearchLabelDiscogsLabelSearchGetQueryParams,
-  SearchLabelDiscogsLabelSearchGetQueryResponse,
-} from "./SearchLabelDiscogsLabelSearchGet";
+  SearchLabels200,
+  SearchLabels422,
+  SearchLabelsQuery,
+  SearchLabelsQueryParams,
+  SearchLabelsQueryResponse,
+} from "./SearchLabels";
 export type { SimilarRequest } from "./SimilarRequest";
 export type { SimilarResponse } from "./SimilarResponse";
 export type { SourceList } from "./SourceList";
 export type { TrackMeta } from "./TrackMeta";
+export type { TracklistItem } from "./TracklistItem";
 export type { ValidationError } from "./ValidationError";

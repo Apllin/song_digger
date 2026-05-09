@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { ValidationError } from "../types/ValidationError";
+import { z } from "zod/v4";
 
 export const validationErrorSchema = z.object({
   loc: z.array(z.union([z.int(), z.string()])),

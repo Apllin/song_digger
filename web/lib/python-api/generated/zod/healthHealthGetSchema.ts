@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { HealthHealthGet200, HealthHealthGetQueryResponse } from "../types/HealthHealthGet";
+import { z } from "zod/v4";
 
 /**
  * @description Successful Response

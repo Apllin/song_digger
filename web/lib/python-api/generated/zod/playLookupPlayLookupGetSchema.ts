@@ -3,7 +3,6 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type {
   PlayLookupPlayLookupGet200,
   PlayLookupPlayLookupGet422,
@@ -11,6 +10,7 @@ import type {
   PlayLookupPlayLookupGetQueryResponse,
 } from "../types/PlayLookupPlayLookupGet";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
+import { z } from "zod/v4";
 
 export const playLookupPlayLookupGetQueryParamsSchema = z.object({
   artist: z.string(),
