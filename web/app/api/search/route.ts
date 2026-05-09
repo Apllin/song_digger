@@ -11,9 +11,11 @@ import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
+import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
 import type { SimilarResponse } from "@/lib/python-api/generated/types/SimilarResponse";
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
-import { fetchSimilarTracks } from "@/lib/python-client";
+
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 
 const SearchRequestSchema = z.object({
   input: z.string().trim().min(1).max(500),
@@ -239,12 +241,10 @@ async function runSearch(searchId: string, input: string, artist: string, track:
   if (cached) {
     pythonResult = cached;
   } else {
-    pythonResult = await fetchSimilarTracks({
-      input,
-      artist,
-      track,
-      limit_per_source: PYTHON_LIMIT_PER_SOURCE,
-    }).catch((err) => {
+    pythonResult = await findSimilar(
+      { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
+      { baseURL: PYTHON_SERVICE_URL, signal: AbortSignal.timeout(90_000) },
+    ).catch((err: unknown) => {
       console.error("[Search] Python stage failed:", err);
       return null;
     });

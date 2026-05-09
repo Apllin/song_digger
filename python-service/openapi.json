@@ -8,7 +8,7 @@
     "/similar": {
       "post": {
         "summary": "Find Similar",
-        "operationId": "find_similar_similar_post",
+        "operationId": "find_similar",
         "requestBody": {
           "content": {
             "application/json": {

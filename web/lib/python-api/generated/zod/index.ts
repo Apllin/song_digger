@@ -4,11 +4,11 @@ export { artistReleasesResponseSchema } from "./artistReleasesResponseSchema";
 export { discogsArtistSchema } from "./discogsArtistSchema";
 export { discogsLabelSchema } from "./discogsLabelSchema";
 export {
-  findSimilarSimilarPost200Schema,
-  findSimilarSimilarPost422Schema,
-  findSimilarSimilarPostMutationRequestSchema,
-  findSimilarSimilarPostMutationResponseSchema,
-} from "./findSimilarSimilarPostSchema";
+  findSimilar200Schema,
+  findSimilar422Schema,
+  findSimilarMutationRequestSchema,
+  findSimilarMutationResponseSchema,
+} from "./findSimilarSchema";
 export {
   getArtistReleases200Schema,
   getArtistReleases422Schema,

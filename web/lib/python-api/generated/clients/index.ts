@@ -1,4 +1,4 @@
-export { findSimilarSimilarPost } from "./findSimilarSimilarPost";
+export { findSimilar } from "./findSimilar";
 export { getArtistReleases } from "./getArtistReleases";
 export { getLabelReleases } from "./getLabelReleases";
 export { getReleaseTracklist } from "./getReleaseTracklist";

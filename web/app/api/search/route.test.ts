@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Route module imports prisma + auth + python-client at module scope; mock
-// them so this unit test stays offline. We're only exercising the pure
-// cache-key helper + the version/source/TTL constants.
+// Route module imports prisma + auth + the kubb-generated Python client at
+// module scope; mock them so this unit test stays offline. We're only
+// exercising the pure cache-key helper + the version/source/TTL constants.
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/python-client", () => ({ fetchSimilarTracks: vi.fn() }));
+vi.mock("@/lib/python-api/generated/clients/findSimilar", () => ({ findSimilar: vi.fn() }));
 vi.mock("@/lib/external-api-cache", () => ({
   lookupCache: vi.fn(),
   upsertCache: vi.fn(),

@@ -3,12 +3,12 @@ export type { ArtistReleasesResponse } from "./types/ArtistReleasesResponse";
 export type { DiscogsArtist } from "./types/DiscogsArtist";
 export type { DiscogsLabel } from "./types/DiscogsLabel";
 export type {
-  FindSimilarSimilarPost200,
-  FindSimilarSimilarPost422,
-  FindSimilarSimilarPostMutation,
-  FindSimilarSimilarPostMutationRequest,
-  FindSimilarSimilarPostMutationResponse,
-} from "./types/FindSimilarSimilarPost";
+  FindSimilar200,
+  FindSimilar422,
+  FindSimilarMutation,
+  FindSimilarMutationRequest,
+  FindSimilarMutationResponse,
+} from "./types/FindSimilar";
 export type {
   GetArtistReleases200,
   GetArtistReleases422,
@@ -79,7 +79,7 @@ export type { SourceList } from "./types/SourceList";
 export type { TrackMeta } from "./types/TrackMeta";
 export type { TracklistItem } from "./types/TracklistItem";
 export type { ValidationError } from "./types/ValidationError";
-export { findSimilarSimilarPost } from "./clients/findSimilarSimilarPost";
+export { findSimilar } from "./clients/findSimilar";
 export { getArtistReleases } from "./clients/getArtistReleases";
 export { getLabelReleases } from "./clients/getLabelReleases";
 export { getReleaseTracklist } from "./clients/getReleaseTracklist";
@@ -95,11 +95,11 @@ export { artistReleasesResponseSchema } from "./zod/artistReleasesResponseSchema
 export { discogsArtistSchema } from "./zod/discogsArtistSchema";
 export { discogsLabelSchema } from "./zod/discogsLabelSchema";
 export {
-  findSimilarSimilarPost200Schema,
-  findSimilarSimilarPost422Schema,
-  findSimilarSimilarPostMutationRequestSchema,
-  findSimilarSimilarPostMutationResponseSchema,
-} from "./zod/findSimilarSimilarPostSchema";
+  findSimilar200Schema,
+  findSimilar422Schema,
+  findSimilarMutationRequestSchema,
+  findSimilarMutationResponseSchema,
+} from "./zod/findSimilarSchema";
 export {
   getArtistReleases200Schema,
   getArtistReleases422Schema,

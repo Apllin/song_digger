@@ -3,12 +3,12 @@ export type { ArtistReleasesResponse } from "./ArtistReleasesResponse";
 export type { DiscogsArtist } from "./DiscogsArtist";
 export type { DiscogsLabel } from "./DiscogsLabel";
 export type {
-  FindSimilarSimilarPost200,
-  FindSimilarSimilarPost422,
-  FindSimilarSimilarPostMutation,
-  FindSimilarSimilarPostMutationRequest,
-  FindSimilarSimilarPostMutationResponse,
-} from "./FindSimilarSimilarPost";
+  FindSimilar200,
+  FindSimilar422,
+  FindSimilarMutation,
+  FindSimilarMutationRequest,
+  FindSimilarMutationResponse,
+} from "./FindSimilar";
 export type {
   GetArtistReleases200,
   GetArtistReleases422,
