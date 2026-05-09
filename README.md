@@ -48,6 +48,7 @@ pnpm dev       # web (next dev :3000) + python-service (uvicorn :8000) in parall
 pnpm build     # next build
 pnpm test      # default unit tests (pytest in python-service)
 pnpm lint      # eslint in web
+pnpm sort-pkg  # sort package.json field order across workspace packages
 pnpm codegen   # export openapi.json from FastAPI + run kubb to regenerate web/lib/python-api/generated
 pnpm stack:up  # full prod-parity stack via docker-compose (uses Railway dockerfiles)
 ```
