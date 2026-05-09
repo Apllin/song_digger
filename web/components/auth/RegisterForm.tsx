@@ -31,7 +31,7 @@ export function RegisterForm() {
     let result;
     try {
       result = await parseResponse(
-        api.auth.register.$post({
+        api.account.register.$post({
           json: {
             email: String(formData.get("email") ?? ""),
             password: String(formData.get("password") ?? ""),

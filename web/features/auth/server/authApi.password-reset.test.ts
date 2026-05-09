@@ -21,7 +21,7 @@ vi.mock("@/lib/email", () => ({ sendPasswordResetEmail }));
 const { authApi } = await import("./authApi");
 
 async function postForgot(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/auth/forgot-password", {
+  return authApi.request("/account/forgot-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -29,14 +29,14 @@ async function postForgot(body: Record<string, unknown>): Promise<Response> {
 }
 
 async function postReset(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/auth/reset-password", {
+  return authApi.request("/account/reset-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-describe("POST /auth/forgot-password", () => {
+describe("POST /account/forgot-password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -123,7 +123,7 @@ describe("POST /auth/forgot-password", () => {
   });
 });
 
-describe("POST /auth/reset-password", () => {
+describe("POST /account/reset-password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

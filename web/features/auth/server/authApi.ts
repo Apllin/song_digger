@@ -42,8 +42,13 @@ const LoginPrecheckSchema = z.object({
   email: z.email().toLowerCase(),
 });
 
+// Mounted under /account/* (not /auth/*) because Next.js's
+// /api/auth/[...nextauth]/route.ts is a more specific match than the
+// Hono catch-all /api/[[...route]]/route.ts, so any request to
+// /api/auth/<x> would be handed to NextAuth and fail with
+// `UnknownAction: Cannot parse action at /api/auth/<x>`.
 export const authApi = new Hono<AppEnv>()
-  .post("/auth/register", zValidator("json", RegisterSchema), async (c) => {
+  .post("/account/register", zValidator("json", RegisterSchema), async (c) => {
     const data = c.req.valid("json");
 
     // Honeypot: non-empty means bot. Return fake success so the bot
@@ -93,7 +98,7 @@ export const authApi = new Hono<AppEnv>()
 
     return c.json({ success: true as const, email });
   })
-  .post("/auth/verify-email", zValidator("json", VerifyEmailSchema), async (c) => {
+  .post("/account/verify-email", zValidator("json", VerifyEmailSchema), async (c) => {
     const { email, code } = c.req.valid("json");
 
     const pendingCodes = await prisma.verificationCode.findMany({
@@ -119,7 +124,7 @@ export const authApi = new Hono<AppEnv>()
 
     return c.json({ success: true as const });
   })
-  .post("/auth/resend-verification", zValidator("json", ResendSchema), async (c) => {
+  .post("/account/resend-verification", zValidator("json", ResendSchema), async (c) => {
     const { email } = c.req.valid("json");
 
     const user = await prisma.user.findUnique({ where: { email } });
@@ -151,7 +156,7 @@ export const authApi = new Hono<AppEnv>()
 
     return c.json({ success: true as const });
   })
-  .post("/auth/forgot-password", zValidator("json", ForgotPasswordSchema), async (c) => {
+  .post("/account/forgot-password", zValidator("json", ForgotPasswordSchema), async (c) => {
     const { email } = c.req.valid("json");
 
     const user = await prisma.user.findUnique({ where: { email } });
@@ -177,7 +182,7 @@ export const authApi = new Hono<AppEnv>()
 
     return c.json({ success: true as const });
   })
-  .post("/auth/reset-password", zValidator("json", ResetPasswordSchema), async (c) => {
+  .post("/account/reset-password", zValidator("json", ResetPasswordSchema), async (c) => {
     const { token, password } = c.req.valid("json");
 
     const reset = await prisma.passwordResetToken.findUnique({ where: { token } });
@@ -192,7 +197,7 @@ export const authApi = new Hono<AppEnv>()
 
     return c.json({ success: true as const });
   })
-  .post("/auth/login-precheck", zValidator("json", LoginPrecheckSchema), async (c) => {
+  .post("/account/login-precheck", zValidator("json", LoginPrecheckSchema), async (c) => {
     const { email } = c.req.valid("json");
     const requireCaptcha = await shouldRequireCaptcha(email);
     return c.json({ requireCaptcha });
