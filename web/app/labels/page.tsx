@@ -244,8 +244,8 @@ function LabelsContent() {
                   e.preventDefault();
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                   if (s.activeIndex >= 0) {
-                    if (inHistory) searchLabelByName(items[s.activeIndex]);
-                    else selectLabel(s.suggestions[s.activeIndex]);
+                    if (inHistory) searchLabelByName(items[s.activeIndex]!);
+                    else selectLabel(s.suggestions[s.activeIndex]!);
                   } else if (s.query.trim()) {
                     searchLabelByName(s.query.trim());
                   }

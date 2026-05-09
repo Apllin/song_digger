@@ -49,14 +49,14 @@ export function usePlayer() {
         if (prev.playingIndex === null || prev.playlist.length === 0) return prev;
         const next = prev.playingIndex + 1;
         if (next >= prev.playlist.length) return prev;
-        return { ...prev, track: prev.playlist[next], playingIndex: next };
+        return { ...prev, track: prev.playlist[next] ?? null, playingIndex: next };
       }),
     playPrev: () =>
       setState((prev) => {
         if (prev.playingIndex === null || prev.playlist.length === 0) return prev;
         const prevIdx = prev.playingIndex - 1;
         if (prevIdx < 0) return prev;
-        return { ...prev, track: prev.playlist[prevIdx], playingIndex: prevIdx };
+        return { ...prev, track: prev.playlist[prevIdx] ?? null, playingIndex: prevIdx };
       }),
   };
 }

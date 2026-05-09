@@ -82,9 +82,9 @@ describe("DislikedTrack query speed", () => {
       latencies.push(performance.now() - start);
     }
     const sorted = [...latencies].sort((a, b) => a - b);
-    const p50 = sorted[Math.floor(RUNS / 2)];
+    const p50 = sorted[Math.floor(RUNS / 2)]!;
     const p95Index = Math.max(0, Math.floor(RUNS * 0.95) - 1);
-    const p95 = sorted[p95Index];
+    const p95 = sorted[p95Index]!;
     console.log(`[dislike-db speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  rows=${SEED_ROWS}`);
     expect(p95).toBeLessThan(P95_THRESHOLD_MS);
   }, 60_000);

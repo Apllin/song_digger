@@ -149,12 +149,12 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
       let pickIndex = activeIndex;
       if (pickIndex < 0 && !showHistory && dropdownItems.length > 0) {
         const trimmed = value.trim().toLowerCase();
-        if (trimmed && dropdownItems[0].text.toLowerCase().includes(trimmed)) {
+        if (trimmed && dropdownItems[0]!.text.toLowerCase().includes(trimmed)) {
           pickIndex = 0;
         }
       }
       if (pickIndex >= 0) {
-        const item = dropdownItems[pickIndex];
+        const item = dropdownItems[pickIndex]!;
         justSubmittedRef.current = true;
         abortRef.current?.abort();
         setSuggestions([]);
