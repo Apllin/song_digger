@@ -3,6 +3,7 @@ import type { AppEnv } from "./types";
 
 import { healthApi } from "@/features/health/server/healthApi";
 import { labelApi } from "@/features/label/server/labelApi";
+import { suggestionApi } from "@/features/suggestion/server/suggestionApi";
 
 export const app = new Hono<AppEnv>()
   .basePath("/api")
@@ -11,6 +12,7 @@ export const app = new Hono<AppEnv>()
     await next();
   })
   .route("/", healthApi)
-  .route("/", labelApi);
+  .route("/", labelApi)
+  .route("/", suggestionApi);
 
 export type AppType = typeof app;
