@@ -80,8 +80,8 @@ describe("/api/search speed", () => {
       latencies.push(t);
     }
     const sorted = [...latencies].sort((a, b) => a - b);
-    const p50 = sorted[Math.floor(RUNS / 2)];
-    const p95 = sorted[sorted.length - 1];
+    const p50 = sorted[Math.floor(RUNS / 2)]!;
+    const p95 = sorted[sorted.length - 1]!;
     console.log(
       `[/api/search speed] P50=${p50.toFixed(2)}s  P95=${p95.toFixed(2)}s  ` +
         `runs=${latencies.map((x) => x.toFixed(2)).join(", ")}`,

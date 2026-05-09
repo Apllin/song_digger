@@ -12,11 +12,13 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "codegen"],
+      "dependsOn": ["^build", "db:generate"],
       "outputs": [".next/**", "!.next/cache/**"]
     },
+    "db:generate": {
+      "cache": false
+    },
     "dev": {
-      "dependsOn": ["codegen"],
       "cache": false,
       "persistent": true
     },

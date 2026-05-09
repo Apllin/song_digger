@@ -72,13 +72,13 @@ describe("registerAction", () => {
     expect(result).toEqual({ success: true, email: "fresh@example.com" });
 
     expect(prismaMock.user.create).toHaveBeenCalledOnce();
-    const created = prismaMock.user.create.mock.calls[0][0].data;
+    const created = prismaMock.user.create.mock.calls[0]![0].data;
     expect(created.email).toBe("fresh@example.com");
     expect(created.emailVerified).toBeNull();
     expect(created.passwordHash).toMatch(/^\$2[aby]\$/);
 
     expect(sendVerificationCode).toHaveBeenCalledOnce();
-    const [emailArg, codeArg] = sendVerificationCode.mock.calls[0];
+    const [emailArg, codeArg] = sendVerificationCode.mock.calls[0]!;
     expect(emailArg).toBe("fresh@example.com");
     expect(codeArg).toMatch(/^\d{6}$/);
   });
@@ -99,10 +99,10 @@ describe("registerAction", () => {
 
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(prismaMock.user.update).toHaveBeenCalledOnce();
-    expect(prismaMock.user.update.mock.calls[0][0].where).toEqual({
+    expect(prismaMock.user.update.mock.calls[0]![0].where).toEqual({
       email: "daebatzaebis@gmail.com",
     });
-    expect(prismaMock.user.update.mock.calls[0][0].data.passwordHash).toMatch(/^\$2[aby]\$/);
+    expect(prismaMock.user.update.mock.calls[0]![0].data.passwordHash).toMatch(/^\$2[aby]\$/);
   });
 
   it("normalizes email to lowercase before lookup and storage", async () => {
@@ -116,7 +116,7 @@ describe("registerAction", () => {
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
       where: { email: "mixed@example.com" },
     });
-    expect(prismaMock.user.create.mock.calls[0][0].data.email).toBe("mixed@example.com");
+    expect(prismaMock.user.create.mock.calls[0]![0].data.email).toBe("mixed@example.com");
   });
 
   it("does not write to DB if email send fails", async () => {
@@ -215,7 +215,7 @@ describe("registerAction", () => {
 
     await registerAction(fd({ email: "user@example.com", password: "validpassword" }));
 
-    const stored = prismaMock.verificationCode.create.mock.calls[0][0].data;
+    const stored = prismaMock.verificationCode.create.mock.calls[0]![0].data;
     // bcrypt-hashed, not the raw 6-digit code
     expect(stored.code).toMatch(/^\$2[aby]\$/);
     expect(stored.code).not.toMatch(/^\d{6}$/);

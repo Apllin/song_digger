@@ -3,8 +3,8 @@
 import { parseResponse } from "hono/client";
 import { useEffect, useRef, useState } from "react";
 
+import { loadYTApi, type YTPlayer } from "@/features/player/ytApi";
 import { api } from "@/lib/hono/client";
-import { loadYTApi, type YTPlayer } from "@/lib/yt-api";
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";

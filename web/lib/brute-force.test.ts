@@ -41,7 +41,7 @@ describe("checkIpRateLimit", () => {
   it("only counts failed attempts inside the lookback window", async () => {
     prismaMock.loginAttempt.count.mockResolvedValueOnce(0);
     await checkIpRateLimit("9.9.9.9");
-    const where = prismaMock.loginAttempt.count.mock.calls[0][0].where;
+    const where = prismaMock.loginAttempt.count.mock.calls[0]![0].where;
     expect(where.ip).toBe("9.9.9.9");
     expect(where.success).toBe(false);
     expect(where.createdAt.gte).toBeInstanceOf(Date);
@@ -120,7 +120,7 @@ describe("getEmailFailedCount", () => {
     prismaMock.loginAttempt.count.mockResolvedValueOnce(2);
     const n = await getEmailFailedCount("u@e.com");
     expect(n).toBe(2);
-    const where = prismaMock.loginAttempt.count.mock.calls[0][0].where;
+    const where = prismaMock.loginAttempt.count.mock.calls[0]![0].where;
     expect(where.email).toBe("u@e.com");
     expect(where.success).toBe(false);
     const ageMs = Date.now() - where.createdAt.gte.getTime();

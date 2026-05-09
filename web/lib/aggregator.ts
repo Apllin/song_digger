@@ -109,7 +109,7 @@ function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCa
       const a = normalizeArtist(t.artist);
       return !(window.length === maxConsecutive && window.every((w) => w === a));
     });
-    const pick = pool.splice(idx >= 0 ? idx : 0, 1)[0];
+    const pick = pool.splice(idx >= 0 ? idx : 0, 1)[0]!;
     result.push(pick);
     recentArtists.push(normalizeArtist(pick.artist));
   }

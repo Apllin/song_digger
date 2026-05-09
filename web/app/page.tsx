@@ -8,9 +8,10 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
 import { TrackCard } from "@/components/TrackCard";
+import { usePlayer } from "@/features/player/hooks/usePlayer";
+import type { PlayerTrack } from "@/features/player/types";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { favoritesAtom } from "@/lib/atoms/favorites";
-import { type PlayerTrack, usePlayer } from "@/lib/atoms/player";
 import { searchAtom } from "@/lib/atoms/search";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";

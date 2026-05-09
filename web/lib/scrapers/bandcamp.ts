@@ -82,12 +82,12 @@ export async function extractBandcampAudio(url: string): Promise<{ audioUrl: str
     const html = await fetchHtml(url);
     const m = html.match(/mp3-128&quot;\s*:\s*&quot;(.+?)&quot;/) ?? html.match(/"mp3-128"\s*:\s*"([^"]+)"/);
     if (!m) return null;
-    const audioUrl = m[1]
+    const audioUrl = m[1]!
       .replace(/&amp;/g, "&")
       .replace(/\\\//g, "/")
       .replace(/^http:/, "https:");
     const durM = html.match(/duration&quot;\s*:\s*([\d.]+)/) ?? html.match(/"duration"\s*:\s*([\d.]+)/);
-    const duration = durM ? parseFloat(durM[1]) : undefined;
+    const duration = durM ? parseFloat(durM[1]!) : undefined;
     return { audioUrl, duration };
   } catch (err) {
     console.error("[Bandcamp] extract audio error:", err);

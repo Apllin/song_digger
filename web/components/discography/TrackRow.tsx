@@ -2,19 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { EmbedPlayer } from "@/components/EmbedPlayer";
-
-interface Track {
-  position: string;
-  title: string;
-  duration: string;
-  artists: string[];
-  albumArtist?: string;
-  albumCover?: string | null;
-}
+import { EmbedPlayer } from "@/features/player/components/EmbedPlayer";
+import type { DiscographyTrack } from "@/features/player/types";
 
 interface TrackRowProps {
-  track: Track;
+  track: DiscographyTrack;
   /** Controlled play state — when provided, the parent owns open/close */
   isPlaying?: boolean;
   onPlayToggle?: () => void;

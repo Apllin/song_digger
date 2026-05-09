@@ -166,7 +166,7 @@ describe("/api/search dislike-filter behavior", () => {
     expect(r1.status).toBe("done");
     expect(r1.tracks.length).toBeGreaterThan(0);
 
-    const target = r1.tracks[0];
+    const target = r1.tracks[0]!;
     console.log(`[dislike smoke] disliking "${target.artist} - ${target.title}" (rank 1, source=${target.source})`);
 
     const post = await fetch(`${WEB_URL}/api/dislikes`, {

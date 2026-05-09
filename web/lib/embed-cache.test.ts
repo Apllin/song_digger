@@ -86,7 +86,7 @@ describe("lookupEmbedCache", () => {
   it("looks up by normalized composite key", async () => {
     prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
     await lookupEmbedCache("Óscar Mulero (3)", "Voices (Original Mix)");
-    const args = prismaMock.trackEmbed.findUnique.mock.calls[0][0];
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
     expect(args.where.artistKey_titleKey).toEqual({
       artistKey: "oscarmulero",
       titleKey: "voices",
@@ -110,7 +110,7 @@ describe("upsertEmbedCache", () => {
       coverUrl: "https://cdn/cover.jpg",
     });
     expect(prismaMock.trackEmbed.upsert).toHaveBeenCalledOnce();
-    const args = prismaMock.trackEmbed.upsert.mock.calls[0][0];
+    const args = prismaMock.trackEmbed.upsert.mock.calls[0]![0];
     expect(args.where.artistKey_titleKey).toEqual({
       artistKey: "mulero",
       titleKey: "voices",
@@ -127,7 +127,7 @@ describe("upsertEmbedCache", () => {
       sourceUrl: null,
       coverUrl: null,
     });
-    const args = prismaMock.trackEmbed.upsert.mock.calls[0][0];
+    const args = prismaMock.trackEmbed.upsert.mock.calls[0]![0];
     expect(args.create.embedUrl).toBeNull();
     expect(args.create.source).toBeNull();
   });
@@ -167,7 +167,7 @@ describe("warmEmbedCache", () => {
       { artist: "Ignez", title: "Nothing", embedUrl: null },
     ]);
     expect(prismaMock.trackEmbed.createMany).toHaveBeenCalledOnce();
-    const args = prismaMock.trackEmbed.createMany.mock.calls[0][0];
+    const args = prismaMock.trackEmbed.createMany.mock.calls[0]![0];
     expect(args.skipDuplicates).toBe(true);
     expect(args.data).toHaveLength(2);
     expect(args.data.map((r: { artistKey: string }) => r.artistKey)).toEqual(["mulero", "lewisfautzi"]);

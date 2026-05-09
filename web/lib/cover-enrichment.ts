@@ -80,7 +80,7 @@ export async function enrichMissingCovers(candidates: FusedCandidate[]): Promise
   const worker = async () => {
     while (cursor < targets.length) {
       const i = cursor++;
-      const t = targets[i];
+      const t = targets[i]!;
       const found = await lookupOne(t.artist, t.title);
       if (found) t.coverUrl = found;
     }

@@ -28,7 +28,7 @@ function buildMockSourceLists(targetTotal: number): SourceList[] {
   const overlapPool: TrackMeta[] = Array.from({ length: 50 }, (_, i) => ({
     title: `Overlap Track ${i}`,
     artist: `Overlap Artist ${i % 15}`,
-    source: SOURCES[i % SOURCES.length],
+    source: SOURCES[i % SOURCES.length]!,
     sourceUrl: `https://example.com/o/${i}`,
     embedUrl: i % 3 === 0 ? `https://example.com/embed/${i}` : undefined,
     bpm: i % 4 === 0 ? 130 + (i % 12) : undefined,
@@ -66,8 +66,8 @@ describe("aggregator speed", () => {
       runs.push(performance.now() - start);
     }
     runs.sort((a, b) => a - b);
-    const p50 = runs[Math.floor(RUNS / 2)];
-    const p95 = runs[P95_INDEX];
+    const p50 = runs[Math.floor(RUNS / 2)]!;
+    const p95 = runs[P95_INDEX]!;
     console.log(`[aggregator speed] P50=${p50.toFixed(2)}ms  P95=${p95.toFixed(2)}ms  total=${totalTracks} candidates`);
     expect(p95).toBeLessThan(P95_THRESHOLD_MS);
   });

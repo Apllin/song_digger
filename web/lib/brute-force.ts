@@ -45,7 +45,7 @@ export async function getEmailFailedCount(email: string): Promise<number> {
 export function getBackoffDelayMs(failedCount: number): number {
   if (failedCount <= 0) return 0;
   const idx = Math.min(failedCount, EMAIL_BACKOFF_MS.length - 1);
-  return EMAIL_BACKOFF_MS[idx];
+  return EMAIL_BACKOFF_MS[idx]!;
 }
 
 export async function shouldRequireCaptcha(email: string): Promise<boolean> {
