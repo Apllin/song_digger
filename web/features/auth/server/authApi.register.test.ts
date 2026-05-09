@@ -24,14 +24,14 @@ delete process.env.TURNSTILE_SECRET_KEY;
 const { authApi } = await import("./authApi");
 
 async function post(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/auth/register", {
+  return authApi.request("/account/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-describe("POST /auth/register", () => {
+describe("POST /account/register", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

@@ -47,7 +47,7 @@ export function LoginForm({
     const trimmed = email.trim();
     if (!trimmed) return;
     try {
-      const result = await parseResponse(api.auth["login-precheck"].$post({ json: { email: trimmed } }));
+      const result = await parseResponse(api.account["login-precheck"].$post({ json: { email: trimmed } }));
       if (result.requireCaptcha) setRequireCaptcha(true);
     } catch {
       // Network glitch — leave requireCaptcha as is. The server still

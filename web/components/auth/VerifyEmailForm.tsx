@@ -18,7 +18,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
     let result;
     try {
       result = await parseResponse(
-        api.auth["verify-email"].$post({ json: { email, code: String(formData.get("code") ?? "") } }),
+        api.account["verify-email"].$post({ json: { email, code: String(formData.get("code") ?? "") } }),
       );
     } catch (err) {
       setPending(false);
@@ -46,7 +46,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
     setError(null);
     let result;
     try {
-      result = await parseResponse(api.auth["resend-verification"].$post({ json: { email } }));
+      result = await parseResponse(api.account["resend-verification"].$post({ json: { email } }));
     } catch (err) {
       setResendPending(false);
       const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;

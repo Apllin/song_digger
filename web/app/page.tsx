@@ -221,8 +221,10 @@ function HomeContent() {
     [fav.ids, setFav],
   );
 
-  // Load favorites + dislikes on mount
+  // Load favorites + dislikes once we know the user is signed in.
+  // Anonymous visitors get 401 from these endpoints, so we skip the calls.
   useEffect(() => {
+    if (!isAuthenticated) return;
     parseResponse(api.favorites.$get())
       .then((data) => {
         setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }));
@@ -237,7 +239,7 @@ function HomeContent() {
         }));
       })
       .catch(console.error);
-  }, [setFav]);
+  }, [isAuthenticated, setFav]);
 
   const handleDislike = useCallback(
     async (track: { id: string; sourceUrl: string; title: string; artist: string }) => {

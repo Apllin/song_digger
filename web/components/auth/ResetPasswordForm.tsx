@@ -17,7 +17,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     let result;
     try {
       result = await parseResponse(
-        api.auth["reset-password"].$post({ json: { token, password: String(formData.get("password") ?? "") } }),
+        api.account["reset-password"].$post({ json: { token, password: String(formData.get("password") ?? "") } }),
       );
     } catch (err) {
       setPending(false);

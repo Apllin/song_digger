@@ -22,7 +22,7 @@ vi.mock("@/lib/email", () => ({ sendVerificationCode }));
 const { authApi } = await import("./authApi");
 
 async function postVerify(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/auth/verify-email", {
+  return authApi.request("/account/verify-email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -30,14 +30,14 @@ async function postVerify(body: Record<string, unknown>): Promise<Response> {
 }
 
 async function postResend(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/auth/resend-verification", {
+  return authApi.request("/account/resend-verification", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-describe("POST /auth/verify-email", () => {
+describe("POST /account/verify-email", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -117,7 +117,7 @@ describe("POST /auth/verify-email", () => {
   });
 });
 
-describe("POST /auth/resend-verification", () => {
+describe("POST /account/resend-verification", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
