@@ -11,7 +11,8 @@ import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
-import type { SimilarResponse, SourceList } from "@/lib/python-client";
+import type { SimilarResponse } from "@/lib/python-api/generated/types/SimilarResponse";
+import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 import { fetchSimilarTracks } from "@/lib/python-client";
 
 const SearchRequestSchema = z.object({

@@ -1,5 +1,5 @@
 import { cachedFetch } from "@/lib/dev-cache";
-import type { TrackMeta } from "@/lib/python-client";
+import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 async function fetchHtml(url: string): Promise<string> {
   const res = await cachedFetch(url, {

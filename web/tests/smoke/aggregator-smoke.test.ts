@@ -10,8 +10,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse, type SourceList } from "@/lib/aggregator";
-import type { TrackMeta } from "@/lib/python-client";
+import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "@/lib/aggregator";
+import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
+import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 function track(overrides: Partial<TrackMeta> = {}): TrackMeta {
   return {

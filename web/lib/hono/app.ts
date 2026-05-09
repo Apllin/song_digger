@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "./types";
 
+import { healthApi } from "@/features/health/server/healthApi";
 import { labelApi } from "@/features/label/server/labelApi";
 
 export const app = new Hono<AppEnv>()
@@ -9,6 +10,7 @@ export const app = new Hono<AppEnv>()
     c.set("pythonServiceUrl", process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000");
     await next();
   })
+  .route("/", healthApi)
   .route("/", labelApi);
 
 export type AppType = typeof app;
