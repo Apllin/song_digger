@@ -2,8 +2,8 @@
   "mode": "pre",
   "tag": "rc",
   "initialVersions": {
-    "@track-digger/python-service": "0.0.0",
-    "web": "0.1.0"
+    "@trackdigger/python-service": "0.0.0",
+    "@trackdigger/web": "0.1.0"
   },
   "changesets": []
 }

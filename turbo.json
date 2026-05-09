@@ -28,11 +28,11 @@
       "cache": false
     },
     "codegen": {
-      "dependsOn": ["@track-digger/python-service#codegen"],
+      "dependsOn": ["@trackdigger/python-service#codegen"],
       "inputs": ["../python-service/openapi.json", "kubb.config.ts"],
       "outputs": ["lib/python-api/generated/**"]
     },
-    "@track-digger/python-service#codegen": {
+    "@trackdigger/python-service#codegen": {
       "inputs": ["app/**/*.py", "scripts/export_openapi.py"],
       "outputs": ["openapi.json"]
     }
