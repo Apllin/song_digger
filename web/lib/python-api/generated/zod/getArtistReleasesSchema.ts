@@ -21,6 +21,7 @@ export const getArtistReleasesPathParamsSchema = z.object({
 export const getArtistReleasesQueryParamsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   per_page: z.coerce.number().int().min(1).max(100).default(50),
+  role: z.optional(z.union([z.string(), z.null()])),
 }) as unknown as z.ZodType<GetArtistReleasesQueryParams>;
 
 /**

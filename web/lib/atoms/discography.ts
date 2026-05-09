@@ -14,6 +14,7 @@ interface DiscographyState {
   selectedArtist: DiscogsArtist | null;
   releases: ArtistRelease[];
   page: number;
+  totalItems: number;
   loadingArtists: boolean;
   loadingReleases: boolean;
   roleFilter: "all" | "main";
@@ -28,6 +29,7 @@ export const discographyAtom = atom<DiscographyState>({
   selectedArtist: null,
   releases: [],
   page: 1,
+  totalItems: 0,
   loadingArtists: false,
   loadingReleases: false,
   roleFilter: "main",

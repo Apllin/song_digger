@@ -23,6 +23,7 @@ const ReleasesSchema = z.object({
   artistId: z.coerce.number().int().positive().max(1_000_000_000),
   page: z.coerce.number().int().positive().max(1000).default(1),
   perPage: z.coerce.number().int().positive().max(100).default(50),
+  role: z.enum(["Main"]).optional(),
 });
 
 const TracklistSchema = z.object({
@@ -41,9 +42,13 @@ export const discographyApi = new Hono<AppEnv>()
     }
   })
   .get("/discography/releases", zValidator("query", ReleasesSchema), async (c) => {
-    const { artistId, page, perPage } = c.req.valid("query");
+    const { artistId, page, perPage, role } = c.req.valid("query");
     try {
-      const data = await getArtistReleases(artistId, { page, per_page: perPage }, { baseURL: c.var.pythonServiceUrl });
+      const data = await getArtistReleases(
+        artistId,
+        { page, per_page: perPage, role },
+        { baseURL: c.var.pythonServiceUrl },
+      );
       return c.json(data);
     } catch {
       return c.json({ error: "upstream error" } as const, 502);

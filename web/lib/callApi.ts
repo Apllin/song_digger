@@ -14,6 +14,10 @@ function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError;
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
 function isRateLimitError(err: unknown): boolean {
   return err instanceof DetailedError && err.statusCode === 429 && !isAnonLimitError(err);
 }
@@ -22,6 +26,7 @@ export async function callApi<T>(promise: Promise<T>): Promise<T | null> {
   try {
     return await promise;
   } catch (err) {
+    if (isAbortError(err)) return null;
     if (isAnonLimitError(err)) {
       apiEvents.emit("error:anon-limit");
       return null;
