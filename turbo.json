@@ -19,7 +19,6 @@
       "cache": false
     },
     "dev": {
-      "dependsOn": ["codegen"],
       "cache": false,
       "persistent": true
     },
