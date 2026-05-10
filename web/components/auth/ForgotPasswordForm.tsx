@@ -11,9 +11,7 @@ export function ForgotPasswordForm() {
 
   async function handleSubmit(formData: FormData) {
     setPending(true);
-    await parseResponse(
-      api.account["forgot-password"].$post({ json: { email: String(formData.get("email") ?? "") } }),
-    );
+    await parseResponse(api.account["forgot-password"].$post({ json: { email: String(formData.get("email") ?? "") } }));
     setPending(false);
     setSubmitted(true);
   }
