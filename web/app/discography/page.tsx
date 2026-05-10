@@ -1,13 +1,15 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
-import { useArtistReleases } from "@/features/discography/hooks/useArtistReleases";
+import { ReleaseTagLegend } from "@/features/discography/components/ReleaseTagLegend";
+import { useAllArtistReleases } from "@/features/discography/hooks/useAllArtistReleases";
 import { discographyAtom } from "@/lib/atoms/discography";
-import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
@@ -23,17 +25,39 @@ export default function DiscographyPage() {
 
 function DiscographyContent() {
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
   const [s, setS] = useAtom(discographyAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
   const didAutoLoad = useRef(false);
+  const [picking, setPicking] = useState(false);
   const { history, addToHistory } = useSearchHistory("discography-history");
 
-  const { releases, totalItems, totalPages, loadingReleases } = useArtistReleases(
-    s.selectedArtist?.id,
-    s.page,
-    s.roleFilter,
-  );
+  const PAGE_SIZE = 15;
+  const { releases: allReleases, loadingReleases } = useAllArtistReleases(s.selectedArtist?.id, s.roleFilter);
+  const totalItems = allReleases.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const releases = allReleases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
+
+  function suggestionsQueryKey(q: string) {
+    return ["artist-suggestions", q] as const;
+  }
+  function fetchSuggestions(q: string, signal: AbortSignal) {
+    return parseResponse(api.discography.search.$get({ query: { q } }, { init: { signal } }));
+  }
+
+  const suggestionsQuery = useQuery({
+    queryKey: suggestionsQueryKey(debouncedQuery),
+    queryFn: ({ signal }) => fetchSuggestions(debouncedQuery, signal),
+    enabled: debouncedQuery.length >= 2 && !s.selectedArtist,
+    staleTime: 60_000,
+  });
+  const artistSuggestions: DiscogsArtist[] = suggestionsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!suggestionsQuery.data || suggestionsQuery.data.length === 0) return;
+    setS((prev) => ({ ...prev, showSuggestions: true }));
+  }, [suggestionsQuery.data, setS]);
 
   function selectArtist(artist: DiscogsArtist) {
     setS((prev) => ({
@@ -47,26 +71,52 @@ function DiscographyContent() {
     }));
   }
 
-  function searchArtistByName(name: string) {
+  function pickFromList(list: DiscogsArtist[], trimmed: string): DiscogsArtist | undefined {
+    const exact = list.find((a) => a.name.toLowerCase() === trimmed.toLowerCase());
+    return exact ?? list[0];
+  }
+
+  // Routes "user committed to this query" (Search button, Enter without arrow,
+  // history click, ?artist= URL) through the same query cache as the
+  // autocomplete. Cache-hit goes synchronously — no spinner, no
+  // selectedArtist=null flash. Cache-miss / in-flight: `fetchQuery`
+  // dedups with the autocomplete via the shared queryKey.
+  async function pickArtist(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    addToHistory(trimmed);
     setS((prev) => ({
       ...prev,
-      query: name,
-      selectedArtist: null,
-      page: 1,
+      query: trimmed,
       showHistory: false,
       showSuggestions: false,
-      loadingArtists: true,
     }));
-    addToHistory(name);
-    fetchApi(api.discography.search.$get({ query: { q: name } }))
-      .then((data) => {
-        if (!data) return;
-        const exact = data.find((a) => a.name.toLowerCase() === name.toLowerCase());
-        const pick = exact ?? data[0];
-        if (pick) selectArtist(pick);
-      })
-      .catch(() => {})
-      .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
+
+    const cached = qc.getQueryData<DiscogsArtist[]>(suggestionsQueryKey(trimmed));
+    if (cached?.length) {
+      const pick = pickFromList(cached, trimmed);
+      if (pick) selectArtist(pick);
+      return;
+    }
+
+    setPicking(true);
+    try {
+      const data = await qc.fetchQuery({
+        queryKey: suggestionsQueryKey(trimmed),
+        queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
+        staleTime: 60_000,
+      });
+      if (!data?.length) return;
+      const pick = pickFromList(data, trimmed);
+      if (pick) selectArtist(pick);
+    } catch {
+      // Match the previous fail-silent behaviour — anon-limit / network
+      // errors surface via apiEvents in fetchApi-driven paths, and a
+      // transient autocomplete failure shouldn't blow up the UI.
+    } finally {
+      setPicking(false);
+    }
   }
 
   // Auto-load artist from ?artist= URL param
@@ -75,34 +125,9 @@ function DiscographyContent() {
     const artistParam = searchParams.get("artist");
     if (!artistParam) return;
     didAutoLoad.current = true;
-
-    setS((prev) => ({ ...prev, query: artistParam, loadingArtists: true }));
-    fetchApi(api.discography.search.$get({ query: { q: artistParam } }))
-      .then((data) => {
-        if (!data || data.length === 0) return;
-        const exact = data.find((a) => a.name.toLowerCase() === artistParam.toLowerCase());
-        selectArtist(exact ?? data[0]!);
-      })
-      .catch(() => {})
-      .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
+    pickArtist(artistParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Artist search autocomplete
-  useEffect(() => {
-    if (debouncedQuery.length < 2 || s.selectedArtist) {
-      setS((prev) => ({ ...prev, artistSuggestions: [] }));
-      return;
-    }
-    setS((prev) => ({ ...prev, loadingArtists: true }));
-    fetchApi(api.discography.search.$get({ query: { q: debouncedQuery } }))
-      .then((data) => {
-        if (!data) return;
-        setS((prev) => ({ ...prev, artistSuggestions: data, showSuggestions: true }));
-      })
-      .catch(() => setS((prev) => ({ ...prev, artistSuggestions: [] })))
-      .finally(() => setS((prev) => ({ ...prev, loadingArtists: false })));
-  }, [debouncedQuery, s.selectedArtist, setS]);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -114,6 +139,15 @@ function DiscographyContent() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
+
+  const loadingArtists = picking || suggestionsQuery.isFetching;
+  // Search is "already done" when the input still matches the currently
+  // selected artist's name — clicking it would just re-pick the same row.
+  // It re-enables the moment the user types something different.
+  const searchDisabled =
+    !s.query.trim() ||
+    picking ||
+    (s.selectedArtist != null && s.query.trim().toLowerCase() === s.selectedArtist.name.toLowerCase());
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -177,18 +211,18 @@ function DiscographyContent() {
               onFocus={() => {
                 if (s.query.length < 2 && history.length > 0) {
                   setS((prev) => ({ ...prev, showHistory: true }));
-                } else if (s.artistSuggestions.length > 0) {
+                } else if (artistSuggestions.length > 0) {
                   setS((prev) => ({ ...prev, showSuggestions: true }));
                 }
               }}
               onKeyDown={(e) => {
                 const inHistory = s.showHistory && history.length > 0;
-                const inSuggestions = s.showSuggestions && s.artistSuggestions.length > 0;
-                const items = inHistory ? history : inSuggestions ? s.artistSuggestions.map((a) => a.name) : [];
+                const inSuggestions = s.showSuggestions && artistSuggestions.length > 0;
+                const items = inHistory ? history : inSuggestions ? artistSuggestions.map((a) => a.name) : [];
                 const dropdownOpen = inHistory || inSuggestions;
 
                 if (!dropdownOpen) {
-                  if (e.key === "Enter" && s.query.trim()) searchArtistByName(s.query.trim());
+                  if (e.key === "Enter" && s.query.trim()) pickArtist(s.query.trim());
                   return;
                 }
                 if (e.key === "ArrowDown") {
@@ -201,10 +235,10 @@ function DiscographyContent() {
                   e.preventDefault();
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                   if (s.activeIndex >= 0) {
-                    if (inHistory) searchArtistByName(items[s.activeIndex]!);
-                    else selectArtist(s.artistSuggestions[s.activeIndex]!);
+                    if (inHistory) pickArtist(items[s.activeIndex]!);
+                    else selectArtist(artistSuggestions[s.activeIndex]!);
                   } else if (s.query.trim()) {
-                    searchArtistByName(s.query.trim());
+                    pickArtist(s.query.trim());
                   }
                 } else if (e.key === "Escape") {
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
@@ -215,7 +249,7 @@ function DiscographyContent() {
               style={{ caretColor: "var(--td-accent)" }}
             />
 
-            {s.loadingArtists && (
+            {loadingArtists && (
               <svg
                 className="w-5 h-5 animate-spin shrink-0"
                 fill="none"
@@ -230,9 +264,9 @@ function DiscographyContent() {
             <button
               onClick={() => {
                 setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false, activeIndex: -1 }));
-                if (s.query.trim()) searchArtistByName(s.query.trim());
+                if (s.query.trim()) pickArtist(s.query.trim());
               }}
-              disabled={!s.query.trim() || s.loadingArtists}
+              disabled={searchDisabled}
               className="shrink-0 px-4 py-2.5 sm:px-8 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-[16px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 background: "var(--td-fg)",
@@ -263,7 +297,7 @@ function DiscographyContent() {
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      searchArtistByName(h);
+                      pickArtist(h);
                     }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
@@ -290,7 +324,7 @@ function DiscographyContent() {
           )}
 
           {/* Autocomplete suggestions */}
-          {s.showSuggestions && s.artistSuggestions.length > 0 && (
+          {s.showSuggestions && artistSuggestions.length > 0 && (
             <ul
               className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
               style={{
@@ -298,7 +332,7 @@ function DiscographyContent() {
                 borderColor: "rgba(255, 255, 255, 0.18)",
               }}
             >
-              {s.artistSuggestions.map((a, i) => (
+              {artistSuggestions.map((a, i) => (
                 <li key={a.id}>
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
@@ -329,22 +363,26 @@ function DiscographyContent() {
         {s.selectedArtist && (
           <div className="flex flex-col gap-5">
             {/* Glassy artist hero — single row on all sizes; chip block stacks
-                vertically on mobile so the filter pills sit alongside the avatar. */}
+                vertically on mobile so the filter pills sit alongside the avatar.
+                `overflow-hidden` is scoped to the gradient layer so floating
+                children (legend popover) aren't clipped by the hero's rounded box. */}
             <div
-              className="relative flex flex-row items-center gap-3 sm:gap-5 p-4 sm:p-5 rounded-[18px] border overflow-hidden"
+              className="relative flex flex-row items-center gap-3 sm:gap-5 p-4 sm:p-5 rounded-[18px] border"
               style={{
                 background: "rgba(0, 0, 0, 0.30)",
                 borderColor: "rgba(255, 255, 255, 0.20)",
                 boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 20px 60px rgba(0,0,0,0.55)",
               }}
             >
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: "radial-gradient(40% 80% at 80% 50%, var(--td-accent-soft), transparent 60%)",
-                  opacity: 0.6,
-                }}
-              />
+              <div className="absolute inset-0 rounded-[18px] overflow-hidden pointer-events-none">
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: "radial-gradient(40% 80% at 80% 50%, var(--td-accent-soft), transparent 60%)",
+                    opacity: 0.6,
+                  }}
+                />
+              </div>
 
               {/* Avatar + name — always inline so the avatar sits next to the
                   artist name even when the chip row drops below on mobile. */}
@@ -382,8 +420,11 @@ function DiscographyContent() {
                     {s.selectedArtist.name}
                   </h2>
                   {!loadingReleases && totalItems > 0 && (
-                    <div className="font-mono-td text-[12px] text-td-fg-d mt-1">
-                      {totalItems} release{totalItems !== 1 ? "s" : ""}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-mono-td text-[12px] text-td-fg-d">
+                        {totalItems} release{totalItems !== 1 ? "s" : ""}
+                      </span>
+                      <ReleaseTagLegend />
                     </div>
                   )}
                 </div>

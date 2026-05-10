@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useEffect, useRef, useState } from "react";
 
@@ -68,17 +69,24 @@ function ClockIcon() {
 }
 
 export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const debouncedValue = useDebounce(value, 280);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const justSubmittedRef = useRef(false);
 
   const { history, addToHistory } = useSearchHistory("search-history");
+
+  const suggestionsQuery = useQuery({
+    queryKey: ["search-suggestions", debouncedValue] as const,
+    queryFn: ({ signal }) =>
+      parseResponse(api.suggestions.$get({ query: { q: debouncedValue } }, { init: { signal } })),
+    enabled: debouncedValue.length >= 2,
+    staleTime: 60_000,
+  });
+  const suggestions: string[] = suggestionsQuery.data ?? [];
 
   // Determine what's visible in the dropdown
   const dropdownItems: { text: string; isHistory: boolean }[] = showHistory
@@ -87,31 +95,19 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
   const dropdownVisible =
     !loading && ((showHistory && history.length > 0) || (showSuggestions && suggestions.length > 0));
 
-  // Fetch suggestions — with AbortController to cancel stale requests
+  // Open the dropdown when fresh suggestions arrive (mirrors original .then handler).
   useEffect(() => {
+    if (justSubmittedRef.current) return;
     if (debouncedValue.length < 2) {
-      setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-
-    parseResponse(api.suggestions.$get({ query: { q: debouncedValue } }, { init: { signal: abortRef.current.signal } }))
-      .then((data) => {
-        if (justSubmittedRef.current) return;
-        setSuggestions(data);
-        setShowSuggestions(data.length > 0);
-        setShowHistory(false);
-        setActiveIndex(-1);
-      })
-      .catch((err) => {
-        if (err?.name !== "AbortError") setSuggestions([]);
-      });
-
-    return () => abortRef.current?.abort();
-  }, [debouncedValue]);
+    if (suggestionsQuery.data) {
+      setShowSuggestions(suggestionsQuery.data.length > 0);
+      setShowHistory(false);
+      setActiveIndex(-1);
+    }
+  }, [suggestionsQuery.data, debouncedValue]);
 
   // Close on outside click
   useEffect(() => {
@@ -129,7 +125,6 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
     if (!dropdownVisible) {
       if (e.key === "Enter" && !loading) {
         justSubmittedRef.current = true;
-        abortRef.current?.abort();
         addToHistory(value);
         onSubmit();
       }
@@ -155,8 +150,6 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
       if (pickIndex >= 0) {
         const item = dropdownItems[pickIndex]!;
         justSubmittedRef.current = true;
-        abortRef.current?.abort();
-        setSuggestions([]);
         onChange(item.text);
         setShowSuggestions(false);
         setShowHistory(false);
@@ -167,8 +160,6 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
         }
       } else {
         justSubmittedRef.current = true;
-        abortRef.current?.abort();
-        setSuggestions([]);
         setShowSuggestions(false);
         setShowHistory(false);
         addToHistory(value);
@@ -182,11 +173,9 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
 
   const handleSubmitClick = () => {
     justSubmittedRef.current = true;
-    setSuggestions([]);
     setShowSuggestions(false);
     setShowHistory(false);
     setActiveIndex(-1);
-    abortRef.current?.abort();
     addToHistory(value);
     onSubmit();
   };
@@ -238,7 +227,6 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
             <button
               onClick={() => {
                 onChange("");
-                setSuggestions([]);
                 setShowSuggestions(false);
                 setShowHistory(history.length > 0);
               }}
@@ -294,8 +282,6 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
                   onMouseDown={(e) => {
                     e.preventDefault();
                     justSubmittedRef.current = true;
-                    abortRef.current?.abort();
-                    setSuggestions([]);
                     onChange(item.text);
                     setShowSuggestions(false);
                     setShowHistory(false);

@@ -17,6 +17,27 @@ interface AlbumAccordionProps {
   artistName: string;
 }
 
+// Discogs gives us `role` (Main / Remix / Producer / Appearance / TrackAppearance)
+// and a free-form `format` string ("5xFile, FLAC, EP, 24-", "11xFile, WAV, Album",
+// "12\"", …). Appearance and TrackAppearance both mean "the artist's content sits
+// on someone else's release" — collapsed into "Featured". For Main / null role we
+// pick the first format keyword; if nothing matches (e.g. bare "12\"" vinyl tag),
+// fall back to "Release" so every card has a tag.
+function releaseTag(release: { role?: string | null; format?: string | null }): string {
+  const role = release.role;
+  if (role && role !== "Main") {
+    if (role === "Appearance" || role === "TrackAppearance") return "Featured";
+    return role;
+  }
+  const fmt = release.format ?? "";
+  if (/\bEP\b/i.test(fmt)) return "EP";
+  if (/\bAlbum\b/i.test(fmt)) return "Album";
+  if (/\bMixed\b/i.test(fmt)) return "Mix";
+  if (/\bSingle\b/i.test(fmt)) return "Single";
+  if (/\bCompilation\b/i.test(fmt)) return "Compilation";
+  return "Release";
+}
+
 function toPlayerTrack(t: TracklistItem, i: number, artistName: string, coverUrl?: string | null): PlayerTrack {
   return {
     id: `discography-${i}-${t.title}`,
@@ -56,6 +77,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   }
 
   const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, artistName, release.thumb));
+  const tag = releaseTag(release);
 
   return (
     <div
@@ -94,9 +116,18 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
         {/* Info */}
         <div className="flex-1 min-w-0">
           <p className="text-[15px] font-medium tracking-[-0.01em] text-td-fg truncate">{release.title}</p>
-          <div className="flex gap-3 mt-1 font-mono-td text-[12px] text-td-fg-d flex-wrap">
+          <div className="flex items-center gap-3 mt-1 font-mono-td text-[12px] text-td-fg-d flex-wrap">
             {release.year && <span>{release.year}</span>}
-            {release.format && <span>{release.format}</span>}
+            <span
+              className="px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] rounded-md border"
+              style={{
+                borderColor: "var(--td-hair-2)",
+                background: "var(--td-accent-soft)",
+                color: "var(--td-accent)",
+              }}
+            >
+              {tag}
+            </span>
             {release.label && <span style={{ color: "var(--td-fg-m)" }}>{release.label}</span>}
           </div>
         </div>

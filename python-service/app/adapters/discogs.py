@@ -96,18 +96,28 @@ class DiscogsAdapter:
         )
         return out
 
-    async def get_releases(
-        self, artist_id: int, page: int = 1, per_page: int = 20, role: str | None = None
-    ) -> dict:
+    async def get_releases(self, artist_id: int, role: str | None = None) -> dict:
         """
-        Get paginated list of artist releases.
-        Optional `role` filter (e.g. "Main") is forwarded to Discogs as a
-        native query param so the server returns only matching releases.
-        Returns: { releases, pagination: { page, pages, total } }
+        Full discography for an artist, sorted by year desc and (optionally)
+        filtered by role.
+
+        Discogs paginates artist releases server-side but groups by `role`
+        first, then sorts within each group — so `page=N` slices a role-group
+        boundary, not a chronological one. To return a globally chronological
+        list we have to pull every page, dedupe by id (Discogs lists the same
+        release multiple times across roles like Producer / Appearance /
+        TrackAppearance), apply the role filter on our side, and sort.
+
+        `role=Main` keeps only the artist's own releases. Anything else is
+        returned as-is.
+
+        Returns: { releases, pagination: { page: 1, pages: 1, per_page, items } }.
+        The pagination block is kept for response-shape stability; the
+        consumer paginates client-side.
         """
         if not settings.discogs_token:
-            return {"releases": [], "pagination": {}}
-        cache_key = f"{artist_id}|{page}|{per_page}|{role or ''}"
+            return {"releases": [], "pagination": {"page": 1, "pages": 1, "per_page": 0, "items": 0}}
+        cache_key = f"{artist_id}|{role or ''}"
         cached = await fetch_external_cache(
             source="discogs_artist_releases",
             cache_key=cache_key,
@@ -115,36 +125,60 @@ class DiscogsAdapter:
         )
         if cached is not None:
             return cached
-        params: dict[str, str | int] = {
-            "sort": "year",
-            "sort_order": "desc",
-            "page": page,
-            "per_page": per_page,
-        }
-        if role:
-            params["role"] = role
-        resp = await self._get(
+
+        per_page = 100
+        first = await self._get(
             f"/artists/{artist_id}/releases",
-            params=params,
+            params={"sort": "year", "sort_order": "desc", "page": 1, "per_page": per_page},
         )
-        data = resp.json()
+        first_data = first.json()
+        total_pages = int(first_data.get("pagination", {}).get("pages", 1))
+
+        raw: list[dict] = list(first_data.get("releases", []))
+        if total_pages > 1:
+            rest = await asyncio.gather(
+                *(
+                    self._get(
+                        f"/artists/{artist_id}/releases",
+                        params={"sort": "year", "sort_order": "desc", "page": p, "per_page": per_page},
+                    )
+                    for p in range(2, total_pages + 1)
+                )
+            )
+            for r in rest:
+                raw.extend(r.json().get("releases", []))
+
+        seen: set[int] = set()
+        deduped: list[dict] = []
+        for r in raw:
+            rid = r.get("id")
+            if rid is None or rid in seen:
+                continue
+            seen.add(rid)
+            deduped.append(r)
+
+        if role:
+            deduped = [r for r in deduped if r.get("role") == role]
+
+        deduped.sort(key=lambda r: (r.get("year") is None, -(r.get("year") or 0)))
+
         releases = [
             {
                 "id": r.get("id"),
                 "title": r.get("title"),
                 "year": r.get("year"),
-                "type": r.get("type"),   # "master" | "release"
-                "role": r.get("role"),   # "Main" | "Appearance" | "TrackAppearance"
+                "type": r.get("type"),
+                "role": r.get("role"),
                 "format": r.get("format"),
                 "label": r.get("label"),
                 "thumb": r.get("thumb"),
                 "resourceUrl": r.get("resource_url"),
             }
-            for r in data.get("releases", [])
+            for r in deduped
         ]
         out = {
             "releases": releases,
-            "pagination": data.get("pagination", {}),
+            "pagination": {"page": 1, "pages": 1, "per_page": len(releases), "items": len(releases)},
         }
         await upsert_external_cache(
             source="discogs_artist_releases",

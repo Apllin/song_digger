@@ -14,19 +14,6 @@ export type GetArtistReleasesPathParams = {
 };
 
 export type GetArtistReleasesQueryParams = {
-  /**
-   * @minLength 1
-   * @default 1
-   * @type integer | undefined
-   */
-  page?: number;
-  /**
-   * @minLength 1
-   * @maxLength 100
-   * @default 50
-   * @type integer | undefined
-   */
-  per_page?: number;
   role?: string | null;
 };
 
