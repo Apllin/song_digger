@@ -18,11 +18,10 @@ const LabelSearchSchema = z.object({
 });
 
 // Discogs numeric IDs are bounded; cap to int <= 10^9 to avoid pathological
-// strings landing in the upstream URL.
+// strings landing in the upstream URL. Python returns the full filtered list
+// for an artist+role pair; the consumer paginates client-side.
 const ReleasesSchema = z.object({
   artistId: z.coerce.number().int().positive().max(1_000_000_000),
-  page: z.coerce.number().int().positive().max(1000).default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(50),
   role: z.enum(["Main"]).optional(),
 });
 
@@ -42,13 +41,9 @@ export const discographyApi = new Hono<AppEnv>()
     }
   })
   .get("/discography/releases", zValidator("query", ReleasesSchema), async (c) => {
-    const { artistId, page, perPage, role } = c.req.valid("query");
+    const { artistId, role } = c.req.valid("query");
     try {
-      const data = await getArtistReleases(
-        artistId,
-        { page, per_page: perPage, role },
-        { baseURL: c.var.pythonServiceUrl },
-      );
+      const data = await getArtistReleases(artistId, { role }, { baseURL: c.var.pythonServiceUrl });
       return c.json(data);
     } catch {
       return c.json({ error: "upstream error" } as const, 502);

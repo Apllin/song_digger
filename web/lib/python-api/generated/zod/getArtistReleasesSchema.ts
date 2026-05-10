@@ -18,11 +18,11 @@ export const getArtistReleasesPathParamsSchema = z.object({
   artist_id: z.coerce.number().int(),
 }) as unknown as z.ZodType<GetArtistReleasesPathParams>;
 
-export const getArtistReleasesQueryParamsSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  per_page: z.coerce.number().int().min(1).max(100).default(50),
-  role: z.optional(z.union([z.string(), z.null()])),
-}) as unknown as z.ZodType<GetArtistReleasesQueryParams>;
+export const getArtistReleasesQueryParamsSchema = z
+  .object({
+    role: z.optional(z.union([z.string(), z.null()])),
+  })
+  .optional() as unknown as z.ZodType<GetArtistReleasesQueryParams>;
 
 /**
  * @description Successful Response

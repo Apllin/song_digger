@@ -1,12 +1,13 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
 import { labelsAtom } from "@/lib/atoms/labels";
-import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { DiscogsLabel } from "@/lib/python-api/generated/types/DiscogsLabel";
 import { useDebounce } from "@/lib/use-debounce";
@@ -33,12 +34,32 @@ export default function LabelsPage() {
 }
 
 function LabelsContent() {
+  const qc = useQueryClient();
   const [s, setS] = useAtom(labelsAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const autocompleteAbortRef = useRef<AbortController | null>(null);
+  const [picking, setPicking] = useState(false);
   const { history, addToHistory } = useSearchHistory("labels-history");
+
+  function suggestionsQueryKey(q: string) {
+    return ["label-suggestions", q] as const;
+  }
+  function fetchSuggestions(q: string, signal: AbortSignal) {
+    return parseResponse(api.discography.label.search.$get({ query: { q } }, { init: { signal } }));
+  }
+
+  const suggestionsQuery = useQuery({
+    queryKey: suggestionsQueryKey(debouncedQuery),
+    queryFn: ({ signal }) => fetchSuggestions(debouncedQuery, signal),
+    enabled: debouncedQuery.length >= 2 && !s.selectedLabel,
+    staleTime: 60_000,
+  });
+  const suggestions: DiscogsLabel[] = suggestionsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!suggestionsQuery.data || suggestionsQuery.data.length === 0) return;
+    setS((prev) => ({ ...prev, showSuggestions: true }));
+  }, [suggestionsQuery.data, setS]);
 
   function selectLabel(label: DiscogsLabel) {
     setS((prev) => ({
@@ -52,59 +73,49 @@ function LabelsContent() {
     }));
   }
 
-  function searchLabelByName(name: string) {
-    searchAbortRef.current?.abort();
-    autocompleteAbortRef.current?.abort();
-    const ac = new AbortController();
-    searchAbortRef.current = ac;
-
-    setS((prev) => ({
-      ...prev,
-      query: name,
-      selectedLabel: null,
-      suggestions: [],
-      page: 1,
-      showSuggestions: false,
-      showHistory: false,
-      loadingLabels: true,
-    }));
-    addToHistory(name);
-    fetchApi(api.discography.label.search.$get({ query: { q: name } }, { init: { signal: ac.signal } }))
-      .then((data) => {
-        if (ac.signal.aborted || !data) return;
-        const exact = data.find((l) => l.name.toLowerCase() === name.toLowerCase());
-        const pick = exact ?? data[0];
-        if (pick) selectLabel(pick);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingLabels: false }));
-      });
+  function pickFromList(list: DiscogsLabel[], trimmed: string): DiscogsLabel | undefined {
+    const exact = list.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    return exact ?? list[0];
   }
 
-  // Autocomplete while typing
-  useEffect(() => {
-    if (debouncedQuery !== s.query) return;
-    if (debouncedQuery.length < 2 || s.selectedLabel) {
-      setS((prev) => ({ ...prev, suggestions: [] }));
+  // Same pattern as the discography page: cache hit goes synchronously
+  // (no spinner, no flash), cache-miss / in-flight goes async via
+  // `fetchQuery` which dedups with the autocomplete on the same queryKey.
+  async function pickLabel(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    addToHistory(trimmed);
+    setS((prev) => ({
+      ...prev,
+      query: trimmed,
+      showHistory: false,
+      showSuggestions: false,
+    }));
+
+    const cached = qc.getQueryData<DiscogsLabel[]>(suggestionsQueryKey(trimmed));
+    if (cached?.length) {
+      const pick = pickFromList(cached, trimmed);
+      if (pick) selectLabel(pick);
       return;
     }
-    autocompleteAbortRef.current?.abort();
-    const ac = new AbortController();
-    autocompleteAbortRef.current = ac;
-    setS((prev) => ({ ...prev, loadingLabels: true }));
-    fetchApi(api.discography.label.search.$get({ query: { q: debouncedQuery } }, { init: { signal: ac.signal } }))
-      .then((data) => {
-        if (ac.signal.aborted || !data) return;
-        setS((prev) => ({ ...prev, suggestions: data, showSuggestions: true }));
-      })
-      .catch(() => {
-        if (!ac.signal.aborted) setS((prev) => ({ ...prev, suggestions: [] }));
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setS((prev) => ({ ...prev, loadingLabels: false }));
+
+    setPicking(true);
+    try {
+      const data = await qc.fetchQuery({
+        queryKey: suggestionsQueryKey(trimmed),
+        queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
+        staleTime: 60_000,
       });
-  }, [debouncedQuery, s.selectedLabel, s.query, setS]);
+      if (!data?.length) return;
+      const pick = pickFromList(data, trimmed);
+      if (pick) selectLabel(pick);
+    } catch {
+      // Match the previous fail-silent behaviour.
+    } finally {
+      setPicking(false);
+    }
+  }
 
   // Close on outside click
   useEffect(() => {
@@ -121,6 +132,12 @@ function LabelsContent() {
 
   const totalPages = Math.ceil(releases.length / PAGE_SIZE);
   const pagedReleases = releases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
+
+  const loadingLabels = picking || suggestionsQuery.isFetching;
+  const searchDisabled =
+    !s.query.trim() ||
+    picking ||
+    (s.selectedLabel != null && s.query.trim().toLowerCase() === s.selectedLabel.name.toLowerCase());
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -151,7 +168,7 @@ function LabelsContent() {
               return (
                 <button
                   key={name}
-                  onClick={() => searchLabelByName(name)}
+                  onClick={() => pickLabel(name)}
                   className="px-3 py-2 sm:px-4 sm:py-2.5 text-[12px] sm:text-[13px] font-medium rounded-lg border transition-colors whitespace-nowrap"
                   style={{
                     color: active ? "var(--td-fg)" : "var(--td-fg-d)",
@@ -211,18 +228,18 @@ function LabelsContent() {
               onFocus={() => {
                 if (s.query.length < 2 && history.length > 0) {
                   setS((prev) => ({ ...prev, showHistory: true }));
-                } else if (s.suggestions.length > 0) {
+                } else if (suggestions.length > 0) {
                   setS((prev) => ({ ...prev, showSuggestions: true }));
                 }
               }}
               onKeyDown={(e) => {
                 const inHistory = s.showHistory && history.length > 0;
-                const inSuggestions = s.showSuggestions && s.suggestions.length > 0;
-                const items = inHistory ? history : inSuggestions ? s.suggestions.map((l) => l.name) : [];
+                const inSuggestions = s.showSuggestions && suggestions.length > 0;
+                const items = inHistory ? history : inSuggestions ? suggestions.map((l) => l.name) : [];
                 const dropdownOpen = inHistory || inSuggestions;
 
                 if (!dropdownOpen) {
-                  if (e.key === "Enter" && s.query.trim()) searchLabelByName(s.query.trim());
+                  if (e.key === "Enter" && s.query.trim()) pickLabel(s.query.trim());
                   return;
                 }
                 if (e.key === "ArrowDown") {
@@ -235,10 +252,10 @@ function LabelsContent() {
                   e.preventDefault();
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
                   if (s.activeIndex >= 0) {
-                    if (inHistory) searchLabelByName(items[s.activeIndex]!);
-                    else selectLabel(s.suggestions[s.activeIndex]!);
+                    if (inHistory) pickLabel(items[s.activeIndex]!);
+                    else selectLabel(suggestions[s.activeIndex]!);
                   } else if (s.query.trim()) {
-                    searchLabelByName(s.query.trim());
+                    pickLabel(s.query.trim());
                   }
                 } else if (e.key === "Escape") {
                   setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
@@ -249,7 +266,7 @@ function LabelsContent() {
               style={{ caretColor: "var(--td-accent)" }}
             />
 
-            {s.loadingLabels && (
+            {loadingLabels && (
               <svg
                 className="w-5 h-5 animate-spin shrink-0"
                 fill="none"
@@ -264,9 +281,9 @@ function LabelsContent() {
             <button
               onClick={() => {
                 setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false, activeIndex: -1 }));
-                if (s.query.trim()) searchLabelByName(s.query.trim());
+                if (s.query.trim()) pickLabel(s.query.trim());
               }}
-              disabled={!s.query.trim() || s.loadingLabels}
+              disabled={searchDisabled}
               className="shrink-0 px-4 py-2.5 sm:px-8 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-[16px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 background: "var(--td-fg)",
@@ -297,7 +314,7 @@ function LabelsContent() {
                     onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      searchLabelByName(h);
+                      pickLabel(h);
                     }}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
                     style={{
@@ -324,7 +341,7 @@ function LabelsContent() {
           )}
 
           {/* Autocomplete suggestions */}
-          {s.showSuggestions && s.suggestions.length > 0 && (
+          {s.showSuggestions && suggestions.length > 0 && (
             <ul
               className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
               style={{
@@ -332,7 +349,7 @@ function LabelsContent() {
                 borderColor: "rgba(255, 255, 255, 0.18)",
               }}
             >
-              {s.suggestions.map((l, i) => (
+              {suggestions.map((l, i) => (
                 <li key={l.id}>
                   <button
                     onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}

@@ -1,23 +1,19 @@
 "use client";
 
-import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
 import { TrackCard } from "@/components/TrackCard";
+import { useDislikedKeys, useDislikeTrack } from "@/features/dislike/hooks/useDislikes";
+import { useFavoriteIds, useToggleFavorite } from "@/features/favorite/hooks/useFavorites";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
+import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-import { favoritesAtom } from "@/lib/atoms/favorites";
 import { searchAtom } from "@/lib/atoms/search";
-import { fetchApi } from "@/lib/callApi";
-import { api } from "@/lib/hono/client";
-
-const POLL_INTERVAL_MS = 600;
-const POLL_TIMEOUT_MS = 90_000;
 
 export default function Home() {
   return (
@@ -30,23 +26,17 @@ export default function Home() {
 function HomeContent() {
   const searchParams = useSearchParams();
   const player = usePlayer();
-  const [search, setSearch] = useAtom(searchAtom);
-  const [fav, setFav] = useAtom(favoritesAtom);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [, setSearch] = useAtom(searchAtom);
+  const [userId, setUserId] = useState<string | null>(null);
+  const isAuthenticated = !!userId;
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollStartRef = useRef<number>(0);
-  const currentSearchIdRef = useRef<string>("");
-  const appendModeRef = useRef<boolean>(false);
-
-  // One-shot fetch of session state — gates favorite/dislike controls.
   // SessionProvider isn't wired site-wide; getSession does its own /api
   // call which is fine for a single read.
   useEffect(() => {
     let cancelled = false;
     getSession()
       .then((s) => {
-        if (!cancelled) setIsAuthenticated(!!s?.user);
+        if (!cancelled) setUserId(s?.user?.id ?? null);
       })
       .catch(console.error);
     return () => {
@@ -54,133 +44,16 @@ function HomeContent() {
     };
   }, []);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
+  const favoriteIds = useFavoriteIds(userId);
+  const dislikedKeys = useDislikedKeys(userId);
+  const { mutate: mutateFavorite } = useToggleFavorite(userId);
+  const { mutate: mutateDislike } = useDislikeTrack(userId);
 
-  const pollSearch = useCallback(
-    (searchId: string) => {
-      currentSearchIdRef.current = searchId;
-      pollStartRef.current = Date.now();
+  const { search, startSearch, isLoading } = useSearchFlow();
+  const { query, tracks, status, errorMsg, displayCount } = search;
 
-      pollRef.current = setInterval(async () => {
-        if (currentSearchIdRef.current !== searchId) return;
-
-        if (Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
-          stopPolling();
-          setSearch((prev) => ({
-            ...prev,
-            status: "error",
-            errorMsg: "Search timed out. Please try again.",
-          }));
-          return;
-        }
-
-        try {
-          const data = await parseResponse(api.search[":id"].$get({ param: { id: searchId } }));
-
-          if (currentSearchIdRef.current !== searchId) return;
-
-          setSearch((prev) => {
-            let nextTracks = prev.tracks;
-            if (data.tracks?.length) {
-              if (appendModeRef.current) {
-                const seen = new Set(prev.tracks.map((t) => t.sourceUrl));
-                const fresh = data.tracks.filter((t: { sourceUrl: string }) => !seen.has(t.sourceUrl));
-                nextTracks = [...prev.tracks, ...fresh];
-              } else {
-                nextTracks = data.tracks;
-              }
-            }
-            return {
-              ...prev,
-              tracks: nextTracks,
-              ...(data.status === "done" || data.status === "error"
-                ? {
-                    status: data.status === "done" ? "done" : "error",
-                    errorMsg: data.status === "error" ? "Search failed. Please try again." : prev.errorMsg,
-                  }
-                : {}),
-            };
-          });
-
-          if (data.status === "done" || data.status === "error") {
-            stopPolling();
-          }
-        } catch (err) {
-          console.error("[poll] error:", err);
-        }
-      }, POLL_INTERVAL_MS);
-    },
-    [stopPolling, setSearch],
-  );
-
-  const startSearch = useCallback(
-    async (q: string) => {
-      if (!q.trim() || search.status === "running") return;
-
-      stopPolling();
-      appendModeRef.current = false;
-      currentSearchIdRef.current = "";
-      setSearch((prev) => ({
-        ...prev,
-        tracks: [],
-        errorMsg: "",
-        status: "running",
-        displayCount: 18,
-      }));
-
-      try {
-        const data = await fetchApi(api.search.$post({ json: { input: q.trim() } }));
-        if (!data) {
-          setSearch((prev) => ({ ...prev, status: "idle", errorMsg: "" }));
-          return;
-        }
-        pollSearch(data.id);
-      } catch (err) {
-        console.error("[search] error:", err);
-        setSearch((prev) => ({
-          ...prev,
-          status: "error",
-          errorMsg: "Failed to start search. Is the server running?",
-        }));
-      }
-    },
-    [search.status, stopPolling, setSearch, pollSearch],
-  );
-
-  const handleSearch = useCallback(() => startSearch(search.query), [search.query, startSearch]);
-
-  const loadMoreTracks = useCallback(async () => {
-    const q = search.query.trim();
-    if (!q || search.status === "running") return;
-
-    stopPolling();
-    appendModeRef.current = true;
-    currentSearchIdRef.current = "";
-    setSearch((prev) => ({ ...prev, status: "running", errorMsg: "" }));
-
-    try {
-      const data = await fetchApi(api.search.$post({ json: { input: q } }));
-      if (!data) {
-        appendModeRef.current = false;
-        setSearch((prev) => ({ ...prev, status: "done", errorMsg: "" }));
-        return;
-      }
-      pollSearch(data.id);
-    } catch (err) {
-      console.error("[loadMore] error:", err);
-      appendModeRef.current = false;
-      setSearch((prev) => ({
-        ...prev,
-        status: "error",
-        errorMsg: "Failed to load more tracks.",
-      }));
-    }
-  }, [search.query, search.status, stopPolling, setSearch, pollSearch]);
+  const handleSearch = useCallback(() => startSearch(query), [query, startSearch]);
+  const loadMoreTracks = useCallback(() => startSearch(query, { append: true }), [query, startSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {
@@ -193,87 +66,27 @@ function HomeContent() {
   }, []);
 
   const toggleFavorite = useCallback(
-    async (trackId: string) => {
-      const isFav = fav.ids.has(trackId);
-      setFav((prev) => {
-        const next = new Set(prev.ids);
-        if (isFav) next.delete(trackId);
-        else next.add(trackId);
-        return { ...prev, ids: next };
-      });
-
-      try {
-        if (isFav) {
-          await parseResponse(api.favorites.$delete({ query: { trackId } }));
-        } else {
-          await parseResponse(api.favorites.$post({ json: { trackId } }));
-        }
-      } catch (err) {
-        console.error("[favorites] error:", err);
-        setFav((prev) => {
-          const next = new Set(prev.ids);
-          if (isFav) next.add(trackId);
-          else next.delete(trackId);
-          return { ...prev, ids: next };
-        });
-      }
+    (trackId: string) => {
+      const isFav = favoriteIds.has(trackId);
+      mutateFavorite({ trackId, isFav });
     },
-    [fav.ids, setFav],
+    [favoriteIds, mutateFavorite],
   );
 
-  // Load favorites + dislikes once we know the user is signed in.
-  // Anonymous visitors get 401 from these endpoints, so we skip the calls.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    parseResponse(api.favorites.$get())
-      .then((data) => {
-        setFav((prev) => ({ ...prev, ids: new Set(data.map((t) => t.id)) }));
-      })
-      .catch(console.error);
-
-    parseResponse(api.dislikes.$get())
-      .then((rows) => {
-        setFav((prev) => ({
-          ...prev,
-          dislikedKeys: new Set(rows.map((d) => `${d.artistKey}|${d.titleKey}`)),
-        }));
-      })
-      .catch(console.error);
-  }, [isAuthenticated, setFav]);
-
   const handleDislike = useCallback(
-    async (track: { id: string; sourceUrl: string; title: string; artist: string }) => {
-      const composite = `${normalizeArtist(track.artist)}|${normalizeTitle(track.title)}`;
-      setFav((prev) => ({
-        ...prev,
-        dislikedKeys: new Set([...prev.dislikedKeys, composite]),
-      }));
+    (track: { id: string; sourceUrl: string; title: string; artist: string }) => {
       // Compare by id — sourceUrl may have been swapped to a resolved
       // YTM/Bandcamp URL by BottomPlayer for non-YTM/non-bandcamp originals.
       if (player.track?.id === track.id) {
         player.close();
       }
-      try {
-        await parseResponse(api.dislikes.$post({ json: { artist: track.artist, title: track.title } }));
-      } catch {
-        setFav((prev) => {
-          const next = new Set(prev.dislikedKeys);
-          next.delete(composite);
-          return { ...prev, dislikedKeys: next };
-        });
-      }
+      mutateDislike({ artist: track.artist, title: track.title });
     },
-    [player, setFav],
+    [player, mutateDislike],
   );
 
-  // Cleanup on unmount
-  useEffect(() => () => stopPolling(), [stopPolling]);
-
-  const { query, tracks, status, errorMsg, displayCount } = search;
-  const isLoading = status === "running";
-
   const visibleTracks = tracks.filter(
-    (t) => !fav.dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) && !fav.ids.has(t.id),
+    (t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) && !favoriteIds.has(t.id),
   );
 
   return (
@@ -375,7 +188,7 @@ function HomeContent() {
                         track={track}
                         playlist={playlist}
                         trackIndex={idx}
-                        isFavorite={fav.ids.has(track.id)}
+                        isFavorite={favoriteIds.has(track.id)}
                         onFavoriteToggle={isAuthenticated ? toggleFavorite : undefined}
                         onDislike={isAuthenticated ? () => handleDislike(track) : undefined}
                       />

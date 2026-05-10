@@ -31,12 +31,10 @@ async def search_artist(q: str = Query(..., min_length=1)):
 )
 async def get_releases(
     artist_id: int,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=100),
     role: str | None = Query(None, max_length=64),
 ):
     try:
-        return await _discogs.get_releases(artist_id, page, per_page, role)
+        return await _discogs.get_releases(artist_id, role)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
