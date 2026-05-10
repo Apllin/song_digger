@@ -15,13 +15,17 @@
  *
  * Run with:  pnpm test:smoke
  */
+import { hc } from "hono/client";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
+import type { AppType } from "@/lib/hono/app";
 
 const WEB_URL = "http://localhost:3000";
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 60_000;
+
+const client = hc<AppType>(WEB_URL).api;
 
 const PLACEHOLDER_ARTIST = "Smoke Test Artist";
 const PLACEHOLDER_TITLE = "Smoke Test Track";
@@ -30,10 +34,8 @@ let serversUp = false;
 
 beforeAll(async () => {
   try {
-    const r = await fetch(`${WEB_URL}/api/dislikes`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    serversUp = r.ok;
+    const resp = await client.health.$get({}, { init: { signal: AbortSignal.timeout(2000) } });
+    serversUp = resp.ok;
   } catch {
     serversUp = false;
   }
@@ -43,11 +45,7 @@ afterEach(async () => {
   // Always remove the placeholder row even on failure paths so the dev
   // DB doesn't accumulate junk.
   if (!serversUp) return;
-  await fetch(`${WEB_URL}/api/dislikes`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE }),
-  }).catch(() => {});
+  await client.dislikes.$delete({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } }).catch(() => {});
 });
 
 describe("/api/dislikes CRUD", () => {
@@ -57,17 +55,11 @@ describe("/api/dislikes CRUD", () => {
       return;
     }
 
-    const post = await fetch(`${WEB_URL}/api/dislikes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE }),
-    });
+    const post = await client.dislikes.$post({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } });
     expect(post.ok).toBe(true);
 
-    const list = (await fetch(`${WEB_URL}/api/dislikes`).then((r) => r.json())) as Array<{
-      artist: string;
-      title: string;
-    }>;
+    const listResp = await client.dislikes.$get();
+    const list = (await listResp.json()) as Array<{ artist: string; title: string }>;
     const found = list.some((d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE);
     expect(found).toBe(true);
   });
@@ -78,22 +70,14 @@ describe("/api/dislikes CRUD", () => {
       return;
     }
 
-    await fetch(`${WEB_URL}/api/dislikes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE }),
-    });
-    const del = await fetch(`${WEB_URL}/api/dislikes`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE }),
+    await client.dislikes.$post({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } });
+    const del = await client.dislikes.$delete({
+      json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE },
     });
     expect(del.ok).toBe(true);
 
-    const list = (await fetch(`${WEB_URL}/api/dislikes`).then((r) => r.json())) as Array<{
-      artist: string;
-      title: string;
-    }>;
+    const listResp = await client.dislikes.$get();
+    const list = (await listResp.json()) as Array<{ artist: string; title: string }>;
     const found = list.some((d) => d.artist === PLACEHOLDER_ARTIST && d.title === PLACEHOLDER_TITLE);
     expect(found).toBe(false);
   });
@@ -103,11 +87,8 @@ describe("/api/dislikes CRUD", () => {
       console.warn("[skip] web dev server not reachable");
       return;
     }
-    const resp = await fetch(`${WEB_URL}/api/dislikes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artist: PLACEHOLDER_ARTIST }),
-    });
+    // @ts-expect-error intentionally missing title to verify schema validation
+    const resp = await client.dislikes.$post({ json: { artist: PLACEHOLDER_ARTIST } });
     expect(resp.status).toBe(400);
   });
 });
@@ -125,11 +106,7 @@ interface SearchStatus {
 }
 
 async function startSearch(input: string): Promise<string> {
-  const resp = await fetch(`${WEB_URL}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
-  });
+  const resp = await client.search.$post({ json: { input } });
   const body = (await resp.json()) as { id: string };
   return body.id;
 }
@@ -137,7 +114,7 @@ async function startSearch(input: string): Promise<string> {
 async function pollUntilDone(id: string): Promise<SearchStatus> {
   const start = Date.now();
   while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const resp = await fetch(`${WEB_URL}/api/search/${id}`);
+    const resp = await client.search[":id"].$get({ param: { id } });
     if (resp.ok) {
       const body = (await resp.json()) as SearchStatus;
       if (body.status === "done" || body.status === "error") return body;
@@ -169,11 +146,7 @@ describe("/api/search dislike-filter behavior", () => {
     const target = r1.tracks[0]!;
     console.log(`[dislike smoke] disliking "${target.artist} - ${target.title}" (rank 1, source=${target.source})`);
 
-    const post = await fetch(`${WEB_URL}/api/dislikes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artist: target.artist, title: target.title }),
-    });
+    const post = await client.dislikes.$post({ json: { artist: target.artist, title: target.title } });
     expect(post.ok).toBe(true);
 
     try {
@@ -188,11 +161,7 @@ describe("/api/search dislike-filter behavior", () => {
         `disliked ${targetKey} re-appeared in search ${id2} from source ${survived?.source}`,
       ).toBeUndefined();
     } finally {
-      await fetch(`${WEB_URL}/api/dislikes`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artist: target.artist, title: target.title }),
-      });
+      await client.dislikes.$delete({ json: { artist: target.artist, title: target.title } });
     }
   }, 180_000);
 });

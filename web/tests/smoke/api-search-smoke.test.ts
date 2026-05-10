@@ -11,25 +11,24 @@
  *
  * Run with:  pnpm test:smoke
  */
+import { hc } from "hono/client";
 import { beforeAll, describe, expect, it } from "vitest";
+
+import type { AppType } from "@/lib/hono/app";
 
 const WEB_URL = "http://localhost:3000";
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 60_000;
 
+const client = hc<AppType>(WEB_URL).api;
+
 let serversUp = false;
 
 beforeAll(async () => {
   try {
-    const [web, py] = await Promise.all([
-      fetch(`${WEB_URL}/api/dislikes`, {
-        signal: AbortSignal.timeout(2000),
-      }).then((r) => r.ok),
-      fetch("http://localhost:8000/health", {
-        signal: AbortSignal.timeout(2000),
-      }).then((r) => r.ok),
-    ]);
-    serversUp = web && py;
+    const resp = await client.health.$get({}, { init: { signal: AbortSignal.timeout(2000) } });
+    const body = await resp.json();
+    serversUp = resp.ok && body.python_service === "ok";
   } catch {
     serversUp = false;
   }
@@ -50,11 +49,7 @@ interface SearchStatus {
 }
 
 async function startSearch(input: string): Promise<string> {
-  const resp = await fetch(`${WEB_URL}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
-  });
+  const resp = await client.search.$post({ json: { input } });
   expect(resp.ok).toBe(true);
   const body = (await resp.json()) as { id: string; status: string };
   expect(body.id).toBeTruthy();
@@ -64,7 +59,7 @@ async function startSearch(input: string): Promise<string> {
 async function pollUntilDone(searchId: string): Promise<SearchStatus> {
   const start = Date.now();
   while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const resp = await fetch(`${WEB_URL}/api/search/${searchId}`);
+    const resp = await client.search[":id"].$get({ param: { id: searchId } });
     if (resp.ok) {
       const body = (await resp.json()) as SearchStatus;
       if (body.status === "done" || body.status === "error") return body;
@@ -107,11 +102,8 @@ describe("/api/search smoke — request validation", () => {
       console.warn("[skip] web/python dev servers not reachable");
       return;
     }
-    const resp = await fetch(`${WEB_URL}/api/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    // @ts-expect-error intentionally omitting required `input` to verify schema validation
+    const resp = await client.search.$post({ json: {} });
     expect(resp.status).toBe(400);
   });
 
@@ -120,11 +112,7 @@ describe("/api/search smoke — request validation", () => {
       console.warn("[skip] web/python dev servers not reachable");
       return;
     }
-    const resp = await fetch(`${WEB_URL}/api/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: "" }),
-    });
+    const resp = await client.search.$post({ json: { input: "" } });
     expect(resp.status).toBe(400);
   });
 });
