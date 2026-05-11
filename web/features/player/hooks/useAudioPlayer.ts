@@ -72,11 +72,11 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
       parseResponse(api.embed.$get({ query: { title: track!.title, artist: track!.artist } }, { init: { signal } })),
     enabled: shouldResolve,
     staleTime: Infinity,
-    retry: false,
+    retry: 1,
   });
 
   useEffect(() => {
-    if (!shouldResolve || embedStatus === "pending") return;
+    if (!shouldResolve || embedStatus === "pending" || embedStatus === "error") return;
     if (embedData?.embedUrl && embedData.source) {
       // Keep the cover the user already sees — the YTM/Bandcamp resolver's
       // thumbnail is often a channel avatar or low-res alternate. Fall back
