@@ -11,7 +11,7 @@ import {
 import type { FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
-import { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } from "@/lib/embed-cache";
+import { embedCacheKey, lookupEmbedCacheBatch, upsertEmbedCacheBatch, warmEmbedCache } from "@/lib/embed-cache";
 import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 import { anonGate } from "@/lib/hono/anonGate";
@@ -122,31 +122,75 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<M
 // lookup. Run that lookup at search time for any yandex track no other source
 // confirmed, drop the ones that resolve to nothing, and write the embed cache
 // so the eventual click is just a Postgres select.
+//
+// Batched: one findMany for all cache lookups, parallel resolveEmbed for
+// misses, one $transaction-batched upsert for new resolutions. Replaces an
+// N+N (lookup + upsert per yandex track) pattern that dominated BG-worker
+// DB time at ~37 round-trips per search.
 async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<FusedCandidate[]> {
-  const checks = candidates.map(async (t) => {
-    if (t.source !== "yandex_music") return t;
-    if (t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp")) {
-      return t;
-    }
+  const needsCheck = candidates.filter(
+    (t) =>
+      t.source === "yandex_music" &&
+      !t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp"),
+  );
+  if (!needsCheck.length) return candidates;
 
-    const cached = await lookupEmbedCache(t.artist, t.title).catch(() => null);
-    if (cached) return cached.embedUrl ? t : null;
+  const cached = await lookupEmbedCacheBatch(needsCheck).catch(() => new Map());
 
-    const resolved = await resolveEmbed(t.title, t.artist).catch(() => null);
-    if (!resolved) return null;
+  const cacheKeyFor = (t: FusedCandidate): string => {
+    const { artistKey, titleKey } = embedCacheKey(t.artist, t.title);
+    return `${artistKey}|${titleKey}`;
+  };
 
-    upsertEmbedCache(t.artist, t.title, {
-      embedUrl: resolved.embedUrl,
-      source: resolved.source,
-      sourceUrl: resolved.sourceUrl ?? null,
-      coverUrl: resolved.coverUrl ?? null,
-    }).catch((err) => console.error("[embed-cache] upsert failed:", err));
+  const keep = new Map<string, boolean>();
+  const newResolutions: Array<{
+    artist: string;
+    title: string;
+    result: Parameters<typeof upsertEmbedCacheBatch>[0][number]["result"];
+  }> = [];
 
-    return resolved.embedUrl ? t : null;
+  await Promise.all(
+    needsCheck.map(async (t) => {
+      const k = cacheKeyFor(t);
+      const hit = cached.get(k);
+      if (hit !== undefined) {
+        keep.set(k, hit.embedUrl != null);
+        return;
+      }
+
+      const resolved = await resolveEmbed(t.title, t.artist).catch(() => null);
+      if (!resolved) {
+        // resolveEmbed itself returned null/threw — don't write a speculative
+        // negative; matches the previous behavior. Next search re-resolves.
+        keep.set(k, false);
+        return;
+      }
+
+      newResolutions.push({
+        artist: t.artist,
+        title: t.title,
+        result: {
+          embedUrl: resolved.embedUrl,
+          source: resolved.source,
+          sourceUrl: resolved.sourceUrl ?? null,
+          coverUrl: resolved.coverUrl ?? null,
+        },
+      });
+      keep.set(k, resolved.embedUrl != null);
+    }),
+  );
+
+  if (newResolutions.length) {
+    upsertEmbedCacheBatch(newResolutions).catch((err: unknown) =>
+      console.error("[embed-cache] batch upsert failed:", err),
+    );
+  }
+
+  return candidates.filter((t) => {
+    if (t.source !== "yandex_music") return true;
+    if (t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp")) return true;
+    return keep.get(cacheKeyFor(t)) === true;
   });
-
-  const settled = await Promise.all(checks);
-  return settled.filter((t): t is FusedCandidate => t !== null);
 }
 
 async function runSearch(

@@ -105,6 +105,97 @@ export async function upsertEmbedCache(artist: string, title: string, result: Em
   });
 }
 
+function keyString(k: CacheKey): string {
+  return `${k.artistKey}|${k.titleKey}`;
+}
+
+/**
+ * Batch version of lookupEmbedCache: one `findMany` instead of N findUniques.
+ * Returns a map keyed by `${artistKey}|${titleKey}` — caller computes the key
+ * via `embedCacheKey()` to look up. Missing key = cache miss OR stale negative
+ * (caller should re-resolve). Present key with `embedUrl=null` = fresh
+ * negative hit (caller should drop the track without re-resolving).
+ *
+ * One round-trip to Neon for the whole batch — replaces the previous N
+ * sequential findUnique calls in `dropUnplayableYandex` which dominated
+ * search latency at ~20 yandex tracks per result set.
+ */
+export async function lookupEmbedCacheBatch(
+  tracks: Array<{ artist: string; title: string }>,
+): Promise<Map<string, EmbedCacheEntry>> {
+  const keys = tracks.map((t) => embedCacheKey(t.artist, t.title)).filter((k) => k.artistKey && k.titleKey);
+  if (!keys.length) return new Map();
+
+  const rows = await prisma.trackEmbed.findMany({
+    where: {
+      OR: keys.map((k) => ({ artistKey: k.artistKey, titleKey: k.titleKey })),
+    },
+    select: {
+      artistKey: true,
+      titleKey: true,
+      embedUrl: true,
+      source: true,
+      sourceUrl: true,
+      coverUrl: true,
+      updatedAt: true,
+    },
+  });
+
+  const out = new Map<string, EmbedCacheEntry>();
+  for (const row of rows) {
+    if (isStaleNegative(row)) continue;
+    out.set(keyString({ artistKey: row.artistKey, titleKey: row.titleKey }), {
+      embedUrl: row.embedUrl,
+      source: row.source,
+      sourceUrl: row.sourceUrl,
+      coverUrl: row.coverUrl,
+    });
+  }
+  return out;
+}
+
+/**
+ * Batch version of upsertEmbedCache: collapses N upserts into one interactive
+ * transaction, which on Postgres means one round-trip instead of N. Same
+ * write semantics as the single-shot version — every entry gets `updatedAt`
+ * bumped, which resets the negative-TTL window for stale-negative refreshes.
+ *
+ * 30s timeout matches `saveTracks`. At ~20 upserts per call this completes
+ * in well under a second; the headroom is for slow-DB days, not normal load.
+ */
+export async function upsertEmbedCacheBatch(
+  entries: Array<{ artist: string; title: string; result: EmbedCacheEntry }>,
+): Promise<void> {
+  if (!entries.length) return;
+
+  const ops = entries
+    .map((e) => {
+      const { artistKey, titleKey } = embedCacheKey(e.artist, e.title);
+      if (!artistKey || !titleKey) return null;
+      return prisma.trackEmbed.upsert({
+        where: { artistKey_titleKey: { artistKey, titleKey } },
+        create: {
+          artistKey,
+          titleKey,
+          embedUrl: e.result.embedUrl,
+          source: e.result.source,
+          sourceUrl: e.result.sourceUrl,
+          coverUrl: e.result.coverUrl,
+        },
+        update: {
+          embedUrl: e.result.embedUrl,
+          source: e.result.source,
+          sourceUrl: e.result.sourceUrl,
+          coverUrl: e.result.coverUrl,
+        },
+      });
+    })
+    .filter((op): op is NonNullable<typeof op> => op !== null);
+
+  if (!ops.length) return;
+  await prisma.$transaction(ops, { timeout: 30_000 });
+}
+
 /**
  * Bulk-warm the cache from search results that already carry an embedUrl
  * (YTM/Bandcamp adapters populate it during /similar). Skips entries with
