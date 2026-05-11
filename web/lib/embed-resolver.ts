@@ -1,6 +1,13 @@
 /**
  * Tries to find an embeddable player for a track.
- * Priority: YTM exact-match → Bandcamp.
+ * Priority: YTM exact-match → Bandcamp search.
+ *
+ * Bandcamp here is a player-only fallback: ADR-0023 removed the Bandcamp
+ * `/similar` adapter, but kept the Bandcamp search + mp3 extraction surface
+ * so non-YTM tracks (yandex/lastfm/cosine/trackid) that YTM exact-match
+ * can't resolve still get a chance at inline playback before falling
+ * through to "unavailable".
+ *
  * Returns embedUrl or null.
  */
 

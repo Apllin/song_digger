@@ -1,7 +1,7 @@
 # 0006 — Bandcamp adapter 4-second timeout
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Superseded by ADR-0023 (Bandcamp adapter removed)
 
 **Context:**
 Bandcamp's `_get_recommendations` historically required up to 7 sequential

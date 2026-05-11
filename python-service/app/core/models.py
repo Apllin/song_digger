@@ -17,7 +17,7 @@ class TrackMeta(BaseModel):
 
 
 class SimilarRequest(BaseModel):
-    input: str                  # raw query string (kept for Bandcamp)
+    input: str                  # raw query string (preserved for adapters that key off the full input)
     artist: str                 # parsed artist name
     track: str | None = None    # parsed track name (None = artist-only search)
     limit_per_source: int = 20

@@ -39,7 +39,7 @@ pnpm test                       # pytest in python-service (default unit tests o
 # Python service, targeted
 cd python-service
 .venv/bin/pytest tests/test_similar.py           # one file
-.venv/bin/pytest -k bandcamp                     # by keyword
+.venv/bin/pytest -k cosine                       # by keyword
 .venv/bin/pytest -m smoke                        # live-network smoke (opt-in)
 .venv/bin/pytest -m speed                        # latency tests (opt-in, sequential)
 .venv/bin/uvicorn app.main:app --reload          # run service standalone

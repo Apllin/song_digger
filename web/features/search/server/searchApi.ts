@@ -99,10 +99,13 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<M
     skipDuplicates: true,
   });
 
-  // 5. Warm the embed cache from tracks that already carry an embedUrl
-  //    (YTM/Bandcamp adapters set it during /similar). Cross-feature win:
-  //    a discography click on the same song later hits cache without a
-  //    live YTM lookup. Best-effort, never blocks the search response.
+  // 5. Warm the embed cache from tracks that already carry an embedUrl.
+  //    YTM is the only `/similar` adapter that still populates embedUrl
+  //    (ADR-0023 removed Bandcamp from /similar); the Bandcamp embed
+  //    surface is now resolved on-demand through /api/embed. Cross-feature
+  //    win: a discography click on the same song later hits cache
+  //    without a live YTM lookup. Best-effort, never blocks the search
+  //    response.
   warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
 
   return new Map(existing.map((r) => [r.sourceUrl, r.id]));
