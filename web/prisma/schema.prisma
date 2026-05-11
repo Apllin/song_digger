@@ -96,9 +96,12 @@ model PasswordResetToken {
 model SearchQuery {
   id        String         @id @default(cuid())
   input     String
+  cacheKey  String?
   status    String         @default("pending")
   createdAt DateTime       @default(now())
   results   SearchResult[]
+
+  @@index([cacheKey, status, createdAt])
 }
 
 model SearchResult {
