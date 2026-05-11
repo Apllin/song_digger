@@ -16,6 +16,7 @@ import { resolveEmbed } from "@/lib/embed-resolver";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import type { AppEnv } from "@/lib/hono/types";
+import { getMetricsContext } from "@/lib/metrics/context";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
@@ -148,6 +149,66 @@ async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<Fused
   return settled.filter((t): t is FusedCandidate => t !== null);
 }
 
+async function runSearch(
+  searchId: string,
+  input: string,
+  artist: string,
+  track: string | null,
+  cacheKey: string,
+  pythonServiceUrl: string,
+): Promise<{ playable: FusedCandidate[]; urlToId: Map<string, string> } | null> {
+  const cached = await lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS);
+
+  const metricsCtx = getMetricsContext();
+  if (metricsCtx) metricsCtx.cacheHit = cached !== null;
+
+  let pythonResult: SimilarResponse | null;
+  if (cached) {
+    pythonResult = cached;
+  } else {
+    const pythonStart = performance.now();
+    pythonResult = await findSimilar(
+      { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
+      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+    ).catch((err: unknown) => {
+      console.error("[Search] Python stage failed:", err);
+      return null;
+    });
+    if (metricsCtx) metricsCtx.pythonDurationMs = performance.now() - pythonStart;
+    // Best-effort cache write: only on a real Python response. Errors / null
+    // results don't poison the cache — next request retries live.
+    if (pythonResult) {
+      upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
+        console.error("[search-cache] upsert failed:", err),
+      );
+    }
+  }
+
+  if (metricsCtx && pythonResult) {
+    metricsCtx.sourcesUsed = pythonResult.source_lists.filter((sl) => sl.tracks.length > 0).map((sl) => sl.source);
+  }
+
+  if (!pythonResult) {
+    await prisma.searchQuery.update({
+      where: { id: searchId },
+      data: { status: "error" },
+    });
+    return null;
+  }
+
+  const aggregated = aggregateTracks(pythonResult.source_lists);
+  const filtered = await dropUnplayableYandex(aggregated);
+  const playable = await enrichMissingCovers(filtered);
+  const urlToId = await saveTracks(searchId, playable);
+
+  await prisma.searchQuery.update({
+    where: { id: searchId },
+    data: { status: "done" },
+  });
+
+  return { playable, urlToId };
+}
+
 export const searchApi = new Hono<AppEnv>().post(
   "/search",
   anonGate,
@@ -189,45 +250,13 @@ export const searchApi = new Hono<AppEnv>().post(
     });
 
     const pythonServiceUrl = c.var.pythonServiceUrl;
+    const result = await runSearch(searchQuery.id, input, artist, track, cacheKey, pythonServiceUrl);
 
-    const cached = await lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS);
-    let pythonResult: SimilarResponse | null;
-
-    if (cached) {
-      pythonResult = cached;
-    } else {
-      pythonResult = await findSimilar(
-        { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-        { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
-      ).catch((err: unknown) => {
-        console.error("[search] Python stage failed:", err);
-        return null;
-      });
-      if (pythonResult) {
-        upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
-          console.error("[search-cache] upsert failed:", err),
-        );
-      }
-    }
-
-    if (!pythonResult) {
-      await prisma.searchQuery.update({
-        where: { id: searchQuery.id },
-        data: { status: "error" },
-      });
+    if (!result) {
       return c.json({ error: "Search service unavailable." } as const, 503);
     }
 
-    const aggregated = aggregateTracks(pythonResult.source_lists);
-    const filtered = await dropUnplayableYandex(aggregated);
-    const playable = await enrichMissingCovers(filtered);
-    const urlToId = await saveTracks(searchQuery.id, playable);
-
-    await prisma.searchQuery.update({
-      where: { id: searchQuery.id },
-      data: { status: "done" },
-    });
-
+    const { playable, urlToId } = result;
     return c.json({
       id: searchQuery.id,
       tracks: playable.map((t) => ({
