@@ -4,7 +4,6 @@ export { getLabelReleases } from "./clients/getLabelReleases";
 export { getReleaseTracklist } from "./clients/getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./clients/getSuggestionsSuggestionsGet";
 export { healthHealthGet } from "./clients/healthHealthGet";
-export { playLookupPlayLookupGet } from "./clients/playLookupPlayLookupGet";
 export { searchArtists } from "./clients/searchArtists";
 export { searchExactYtmSearchExactGet } from "./clients/searchExactYtmSearchExactGet";
 export { searchLabels } from "./clients/searchLabels";
@@ -131,12 +130,6 @@ export { HTTPValidationErrorSchema } from "./zod/HTTPValidationErrorSchema";
 export { labelReleaseSchema } from "./zod/labelReleaseSchema";
 export { labelReleasesPaginationSchema } from "./zod/labelReleasesPaginationSchema";
 export { labelReleasesResponseSchema } from "./zod/labelReleasesResponseSchema";
-export {
-  playLookupPlayLookupGet200Schema,
-  playLookupPlayLookupGet422Schema,
-  playLookupPlayLookupGetQueryParamsSchema,
-  playLookupPlayLookupGetQueryResponseSchema,
-} from "./zod/playLookupPlayLookupGetSchema";
 export {
   searchArtists200Schema,
   searchArtists422Schema,

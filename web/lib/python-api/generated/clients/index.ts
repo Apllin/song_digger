@@ -4,7 +4,6 @@ export { getLabelReleases } from "./getLabelReleases";
 export { getReleaseTracklist } from "./getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./getSuggestionsSuggestionsGet";
 export { healthHealthGet } from "./healthHealthGet";
-export { playLookupPlayLookupGet } from "./playLookupPlayLookupGet";
 export { searchArtists } from "./searchArtists";
 export { searchExactYtmSearchExactGet } from "./searchExactYtmSearchExactGet";
 export { searchLabels } from "./searchLabels";

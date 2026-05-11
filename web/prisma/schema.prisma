@@ -246,25 +246,21 @@ model ExternalApiCache {
 // distinct from the synchronous request that spawned it (e.g. `BG /api/search`
 // is the post-response worker for `POST /api/search`).
 model RequestMetric {
-  id           String   @id @default(cuid())
-  route        String
-  method       String
-  statusCode   Int
-  durationMs   Int
-  cpuMs        Int
-  responseBytes Int     @default(0)
-  dbQueryCount Int
-  dbQueryMs    Int
-  // Set by the search worker only — null for routes that never call Python.
+  id            String   @id @default(cuid())
+  route         String
+  method        String
+  statusCode    Int
+  durationMs    Int
+  cpuMs         Int
+  responseBytes Int      @default(0)
+  // Null for routes that never call Python.
   pythonDurationMs Int?
-  // Set by the search worker only — null for everything else. True = served
-  // from ExternalApiCache, false = live Python fan-out.
-  cacheHit     Boolean?
-  // Set by the search worker only. List of adapter source names that returned
-  // any tracks for this seed (e.g. ["cosine_club","youtube_music"]).
-  sourcesUsed  Json?
-  userId       String?
-  createdAt    DateTime @default(now())
+  // True = served from SearchQuery cache, false = live Python fan-out, null = not a search route.
+  cacheHit      Boolean?
+  // Adapter source names that returned tracks (search route only).
+  sourcesUsed   Json?
+  userId        String?
+  createdAt     DateTime @default(now())
 
   @@index([route, createdAt])
   @@index([createdAt])

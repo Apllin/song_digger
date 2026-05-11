@@ -41,12 +41,6 @@ export { labelReleaseSchema } from "./labelReleaseSchema";
 export { labelReleasesPaginationSchema } from "./labelReleasesPaginationSchema";
 export { labelReleasesResponseSchema } from "./labelReleasesResponseSchema";
 export {
-  playLookupPlayLookupGet200Schema,
-  playLookupPlayLookupGet422Schema,
-  playLookupPlayLookupGetQueryParamsSchema,
-  playLookupPlayLookupGetQueryResponseSchema,
-} from "./playLookupPlayLookupGetSchema";
-export {
   searchArtists200Schema,
   searchArtists422Schema,
   searchArtistsQueryParamsSchema,

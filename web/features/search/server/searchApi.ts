@@ -2,25 +2,16 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import {
-  PYTHON_LIMIT_PER_SOURCE,
-  SEARCH_CACHE_SOURCE,
-  SEARCH_CACHE_TTL_SECONDS,
-  searchCacheKey,
-} from "@/features/search/searchCache";
+import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
-import { embedCacheKey, lookupEmbedCacheBatch, upsertEmbedCacheBatch, warmEmbedCache } from "@/lib/embed-cache";
-import { resolveEmbed } from "@/lib/embed-resolver";
-import { lookupCache, upsertCache } from "@/lib/external-api-cache";
+import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import type { AppEnv } from "@/lib/hono/types";
-import { getMetricsContext } from "@/lib/metrics/context";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
-import type { SimilarResponse } from "@/lib/python-api/generated/types/SimilarResponse";
 
 const SearchBodySchema = z.object({
   input: z.string().trim().min(1).max(500),
@@ -117,120 +108,22 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<M
   return new Map(existing.map((r) => [r.sourceUrl, r.id]));
 }
 
-// BottomPlayer plays youtube_music and bandcamp directly; yandex tracks fall
-// through to /api/embed which does a live YTM-exact + Bandcamp-fallback
-// lookup. Run that lookup at search time for any yandex track no other source
-// confirmed, drop the ones that resolve to nothing, and write the embed cache
-// so the eventual click is just a Postgres select.
-//
-// Batched: one findMany for all cache lookups, parallel resolveEmbed for
-// misses, one $transaction-batched upsert for new resolutions. Replaces an
-// N+N (lookup + upsert per yandex track) pattern that dominated BG-worker
-// DB time at ~37 round-trips per search.
-async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<FusedCandidate[]> {
-  const needsCheck = candidates.filter(
-    (t) =>
-      t.source === "yandex_music" &&
-      !t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp"),
-  );
-  if (!needsCheck.length) return candidates;
-
-  const cached = await lookupEmbedCacheBatch(needsCheck).catch(() => new Map());
-
-  const cacheKeyFor = (t: FusedCandidate): string => {
-    const { artistKey, titleKey } = embedCacheKey(t.artist, t.title);
-    return `${artistKey}|${titleKey}`;
-  };
-
-  const keep = new Map<string, boolean>();
-  const newResolutions: Array<{
-    artist: string;
-    title: string;
-    result: Parameters<typeof upsertEmbedCacheBatch>[0][number]["result"];
-  }> = [];
-
-  await Promise.all(
-    needsCheck.map(async (t) => {
-      const k = cacheKeyFor(t);
-      const hit = cached.get(k);
-      if (hit !== undefined) {
-        keep.set(k, hit.embedUrl != null);
-        return;
-      }
-
-      const resolved = await resolveEmbed(t.title, t.artist).catch(() => null);
-      if (!resolved) {
-        // resolveEmbed itself returned null/threw — don't write a speculative
-        // negative; matches the previous behavior. Next search re-resolves.
-        keep.set(k, false);
-        return;
-      }
-
-      newResolutions.push({
-        artist: t.artist,
-        title: t.title,
-        result: {
-          embedUrl: resolved.embedUrl,
-          source: resolved.source,
-          sourceUrl: resolved.sourceUrl ?? null,
-          coverUrl: resolved.coverUrl ?? null,
-        },
-      });
-      keep.set(k, resolved.embedUrl != null);
-    }),
-  );
-
-  if (newResolutions.length) {
-    upsertEmbedCacheBatch(newResolutions).catch((err: unknown) =>
-      console.error("[embed-cache] batch upsert failed:", err),
-    );
-  }
-
-  return candidates.filter((t) => {
-    if (t.source !== "yandex_music") return true;
-    if (t.appearances.some((a) => a.source === "youtube_music" || a.source === "bandcamp")) return true;
-    return keep.get(cacheKeyFor(t)) === true;
-  });
-}
-
 async function runSearch(
   searchId: string,
   input: string,
   artist: string,
   track: string | null,
-  cacheKey: string,
   pythonServiceUrl: string,
-): Promise<{ playable: FusedCandidate[]; urlToId: Map<string, string> } | null> {
-  const cached = await lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS);
-
-  const metricsCtx = getMetricsContext();
-  if (metricsCtx) metricsCtx.cacheHit = cached !== null;
-
-  let pythonResult: SimilarResponse | null;
-  if (cached) {
-    pythonResult = cached;
-  } else {
-    const pythonStart = performance.now();
-    pythonResult = await findSimilar(
-      { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
-    ).catch((err: unknown) => {
-      console.error("[Search] Python stage failed:", err);
-      return null;
-    });
-    if (metricsCtx) metricsCtx.pythonDurationMs = performance.now() - pythonStart;
-    // Best-effort cache write: only on a real Python response. Errors / null
-    // results don't poison the cache — next request retries live.
-    if (pythonResult) {
-      upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
-        console.error("[search-cache] upsert failed:", err),
-      );
-    }
-  }
-
-  if (metricsCtx && pythonResult) {
-    metricsCtx.sourcesUsed = pythonResult.source_lists.filter((sl) => sl.tracks.length > 0).map((sl) => sl.source);
-  }
+) {
+  const pythonStart = performance.now();
+  const pythonResult = await findSimilar(
+    { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
+    { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+  ).catch((err: unknown) => {
+    console.error("[Search] Python stage failed:", err);
+    return null;
+  });
+  const pythonDurationMs = performance.now() - pythonStart;
 
   if (!pythonResult) {
     await prisma.searchQuery.update({
@@ -240,9 +133,9 @@ async function runSearch(
     return null;
   }
 
+  const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
   const aggregated = aggregateTracks(pythonResult.source_lists);
-  const filtered = await dropUnplayableYandex(aggregated);
-  const playable = await enrichMissingCovers(filtered);
+  const playable = await enrichMissingCovers(aggregated);
   const urlToId = await saveTracks(searchId, playable);
 
   await prisma.searchQuery.update({
@@ -250,7 +143,7 @@ async function runSearch(
     data: { status: "done" },
   });
 
-  return { playable, urlToId };
+  return { playable, urlToId, pythonDurationMs, sourcesUsed };
 }
 
 export const searchApi = new Hono<AppEnv>().post(
@@ -278,6 +171,8 @@ export const searchApi = new Hono<AppEnv>().post(
     });
 
     if (cachedQuery) {
+      const m = c.var.metrics;
+      if (m) m.cacheHit = true;
       return c.json({
         id: cachedQuery.id,
         tracks: cachedQuery.results.map((r) => ({
@@ -294,13 +189,19 @@ export const searchApi = new Hono<AppEnv>().post(
     });
 
     const pythonServiceUrl = c.var.pythonServiceUrl;
-    const result = await runSearch(searchQuery.id, input, artist, track, cacheKey, pythonServiceUrl);
+    const result = await runSearch(searchQuery.id, input, artist, track, pythonServiceUrl);
 
     if (!result) {
       return c.json({ error: "Search service unavailable." } as const, 503);
     }
 
-    const { playable, urlToId } = result;
+    const { playable, urlToId, pythonDurationMs, sourcesUsed } = result;
+    const m = c.var.metrics;
+    if (m) {
+      m.cacheHit = false;
+      m.pythonDurationMs = pythonDurationMs;
+      m.sourcesUsed = sourcesUsed;
+    }
     return c.json({
       id: searchQuery.id,
       tracks: playable.map((t) => ({

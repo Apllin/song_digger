@@ -397,56 +397,6 @@
         }
       }
     },
-    "/play-lookup": {
-      "get": {
-        "summary": "Play Lookup",
-        "operationId": "play_lookup_play_lookup_get",
-        "parameters": [
-          {
-            "name": "artist",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Artist"
-            }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Title"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Play Lookup Play Lookup Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/health": {
       "get": {
         "summary": "Health",

@@ -7,8 +7,6 @@ CREATE TABLE "RequestMetric" (
     "durationMs" INTEGER NOT NULL,
     "cpuMs" INTEGER NOT NULL,
     "responseBytes" INTEGER NOT NULL DEFAULT 0,
-    "dbQueryCount" INTEGER NOT NULL,
-    "dbQueryMs" INTEGER NOT NULL,
     "pythonDurationMs" INTEGER,
     "cacheHit" BOOLEAN,
     "sourcesUsed" JSONB,
