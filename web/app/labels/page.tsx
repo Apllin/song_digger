@@ -5,7 +5,7 @@ import { useAtom } from "jotai";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
-import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
+import { useLabelReleases } from "@/features/label/hooks/useLabelReleases";
 import { labelsAtom } from "@/lib/atoms/labels";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
@@ -129,10 +129,11 @@ function LabelsContent() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
 
-  const { releases, loadingReleases } = useAllLabelReleases(s.selectedLabel?.id);
-
-  const totalPages = Math.ceil(releases.length / PAGE_SIZE);
-  const pagedReleases = releases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
+  const { releases, totalPages, totalItems, loadingReleases } = useLabelReleases(
+    s.selectedLabel?.id,
+    s.page,
+    PAGE_SIZE,
+  );
 
   const loadingLabels = picking || suggestionsQuery.isFetching;
   const searchDisabled =
@@ -383,9 +384,9 @@ function LabelsContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-display text-[20px] font-normal text-td-fg leading-tight">{s.selectedLabel.name}</p>
-                {!loadingReleases && releases.length > 0 && (
+                {!loadingReleases && totalItems > 0 && (
                   <p className="font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-fg-d mt-0.5">
-                    {releases.length} release{releases.length !== 1 ? "s" : ""}
+                    {totalItems} release{totalItems !== 1 ? "s" : ""}
                   </p>
                 )}
               </div>
@@ -410,7 +411,7 @@ function LabelsContent() {
             )}
 
             <div className="flex flex-col gap-2">
-              {pagedReleases.map((r) => (
+              {releases.map((r) => (
                 <AlbumAccordion
                   key={r.id}
                   release={{
