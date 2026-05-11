@@ -14,20 +14,14 @@ export interface Track {
   sources?: string[] | null;
 }
 
-export type SearchStatus = "idle" | "running" | "done" | "error";
-
 interface SearchState {
   query: string;
   tracks: Track[];
-  status: SearchStatus;
-  errorMsg: string;
   displayCount: number;
 }
 
 export const searchAtom = atom<SearchState>({
   query: "",
   tracks: [],
-  status: "idle",
-  errorMsg: "",
   displayCount: 18,
 });

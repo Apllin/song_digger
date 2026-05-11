@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createErrorHandler } from "./errorMiddleware";
 import type { AppEnv } from "./types";
 
 import { authApi } from "@/features/auth/server/authApi";
@@ -14,6 +15,7 @@ import { suggestionApi } from "@/features/suggestion/server/suggestionApi";
 
 export const app = new Hono<AppEnv>()
   .basePath("/api")
+  .onError(createErrorHandler())
   .use("*", async (c, next) => {
     c.set("pythonServiceUrl", process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000");
     await next();

@@ -5,6 +5,7 @@ import type { InferResponseType } from "hono/client";
 import { parseResponse } from "hono/client";
 import { useMemo } from "react";
 
+import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
 type FavoriteRow = InferResponseType<typeof api.favorites.$get, 200>[number];
@@ -27,8 +28,8 @@ export function useToggleFavorite(userId: string | null) {
   return useMutation({
     mutationFn: ({ trackId, isFav }: { trackId: string; isFav: boolean }) =>
       isFav
-        ? parseResponse(api.favorites.$delete({ query: { trackId } }))
-        : parseResponse(api.favorites.$post({ json: { trackId } })),
+        ? fetchApi(api.favorites.$delete({ query: { trackId } }))
+        : fetchApi(api.favorites.$post({ json: { trackId } })),
     onMutate: async ({ trackId, isFav }) => {
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<FavoriteRow[]>(key) ?? [];

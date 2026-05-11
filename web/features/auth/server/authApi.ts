@@ -3,9 +3,11 @@ import bcrypt from "bcryptjs";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { getRequestIp } from "@/lib/anonymous-counter";
 import { generateResetToken, generateVerificationCode, hashCode, verifyCode } from "@/lib/auth-tokens";
-import { shouldRequireCaptcha } from "@/lib/brute-force";
+import { checkIpRateLimit, shouldRequireCaptcha } from "@/lib/brute-force";
 import { sendPasswordResetEmail, sendVerificationCode } from "@/lib/email";
+import { HttpError } from "@/lib/hono/httpError";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 import { verifyTurnstileToken } from "@/lib/turnstile";
@@ -199,6 +201,13 @@ export const authApi = new Hono<AppEnv>()
   })
   .post("/account/login-precheck", zValidator("json", LoginPrecheckSchema), async (c) => {
     const { email } = c.req.valid("json");
+    const ip = await getRequestIp();
+    const { blocked } = await checkIpRateLimit(ip);
+    if (blocked)
+      throw new HttpError(429, {
+        name: "RATE_LIMIT_REACHED",
+        message: "Too many login attempts. Please try again later.",
+      });
     const requireCaptcha = await shouldRequireCaptcha(email);
     return c.json({ requireCaptcha });
   });

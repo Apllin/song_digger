@@ -8,11 +8,11 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { SearchBar } from "@/components/SearchBar";
 import { TrackCard } from "@/components/TrackCard";
 import { useDislikedKeys, useDislikeTrack } from "@/features/dislike/hooks/useDislikes";
+import { makeDislikeKey } from "@/features/dislike/types";
 import { useFavoriteIds, useToggleFavorite } from "@/features/favorite/hooks/useFavorites";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
 import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { searchAtom } from "@/lib/atoms/search";
 
 export default function Home() {
@@ -49,11 +49,10 @@ function HomeContent() {
   const { mutate: mutateFavorite } = useToggleFavorite(userId);
   const { mutate: mutateDislike } = useDislikeTrack(userId);
 
-  const { search, startSearch, isLoading } = useSearchFlow();
-  const { query, tracks, status, errorMsg, displayCount } = search;
+  const { search, startSearch, isLoading, isSuccess, isError } = useSearchFlow();
+  const { query, tracks, displayCount } = search;
 
   const handleSearch = useCallback(() => startSearch(query), [query, startSearch]);
-  const loadMoreTracks = useCallback(() => startSearch(query, { append: true }), [query, startSearch]);
 
   // Auto-search when opened via "Find similar" link (?q=...)
   useEffect(() => {
@@ -86,7 +85,7 @@ function HomeContent() {
   );
 
   const visibleTracks = tracks.filter(
-    (t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`) && !favoriteIds.has(t.id),
+    (t) => !dislikedKeys.has(makeDislikeKey(t.artist, t.title)) && !favoriteIds.has(t.id),
   );
 
   return (
@@ -129,7 +128,7 @@ function HomeContent() {
           </div>
         )}
 
-        {status === "error" && (
+        {isError && (
           <div
             className="rounded-xl border px-4 py-3 text-sm"
             style={{
@@ -138,11 +137,11 @@ function HomeContent() {
               color: "#f3b8b8",
             }}
           >
-            {errorMsg}
+            Search failed. Please try again.
           </div>
         )}
 
-        {status === "done" && tracks.length === 0 && (
+        {isSuccess && tracks.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-20 text-td-fg-m">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path
@@ -225,7 +224,7 @@ function HomeContent() {
                           : `Show 18 more (${visibleTracks.length - displayCount} remaining)`}
                       </button>
                       <button
-                        onClick={loadMoreTracks}
+                        onClick={handleSearch}
                         disabled={!findMoreActive}
                         className="px-6 py-2.5 text-sm font-semibold rounded-full transition-transform duration-150 ease-out hover:scale-[1.04] disabled:hover:scale-100 disabled:cursor-not-allowed"
                         style={{
