@@ -1,13 +1,13 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
 import { useAllLabelReleases } from "@/features/label/hooks/useAllLabelReleases";
 import { labelsAtom } from "@/lib/atoms/labels";
+import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { DiscogsLabel } from "@/lib/python-api/generated/types/DiscogsLabel";
 import { useDebounce } from "@/lib/use-debounce";
@@ -45,7 +45,7 @@ function LabelsContent() {
     return ["label-suggestions", q] as const;
   }
   function fetchSuggestions(q: string, signal: AbortSignal) {
-    return parseResponse(api.discography.label.search.$get({ query: { q } }, { init: { signal } }));
+    return fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } }));
   }
 
   const suggestionsQuery = useQuery({
@@ -107,11 +107,12 @@ function LabelsContent() {
         queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
         staleTime: 60_000,
       });
-      if (!data?.length) return;
-      const pick = pickFromList(data, trimmed);
-      if (pick) selectLabel(pick);
+      if (data?.length) {
+        const pick = pickFromList(data, trimmed);
+        if (pick) selectLabel(pick);
+      }
     } catch {
-      // Match the previous fail-silent behaviour.
+      // network/api errors handled by callApi
     } finally {
       setPicking(false);
     }

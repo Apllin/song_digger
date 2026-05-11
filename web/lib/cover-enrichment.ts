@@ -72,18 +72,27 @@ async function lookupOne(artist: string, title: string): Promise<string | null> 
   }
 }
 
-export async function enrichMissingCovers(candidates: FusedCandidate[]): Promise<void> {
-  const targets = candidates.filter((t) => t.coverUrl == null);
-  if (!targets.length) return;
+export async function enrichMissingCovers(candidates: FusedCandidate[]): Promise<FusedCandidate[]> {
+  const targets = candidates
+    .map((c, i) => ({ candidate: c, index: i }))
+    .filter(({ candidate }) => candidate.coverUrl == null);
+  if (!targets.length) return candidates;
 
+  const covers = new Map<number, string>();
   let cursor = 0;
   const worker = async () => {
     while (cursor < targets.length) {
       const i = cursor++;
-      const t = targets[i]!;
-      const found = await lookupOne(t.artist, t.title);
-      if (found) t.coverUrl = found;
+      const { candidate, index } = targets[i]!;
+      const found = await lookupOne(candidate.artist, candidate.title);
+      if (found) covers.set(index, found);
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker));
+
+  if (!covers.size) return candidates;
+  return candidates.map((c, i) => {
+    const cover = covers.get(i);
+    return cover ? { ...c, coverUrl: cover } : c;
+  });
 }

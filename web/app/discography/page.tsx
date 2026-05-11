@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +12,7 @@ import { ReleaseTagLegend } from "@/features/discography/components/ReleaseTagLe
 import { useAllArtistReleases } from "@/features/discography/hooks/useAllArtistReleases";
 import { useInputList } from "@/features/discography/hooks/useInputList";
 import { discographyAtom } from "@/lib/atoms/discography";
+import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 import { useDebounce } from "@/lib/use-debounce";
@@ -51,7 +51,7 @@ function DiscographyContent({ defaultArtist }: { defaultArtist?: string }) {
   }, []);
 
   const fetchSuggestions = useCallback((q: string, signal: AbortSignal) => {
-    return parseResponse(api.discography.search.$get({ query: { q } }, { init: { signal } }));
+    return fetchApi(api.discography.search.$get({ query: { q } }, { init: { signal } }));
   }, []);
 
   const suggestionsQuery = useQuery({
@@ -113,13 +113,12 @@ function DiscographyContent({ defaultArtist }: { defaultArtist?: string }) {
           queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
           staleTime: 60_000,
         });
-        if (!data?.length) return;
-        const pick = pickFromList(data, trimmed);
-        if (pick) selectArtist(pick);
+        if (data?.length) {
+          const pick = pickFromList(data, trimmed);
+          if (pick) selectArtist(pick);
+        }
       } catch {
-        // Match the previous fail-silent behaviour — anon-limit / network
-        // errors surface via apiEvents in fetchApi-driven paths, and a
-        // transient autocomplete failure shouldn't blow up the UI.
+        // network/api errors handled by callApi
       } finally {
         setPicking(false);
       }

@@ -22,8 +22,6 @@ import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import type { AppType } from "@/lib/hono/app";
 
 const WEB_URL = "http://localhost:3000";
-const POLL_INTERVAL_MS = 500;
-const POLL_TIMEOUT_MS = 60_000;
 
 const client = hc<AppType>(WEB_URL).api;
 
@@ -99,29 +97,14 @@ interface SearchTrack {
   source: string;
   sourceUrl: string;
 }
-interface SearchStatus {
+interface SearchResult {
   id: string;
-  status: string;
   tracks: SearchTrack[];
 }
 
-async function startSearch(input: string): Promise<string> {
+async function startSearch(input: string): Promise<SearchResult> {
   const resp = await client.search.$post({ json: { input } });
-  const body = (await resp.json()) as { id: string };
-  return body.id;
-}
-
-async function pollUntilDone(id: string): Promise<SearchStatus> {
-  const start = Date.now();
-  while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const resp = await client.search[":id"].$get({ param: { id } });
-    if (resp.ok) {
-      const body = (await resp.json()) as SearchStatus;
-      if (body.status === "done" || body.status === "error") return body;
-    }
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-  }
-  throw new Error("poll timeout");
+  return (await resp.json()) as SearchResult;
 }
 
 function identityKey(t: { artist: string; title: string }): string {
@@ -138,9 +121,7 @@ describe("/api/search dislike-filter behavior", () => {
     // First search — pick a real track from the result set as the dislike
     // target. Picking dynamically (instead of hard-coding) keeps the test
     // robust as the catalog evolves.
-    const id1 = await startSearch("Oscar Mulero - Horses");
-    const r1 = await pollUntilDone(id1);
-    expect(r1.status).toBe("done");
+    const r1 = await startSearch("Oscar Mulero - Horses");
     expect(r1.tracks.length).toBeGreaterThan(0);
 
     const target = r1.tracks[0]!;
@@ -150,15 +131,13 @@ describe("/api/search dislike-filter behavior", () => {
     expect(post.ok).toBe(true);
 
     try {
-      const id2 = await startSearch("Oscar Mulero - Horses");
-      const r2 = await pollUntilDone(id2);
-      expect(r2.status).toBe("done");
+      const r2 = await startSearch("Oscar Mulero - Horses");
 
       const targetKey = identityKey(target);
-      const survived = r2.tracks.find((t) => identityKey(t) === targetKey);
+      const survived = r2.tracks.find((t: SearchTrack) => identityKey(t) === targetKey);
       expect(
         survived,
-        `disliked ${targetKey} re-appeared in search ${id2} from source ${survived?.source}`,
+        `disliked ${targetKey} re-appeared in search ${r2.id} from source ${survived?.source}`,
       ).toBeUndefined();
     } finally {
       await client.dislikes.$delete({ json: { artist: target.artist, title: target.title } });

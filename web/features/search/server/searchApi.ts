@@ -219,9 +219,8 @@ export const searchApi = new Hono<AppEnv>().post(
     }
 
     const aggregated = aggregateTracks(pythonResult.source_lists);
-    const playable = await dropUnplayableYandex(aggregated);
-    await enrichMissingCovers(playable);
-
+    const filtered = await dropUnplayableYandex(aggregated);
+    const playable = await enrichMissingCovers(filtered);
     const urlToId = await saveTracks(searchQuery.id, playable);
 
     await prisma.searchQuery.update({
@@ -232,7 +231,7 @@ export const searchApi = new Hono<AppEnv>().post(
     return c.json({
       id: searchQuery.id,
       tracks: playable.map((t) => ({
-        id: urlToId.get(t.sourceUrl) ?? t.sourceUrl,
+        id: urlToId.get(t.sourceUrl)!,
         title: t.title,
         artist: t.artist,
         source: t.source,
