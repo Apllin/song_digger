@@ -27,8 +27,8 @@ export function embedCacheKey(artist: string, title: string): CacheKey {
   };
 }
 
-// Negative-hit TTL: tracks not found on YTM/Bandcamp may get uploaded later,
-// so re-resolve after this window. Positive hits never expire.
+// Negative-hit TTL: tracks not found on YTM/Bandcamp may get uploaded
+// later, so re-resolve after this window. Positive hits never expire.
 const NEGATIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function isStaleNegative(row: { embedUrl: string | null; updatedAt: Date }): boolean {
@@ -197,11 +197,13 @@ export async function upsertEmbedCacheBatch(
 }
 
 /**
- * Bulk-warm the cache from search results that already carry an embedUrl
- * (YTM/Bandcamp adapters populate it during /similar). Skips entries with
- * no embed — we don't write negatives speculatively, only on a real failed
- * lookup. Existing rows are not overwritten: a freshly resolved entry from
- * /api/embed shouldn't be clobbered by a stale search result.
+ * Bulk-warm the cache from search results that already carry an embedUrl.
+ * YTM populates it during /similar; Bandcamp entries land via /api/embed
+ * resolutions (ADR-0023 removed Bandcamp from /similar but kept the
+ * embed-resolver fallback). Skips entries with no embed — we don't write
+ * negatives speculatively, only on a real failed lookup. Existing rows
+ * are not overwritten: a freshly resolved entry from /api/embed
+ * shouldn't be clobbered by a stale search result.
  */
 export async function warmEmbedCache(
   tracks: Array<{

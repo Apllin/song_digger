@@ -5,7 +5,6 @@ from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMe
 from app.core.title_norm import strip_recording_suffixes
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
-from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
@@ -14,12 +13,10 @@ router = APIRouter()
 
 _ytm = YouTubeMusicAdapter()
 _cosine = CosineClubAdapter()
-_bandcamp = BandcampAdapter()
 _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 
-BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
 # Trackidnet does up to 17 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 15 detail fetches with Semaphore(5) inside the
 # adapter — see ADR-0014). Cold-path wall clock is ~8-15s when trackid is
@@ -27,18 +24,6 @@ BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the 
 # don't silently drop trackid contributions on every fresh search, but still
 # bounded so one slow seed doesn't stall the /similar fan-out.
 TRACKIDNET_TIMEOUT = 25.0
-
-
-async def _bandcamp_safe(query: str) -> list[TrackMeta]:
-    """Run Bandcamp 'you may also like' with a hard timeout so it never blocks the main flow."""
-    try:
-        return await asyncio.wait_for(_bandcamp.find_similar(query), timeout=BANDCAMP_TIMEOUT)
-    except asyncio.TimeoutError:
-        print(f"[Bandcamp] timed out after {BANDCAMP_TIMEOUT}s, skipping")
-        return []
-    except Exception as e:
-        print(f"[Bandcamp] error: {e}")
-        return []
 
 
 async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
@@ -140,7 +125,6 @@ async def _find_by_artist_and_track(
     (
         cosine_tracks,
         ytm_tracks,
-        bandcamp_tracks,
         yandex_tracks,
         lastfm_tracks,
         trackidnet_tracks,
@@ -148,7 +132,6 @@ async def _find_by_artist_and_track(
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
-        _bandcamp_safe(full_query),
         _yandex.find_similar(full_query, limit),
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
@@ -158,7 +141,6 @@ async def _find_by_artist_and_track(
 
     cosine_tracks = cosine_tracks if isinstance(cosine_tracks, list) else []
     ytm_tracks = ytm_tracks if isinstance(ytm_tracks, list) else []
-    bandcamp_tracks = bandcamp_tracks if isinstance(bandcamp_tracks, list) else []
     yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
@@ -185,24 +167,17 @@ async def _find_by_artist_and_track(
             if reversed_query != full_query
             else _empty_list()
         )
-        # Bandcamp artist fallback: only needed when Phase 1 returned nothing.
-        bandcamp_fallback_coro = (
-            _bandcamp_safe(artist) if not bandcamp_tracks else _empty_list()
-        )
 
         (
             reversed_cosine_raw,
             artist_cosine_raw,
-            bandcamp_fallback_raw,
         ) = await asyncio.gather(
             reversed_coro,
             _cosine.find_similar(artist, limit),
-            bandcamp_fallback_coro,
             return_exceptions=True,
         )
 
         reversed_cosine = reversed_cosine_raw if isinstance(reversed_cosine_raw, list) else []
-        bandcamp_fallback = bandcamp_fallback_raw if isinstance(bandcamp_fallback_raw, list) else []
 
         if reversed_cosine:
             rev_confident = _cosine_is_confident(reversed_cosine)
@@ -215,10 +190,6 @@ async def _find_by_artist_and_track(
         # results) which are still genre-relevant. The aggregator scores them on
         # BPM/key/sourceRank; audioSimilarity simply contributes 0 when score is None.
         artist_cosine = artist_cosine_raw if isinstance(artist_cosine_raw, list) else []
-
-        # Use Bandcamp artist results if the track-specific search found nothing.
-        if not bandcamp_tracks:
-            bandcamp_tracks = bandcamp_fallback
 
     # Drop low-confidence track Cosine results.
     if not cosine_confident:
@@ -247,7 +218,6 @@ async def _find_by_artist_and_track(
     source_lists = [
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
-        SourceList(source="bandcamp", tracks=_dedup_within_source(_filter_artist(bandcamp_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),

@@ -213,7 +213,7 @@ model TrackEmbed {
 }
 
 // Generic cache for external-API responses (Discogs metadata, iTunes covers,
-// Bandcamp page scrapes, MusicBrainz suggestions, Trackidnet DJ-set tracklists).
+// MusicBrainz suggestions, Trackidnet DJ-set tracklists).
 // One row per (source, cacheKey). `payload` is the raw JSON response shape
 // that the caller persisted; readers cast it back to a typed shape themselves.
 //

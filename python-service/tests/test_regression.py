@@ -3,7 +3,7 @@ Regression tests for bugs found during debugging.
 
 Bug: CosineClub DNS failure was not handled gracefully — confirmed it is caught
      via asyncio.gather(return_exceptions=True), and results from other sources
-     (YTM, Bandcamp) must still be returned.
+     (YTM, etc.) must still be returned.
 """
 import pytest
 from unittest.mock import AsyncMock, patch
@@ -41,8 +41,6 @@ async def test_find_by_artist_and_track_survives_cosine_dns_error():
         patch("app.api.routes.similar._ytm.find_similar", new_callable=AsyncMock,
               return_value=[ytm_track]),
         patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
-              return_value=[]),
-        patch("app.api.routes.similar._bandcamp_safe", new_callable=AsyncMock,
               return_value=[]),
     ):
         source_lists, _source_artist = await _find_by_artist_and_track(
@@ -93,8 +91,6 @@ async def test_find_by_artist_and_track_returns_ytm_when_cosine_fails():
               return_value=[ytm_track]),
         patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
               return_value=ytm_source_result),
-        patch("app.api.routes.similar._bandcamp_safe", new_callable=AsyncMock,
-              return_value=[]),
     ):
         source_lists, *_ = await _find_by_artist_and_track("Surgeon", "Flatliner", limit=5)
 

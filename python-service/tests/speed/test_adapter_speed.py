@@ -14,7 +14,6 @@ Run with:  pytest -m speed tests/speed/test_adapter_speed.py
 """
 import pytest
 
-from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
@@ -31,8 +30,6 @@ pytestmark = pytest.mark.speed
 # - Cosine: JSON API, two HTTP hops (search + similar). 3s leaves headroom
 #   over the typical 0.5–1.5s warm-cache call.
 # - YTM: ytmusicapi web scrape; radio fetch is slower than search. 5s.
-# - Bandcamp: HTML scrape with the 4s per-request timeout in similar.py;
-#   anything past 5s means we hit the hard timeout and degraded.
 # - Yandex: HTTPS API, occasional 429s. 5s.
 # - Last.fm: fast JSON API; with artist fallback path it can chain two
 #   calls so 8s is the looser bound.
@@ -41,7 +38,6 @@ pytestmark = pytest.mark.speed
 #   threshold matches.
 COSINE_P95_S = 3.0
 YTM_P95_S = 5.0
-BANDCAMP_P95_S = 5.0
 YANDEX_P95_S = 5.0
 LASTFM_P95_S = 8.0
 TRACKIDNET_P95_S = 25.0
@@ -73,15 +69,6 @@ async def test_youtube_music_p95_latency():
     )
     _, p95 = _report("YTM", latencies)
     assert p95 < YTM_P95_S, f"YTM P95 {p95:.2f}s ≥ threshold {YTM_P95_S}s"
-
-
-async def test_bandcamp_p95_latency():
-    adapter = BandcampAdapter()
-    latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
-    )
-    _, p95 = _report("Bandcamp", latencies)
-    assert p95 < BANDCAMP_P95_S, f"Bandcamp P95 {p95:.2f}s ≥ threshold {BANDCAMP_P95_S}s"
 
 
 async def test_yandex_music_p95_latency():

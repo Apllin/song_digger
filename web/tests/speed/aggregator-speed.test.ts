@@ -19,7 +19,7 @@ const RUNS = 100;
 const P95_INDEX = Math.floor(RUNS * 0.95) - 1; // 94 for 100 runs
 const P95_THRESHOLD_MS = 200;
 
-const SOURCES = ["cosine_club", "youtube_music", "bandcamp", "yandex_music", "lastfm", "trackidnet"] as const;
+const SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet"] as const;
 
 function buildMockSourceLists(targetTotal: number): SourceList[] {
   // ~30% of tracks appear in 3+ sources, ~30% in 2, ~40% unique. Mirrors

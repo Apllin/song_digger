@@ -132,7 +132,7 @@ async def upsert_lastfm_artist_similars(
 
 # ── Generic external-API cache ──────────────────────────────────────────────
 # Mirrors web/lib/external-api-cache.ts. Both modules read/write the same
-# ExternalApiCache table. Discogs/Trackidnet/Bandcamp/MusicBrainz callers in
+# ExternalApiCache table. Discogs/Trackidnet/MusicBrainz callers in
 # this service use these helpers; iTunes covers (web-only) use the TS twin.
 #
 # Log format is kept identical across both languages so a single grep covers
@@ -166,7 +166,7 @@ async def fetch_external_cache(
       - JSON decode error
 
     `ttl_seconds=None` means "never expires" — used for Discogs tracklist
-    and Bandcamp recommendations.
+    payloads.
 
     Cache outages must never block the caller from making the live external
     request; we soft-degrade on every error path.

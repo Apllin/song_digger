@@ -17,9 +17,9 @@ pytestmark = pytest.mark.speed
 
 PYTHON_SERVICE_URL = "http://localhost:8000"
 
-# /similar full fan-out: 6 adapters in parallel + Phase-2 fallbacks. Bandcamp
-# is hard-capped at 4s, trackid at 25s, so the worst case is bounded around
-# 25s. 30s threshold leaves headroom over typical warm-cache 8–15s.
+# /similar full fan-out: 5 adapters in parallel + Phase-2 fallbacks. Trackid
+# is hard-capped at 25s, so the worst case is bounded around 25s. 30s
+# threshold leaves headroom over typical warm-cache 8–15s.
 SIMILAR_P95_S = 30.0
 
 # 10 concurrent /similar requests. With async fan-out and Postgres pooling,

@@ -4,8 +4,8 @@ Tests for DiscogsAdapter.
 Covers search_artist / get_releases — the surface used by the /discography
 and /labels pages.
 
-Uses AsyncMock against the adapter's persistent httpx client (same shape as
-test_bandcamp.py). Real HTTP is never made.
+Uses AsyncMock against the adapter's persistent httpx client. Real HTTP is
+never made.
 """
 from unittest.mock import AsyncMock
 

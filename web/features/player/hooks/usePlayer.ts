@@ -30,8 +30,8 @@ export function usePlayer() {
 
   // Mutate the active track in place — used by BottomPlayer to swap in a
   // resolved YTM/Bandcamp embed for tracks whose original source isn't
-  // playable (trackid, lastfm, cosine_club). Updating the playlist slot
-  // means subsequent prev/next navigation sees the resolved version.
+  // playable (trackid, lastfm, cosine_club, yandex). Updating the playlist
+  // slot means subsequent prev/next navigation sees the resolved version.
   const swapTrack = useCallback(
     (resolved: Partial<PlayerTrack>) =>
       setState((prev) => {
