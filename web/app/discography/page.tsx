@@ -4,11 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AlbumAccordion } from "@/components/discography/AlbumAccordion";
+import { NavigableInput } from "@/features/discography/components/NavigableInput";
+import { NavigableList } from "@/features/discography/components/NavigableList";
 import { ReleaseTagLegend } from "@/features/discography/components/ReleaseTagLegend";
 import { useAllArtistReleases } from "@/features/discography/hooks/useAllArtistReleases";
+import { useInputList } from "@/features/discography/hooks/useInputList";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { api } from "@/lib/hono/client";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
@@ -18,20 +21,24 @@ import { useSearchHistory } from "@/lib/use-search-history";
 export default function DiscographyPage() {
   return (
     <Suspense>
-      <DiscographyContent />
+      <DiscographyLoader />
     </Suspense>
   );
 }
 
-function DiscographyContent() {
-  const searchParams = useSearchParams();
+function DiscographyLoader() {
+  const defaultArtist = useSearchParams().get("artist") ?? undefined;
+  return <DiscographyContent defaultArtist={defaultArtist} />;
+}
+
+function DiscographyContent({ defaultArtist }: { defaultArtist?: string }) {
   const qc = useQueryClient();
   const [s, setS] = useAtom(discographyAtom);
   const debouncedQuery = useDebounce(s.query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
-  const didAutoLoad = useRef(false);
   const [picking, setPicking] = useState(false);
   const { history, addToHistory } = useSearchHistory("discography-history");
+  const { activeIndex, setActiveIndex, resetActiveIndex } = useInputList();
 
   const PAGE_SIZE = 15;
   const { releases: allReleases, loadingReleases } = useAllArtistReleases(s.selectedArtist?.id, s.roleFilter);
@@ -39,12 +46,13 @@ function DiscographyContent() {
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const releases = allReleases.slice((s.page - 1) * PAGE_SIZE, s.page * PAGE_SIZE);
 
-  function suggestionsQueryKey(q: string) {
+  const suggestionsQueryKey = useCallback((q: string) => {
     return ["artist-suggestions", q] as const;
-  }
-  function fetchSuggestions(q: string, signal: AbortSignal) {
+  }, []);
+
+  const fetchSuggestions = useCallback((q: string, signal: AbortSignal) => {
     return parseResponse(api.discography.search.$get({ query: { q } }, { init: { signal } }));
-  }
+  }, []);
 
   const suggestionsQuery = useQuery({
     queryKey: suggestionsQueryKey(debouncedQuery),
@@ -52,82 +60,76 @@ function DiscographyContent() {
     enabled: debouncedQuery.length >= 2 && !s.selectedArtist,
     staleTime: 60_000,
   });
-  const artistSuggestions: DiscogsArtist[] = suggestionsQuery.data ?? [];
+  const artistSuggestions = useMemo<DiscogsArtist[]>(() => suggestionsQuery.data ?? [], [suggestionsQuery.data]);
 
   useEffect(() => {
     if (!suggestionsQuery.data || suggestionsQuery.data.length === 0) return;
     setS((prev) => ({ ...prev, showSuggestions: true }));
   }, [suggestionsQuery.data, setS]);
 
-  function selectArtist(artist: DiscogsArtist) {
-    setS((prev) => ({
-      ...prev,
-      selectedArtist: artist,
-      query: artist.name,
-      showSuggestions: false,
-      showHistory: false,
-      activeIndex: -1,
-      page: 1,
-    }));
-  }
-
-  function pickFromList(list: DiscogsArtist[], trimmed: string): DiscogsArtist | undefined {
-    const exact = list.find((a) => a.name.toLowerCase() === trimmed.toLowerCase());
-    return exact ?? list[0];
-  }
+  const selectArtist = useCallback(
+    (artist: DiscogsArtist) => {
+      resetActiveIndex();
+      setS((prev) => ({
+        ...prev,
+        selectedArtist: artist,
+        query: artist.name,
+        showSuggestions: false,
+        showHistory: false,
+        page: 1,
+      }));
+    },
+    [resetActiveIndex, setS],
+  );
 
   // Routes "user committed to this query" (Search button, Enter without arrow,
   // history click, ?artist= URL) through the same query cache as the
   // autocomplete. Cache-hit goes synchronously — no spinner, no
   // selectedArtist=null flash. Cache-miss / in-flight: `fetchQuery`
   // dedups with the autocomplete via the shared queryKey.
-  async function pickArtist(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed || trimmed.length < 2) return;
+  const pickArtist = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || trimmed.length < 2) return;
 
-    addToHistory(trimmed);
-    setS((prev) => ({
-      ...prev,
-      query: trimmed,
-      showHistory: false,
-      showSuggestions: false,
-    }));
+      addToHistory(trimmed);
+      setS((prev) => ({
+        ...prev,
+        showHistory: false,
+        showSuggestions: false,
+      }));
 
-    const cached = qc.getQueryData<DiscogsArtist[]>(suggestionsQueryKey(trimmed));
-    if (cached?.length) {
-      const pick = pickFromList(cached, trimmed);
-      if (pick) selectArtist(pick);
-      return;
-    }
+      const cached = qc.getQueryData<DiscogsArtist[]>(suggestionsQueryKey(trimmed));
+      if (cached?.length) {
+        const pick = pickFromList(cached, trimmed);
+        if (pick) selectArtist(pick);
+        return;
+      }
 
-    setPicking(true);
-    try {
-      const data = await qc.fetchQuery({
-        queryKey: suggestionsQueryKey(trimmed),
-        queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
-        staleTime: 60_000,
-      });
-      if (!data?.length) return;
-      const pick = pickFromList(data, trimmed);
-      if (pick) selectArtist(pick);
-    } catch {
-      // Match the previous fail-silent behaviour — anon-limit / network
-      // errors surface via apiEvents in fetchApi-driven paths, and a
-      // transient autocomplete failure shouldn't blow up the UI.
-    } finally {
-      setPicking(false);
-    }
-  }
+      setPicking(true);
+      try {
+        const data = await qc.fetchQuery({
+          queryKey: suggestionsQueryKey(trimmed),
+          queryFn: ({ signal }) => fetchSuggestions(trimmed, signal),
+          staleTime: 60_000,
+        });
+        if (!data?.length) return;
+        const pick = pickFromList(data, trimmed);
+        if (pick) selectArtist(pick);
+      } catch {
+        // Match the previous fail-silent behaviour — anon-limit / network
+        // errors surface via apiEvents in fetchApi-driven paths, and a
+        // transient autocomplete failure shouldn't blow up the UI.
+      } finally {
+        setPicking(false);
+      }
+    },
+    [addToHistory, fetchSuggestions, qc, selectArtist, setS, suggestionsQueryKey],
+  );
 
-  // Auto-load artist from ?artist= URL param
   useEffect(() => {
-    if (didAutoLoad.current) return;
-    const artistParam = searchParams.get("artist");
-    if (!artistParam) return;
-    didAutoLoad.current = true;
-    pickArtist(artistParam);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (defaultArtist) pickArtist(defaultArtist);
+  }, [defaultArtist, pickArtist]);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -139,6 +141,45 @@ function DiscographyContent() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [setS]);
+
+  const inHistory = s.showHistory && history.length > 0;
+  const inSuggestions = s.showSuggestions && artistSuggestions.length > 0;
+  const dropdownOpen = inHistory || inSuggestions;
+  const itemCount = inHistory ? history.length : artistSuggestions.length;
+
+  const handleInputChange = useCallback(
+    (value: string) => {
+      setS((prev) => ({
+        ...prev,
+        query: value,
+        selectedArtist: null,
+        showSuggestions: value.length > 0 ? prev.showSuggestions : false,
+        showHistory: value.length === 0 ? false : prev.showHistory,
+      }));
+    },
+    [setS],
+  );
+
+  const handleInputFocus = useCallback(() => {
+    if (s.query.length < 2 && history.length > 0) {
+      setS((prev) => ({ ...prev, showHistory: true }));
+    } else if (artistSuggestions.length > 0) {
+      setS((prev) => ({ ...prev, showSuggestions: true }));
+    }
+  }, [s.query.length, history.length, artistSuggestions.length, setS]);
+
+  const handleSelectIndex = useCallback(
+    (index: number) => {
+      if (inHistory) pickArtist(history[index]!);
+      else selectArtist(artistSuggestions[index]!);
+    },
+    [inHistory, history, artistSuggestions, pickArtist, selectArtist],
+  );
+
+  const handleClose = useCallback(() => {
+    resetActiveIndex();
+    setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
+  }, [resetActiveIndex, setS]);
 
   const loadingArtists = picking || suggestionsQuery.isFetching;
   // Search is "already done" when the input still matches the currently
@@ -196,54 +237,17 @@ function DiscographyContent() {
               <path strokeLinecap="round" d="m20 20-3.5-3.5" />
             </svg>
 
-            <input
-              type="text"
+            <NavigableInput
               value={s.query}
-              onChange={(e) => {
-                setS((prev) => ({
-                  ...prev,
-                  query: e.target.value,
-                  selectedArtist: null,
-                  showSuggestions: e.target.value.length > 0 ? prev.showSuggestions : false,
-                  showHistory: e.target.value.length === 0 ? false : prev.showHistory,
-                }));
-              }}
-              onFocus={() => {
-                if (s.query.length < 2 && history.length > 0) {
-                  setS((prev) => ({ ...prev, showHistory: true }));
-                } else if (artistSuggestions.length > 0) {
-                  setS((prev) => ({ ...prev, showSuggestions: true }));
-                }
-              }}
-              onKeyDown={(e) => {
-                const inHistory = s.showHistory && history.length > 0;
-                const inSuggestions = s.showSuggestions && artistSuggestions.length > 0;
-                const items = inHistory ? history : inSuggestions ? artistSuggestions.map((a) => a.name) : [];
-                const dropdownOpen = inHistory || inSuggestions;
-
-                if (!dropdownOpen) {
-                  if (e.key === "Enter" && s.query.trim()) pickArtist(s.query.trim());
-                  return;
-                }
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setS((prev) => ({ ...prev, activeIndex: Math.min(prev.activeIndex + 1, items.length - 1) }));
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setS((prev) => ({ ...prev, activeIndex: Math.max(prev.activeIndex - 1, -1) }));
-                } else if (e.key === "Enter") {
-                  e.preventDefault();
-                  setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
-                  if (s.activeIndex >= 0) {
-                    if (inHistory) pickArtist(items[s.activeIndex]!);
-                    else selectArtist(artistSuggestions[s.activeIndex]!);
-                  } else if (s.query.trim()) {
-                    pickArtist(s.query.trim());
-                  }
-                } else if (e.key === "Escape") {
-                  setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false }));
-                }
-              }}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              dropdownOpen={dropdownOpen}
+              itemCount={itemCount}
+              activeIndex={activeIndex}
+              onActiveIndexChange={setActiveIndex}
+              onSelectIndex={handleSelectIndex}
+              onSubmit={pickArtist}
+              onClose={handleClose}
               placeholder="Oscar Mulero"
               className="flex-1 bg-transparent text-[16px] sm:text-[20px] tracking-tight text-td-fg placeholder:text-td-fg-m focus:outline-none min-w-0"
               style={{ caretColor: "var(--td-accent)" }}
@@ -263,7 +267,7 @@ function DiscographyContent() {
 
             <button
               onClick={() => {
-                setS((prev) => ({ ...prev, showSuggestions: false, showHistory: false, activeIndex: -1 }));
+                handleClose();
                 if (s.query.trim()) pickArtist(s.query.trim());
               }}
               disabled={searchDisabled}
@@ -278,84 +282,52 @@ function DiscographyContent() {
             </button>
           </div>
 
-          {/* History dropdown */}
           {s.showHistory && history.length > 0 && (
-            <ul
-              className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
-              style={{
-                background: "rgba(20,18,26,0.92)",
-                borderColor: "rgba(255, 255, 255, 0.18)",
-              }}
-            >
-              <li className="px-5 py-2 font-mono-td text-[10px] uppercase tracking-[0.14em] text-td-fg-m">
-                Recent searches
-              </li>
-              {history.map((h, i) => (
-                <li key={h}>
-                  <button
-                    onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
-                    onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      pickArtist(h);
-                    }}
-                    className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
-                    style={{
-                      background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
-                      color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
-                    }}
+            <NavigableList
+              items={history}
+              activeIndex={activeIndex}
+              onHover={setActiveIndex}
+              onLeave={resetActiveIndex}
+              onSelect={(i) => pickArtist(history[i]!)}
+              keyExtractor={(h) => h}
+              header="Recent searches"
+              renderItem={(h) => (
+                <>
+                  <svg
+                    className="w-3.5 h-3.5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                    style={{ color: "var(--td-fg-m)" }}
                   >
-                    <svg
-                      className="w-3.5 h-3.5 shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      viewBox="0 0 24 24"
-                      style={{ color: "var(--td-fg-m)" }}
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-                    </svg>
-                    {h}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <circle cx="12" cy="12" r="9" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+                  </svg>
+                  {h}
+                </>
+              )}
+            />
           )}
 
-          {/* Autocomplete suggestions */}
           {s.showSuggestions && artistSuggestions.length > 0 && (
-            <ul
-              className="absolute z-50 top-full mt-2 left-0 right-0 rounded-2xl overflow-hidden shadow-2xl border backdrop-blur"
-              style={{
-                background: "rgba(20,18,26,0.92)",
-                borderColor: "rgba(255, 255, 255, 0.18)",
-              }}
-            >
-              {artistSuggestions.map((a, i) => (
-                <li key={a.id}>
-                  <button
-                    onMouseEnter={() => setS((prev) => ({ ...prev, activeIndex: i }))}
-                    onMouseLeave={() => setS((prev) => ({ ...prev, activeIndex: -1 }))}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      selectArtist(a);
-                    }}
-                    className="w-full flex items-center gap-3 px-5 py-3 text-sm transition-colors text-left"
-                    style={{
-                      background: i === s.activeIndex ? "rgba(255, 255, 255, 0.10)" : "transparent",
-                      color: i === s.activeIndex ? "var(--td-fg)" : "var(--td-fg-d)",
-                    }}
-                  >
-                    {a.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.imageUrl} alt={a.name} className="w-6 h-6 rounded-full object-cover" />
-                    )}
-                    {a.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <NavigableList
+              items={artistSuggestions}
+              activeIndex={activeIndex}
+              onHover={setActiveIndex}
+              onLeave={resetActiveIndex}
+              onSelect={(i) => selectArtist(artistSuggestions[i]!)}
+              keyExtractor={(a) => String(a.id)}
+              renderItem={(a) => (
+                <>
+                  {a.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.imageUrl} alt={a.name} className="w-6 h-6 rounded-full object-cover" />
+                  )}
+                  {a.name}
+                </>
+              )}
+            />
           )}
         </div>
 
@@ -553,4 +525,9 @@ function DiscographyContent() {
       </div>
     </div>
   );
+}
+
+function pickFromList(list: DiscogsArtist[], trimmed: string): DiscogsArtist | undefined {
+  const exact = list.find((a) => a.name.toLowerCase() === trimmed.toLowerCase());
+  return exact ?? list[0];
 }
