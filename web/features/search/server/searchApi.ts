@@ -9,8 +9,7 @@ import {
   searchCacheKey,
 } from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
-import { aggregateTracks, normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-import { auth } from "@/lib/auth";
+import { aggregateTracks } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } from "@/lib/embed-cache";
 import { resolveEmbed } from "@/lib/embed-resolver";
@@ -21,7 +20,6 @@ import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
 import type { SimilarResponse } from "@/lib/python-api/generated/types/SimilarResponse";
-import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 
 const SearchBodySchema = z.object({
   input: z.string().trim().min(1).max(500),
@@ -30,6 +28,8 @@ const SearchBodySchema = z.object({
 // Backfill update has to wait for slow-DB days. Cap loose enough to not mask
 // real hangs but high enough to survive a cold Neon connection.
 const DB_TXN_TIMEOUT_MS = 30_000;
+
+const QUERY_CACHE_TTL_MS = SEARCH_CACHE_TTL_SECONDS * 1000;
 
 function uniqueSources(t: FusedCandidate): string[] {
   const seen = new Set<string>();
@@ -42,8 +42,8 @@ function uniqueSources(t: FusedCandidate): string[] {
   return out;
 }
 
-async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<void> {
-  if (!tracks.length) return;
+async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<Map<string, string>> {
+  if (!tracks.length) return new Map();
 
   const urls = tracks.map((t) => t.sourceUrl);
 
@@ -112,6 +112,8 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
   //    a discography click on the same song later hits cache without a
   //    live YTM lookup. Best-effort, never blocks the search response.
   warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
+
+  return new Map(existing.map((r) => [r.sourceUrl, r.id]));
 }
 
 // BottomPlayer plays youtube_music and bandcamp directly; yandex tracks fall
@@ -146,106 +148,22 @@ async function dropUnplayableYandex(candidates: FusedCandidate[]): Promise<Fused
   return settled.filter((t): t is FusedCandidate => t !== null);
 }
 
-async function runSearch(
-  searchId: string,
-  input: string,
-  artist: string,
-  track: string | null,
-  userId: string | null,
-  pythonServiceUrl: string,
-) {
-  // ── Look up cache + load dislikes in parallel. ───────────────────────────
-  // Cache lookup is one Postgres SELECT (~30-80ms RTT to Neon); dislikes is
-  // another. Parallelism saves one round-trip worth of wall-clock. On a hit
-  // we skip the 3-8s Python fan-out entirely.
-  const cacheKey = searchCacheKey(artist, track);
-  const [cached, dislikes] = await Promise.all([
-    lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS),
-    userId
-      ? prisma.dislikedTrack.findMany({
-          where: { userId },
-          select: { artistKey: true, titleKey: true },
-        })
-      : Promise.resolve([] as { artistKey: string; titleKey: string }[]),
-  ]);
-
-  let pythonResult: SimilarResponse | null;
-  if (cached) {
-    pythonResult = cached;
-  } else {
-    pythonResult = await findSimilar(
-      { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
-    ).catch((err: unknown) => {
-      console.error("[Search] Python stage failed:", err);
-      return null;
-    });
-    // Best-effort cache write: only on a real Python response. Errors / null
-    // results don't poison the cache — next request retries live.
-    if (pythonResult) {
-      upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
-        console.error("[search-cache] upsert failed:", err),
-      );
-    }
-  }
-
-  if (!pythonResult) {
-    await prisma.searchQuery.update({
-      where: { id: searchId },
-      data: { status: "error" },
-    });
-    return;
-  }
-
-  // Server-side dislike filter: drop tracks whose (artistKey, titleKey)
-  // identity is in DislikedTrack before fusion. Filtering at the source-list
-  // level (not post-fusion) means a disliked track from one source can't pull
-  // in RRF contribution from another source's copy.
-  const dislikedKeys = new Set(dislikes.map((d) => `${d.artistKey}|${d.titleKey}`));
-  const filteredSourceLists: SourceList[] = pythonResult.source_lists.map((sl) => ({
-    source: sl.source,
-    tracks: sl.tracks.filter((t) => !dislikedKeys.has(`${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`)),
-  }));
-
-  const aggregated = aggregateTracks(filteredSourceLists);
-  const playable = await dropUnplayableYandex(aggregated);
-
-  await enrichMissingCovers(playable);
-  await saveTracks(searchId, playable);
-
-  await prisma.searchQuery.update({
-    where: { id: searchId },
-    data: { status: "done" },
-  });
-}
-
-export const searchApi = new Hono<AppEnv>()
-  .post("/search", anonGate, zValidator("json", SearchBodySchema), async (c) => {
+export const searchApi = new Hono<AppEnv>().post(
+  "/search",
+  anonGate,
+  zValidator("json", SearchBodySchema),
+  async (c) => {
     const { input } = c.req.valid("json");
     const { artist, track } = parseQuery(input);
+    const cacheKey = searchCacheKey(artist, track);
 
-    // Capture the user at request time. runSearch is fire-and-forget on
-    // a background task, so we resolve the session here and pass userId
-    // through. Anonymous users get an empty dislike set (no filtering).
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
-
-    const searchQuery = await prisma.searchQuery.create({
-      data: { input, status: "running" },
-    });
-
-    const pythonServiceUrl = c.var.pythonServiceUrl;
-    runSearch(searchQuery.id, input, artist, track, userId, pythonServiceUrl).catch((err) => {
-      console.error(`[Search] background error for ${searchQuery.id}:`, err);
-      prisma.searchQuery.update({ where: { id: searchQuery.id }, data: { status: "error" } }).catch(console.error);
-    });
-
-    return c.json({ id: searchQuery.id, status: "running" as const });
-  })
-  .get("/search/:id", async (c) => {
-    const id = c.req.param("id");
-    const searchQuery = await prisma.searchQuery.findUnique({
-      where: { id },
+    // SearchQuery-level cache: reuse the most recent completed search for this
+    // (artist, track) pair within the TTL window. Results are user-agnostic
+    // (no dislike filtering server-side), so sharing across users is safe.
+    const cutoff = new Date(Date.now() - QUERY_CACHE_TTL_MS);
+    const cachedQuery = await prisma.searchQuery.findFirst({
+      where: { cacheKey, status: "done", createdAt: { gte: cutoff } },
+      orderBy: { createdAt: "desc" },
       include: {
         results: {
           orderBy: { score: "desc" },
@@ -254,20 +172,76 @@ export const searchApi = new Hono<AppEnv>()
       },
     });
 
-    if (!searchQuery) {
-      return c.json({ error: "Search not found" } as const, 404);
+    if (cachedQuery) {
+      return c.json({
+        id: cachedQuery.id,
+        tracks: cachedQuery.results.map((r) => ({
+          ...r.track,
+          score: r.score,
+          sources: r.sources.length ? r.sources : [r.track.source],
+        })),
+      });
     }
+
+    // Cache miss — run the full pipeline.
+    const searchQuery = await prisma.searchQuery.create({
+      data: { input, cacheKey, status: "running" },
+    });
+
+    const pythonServiceUrl = c.var.pythonServiceUrl;
+
+    const cached = await lookupCache<SimilarResponse>(SEARCH_CACHE_SOURCE, cacheKey, SEARCH_CACHE_TTL_SECONDS);
+    let pythonResult: SimilarResponse | null;
+
+    if (cached) {
+      pythonResult = cached;
+    } else {
+      pythonResult = await findSimilar(
+        { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
+        { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+      ).catch((err: unknown) => {
+        console.error("[search] Python stage failed:", err);
+        return null;
+      });
+      if (pythonResult) {
+        upsertCache(SEARCH_CACHE_SOURCE, cacheKey, pythonResult).catch((err) =>
+          console.error("[search-cache] upsert failed:", err),
+        );
+      }
+    }
+
+    if (!pythonResult) {
+      await prisma.searchQuery.update({
+        where: { id: searchQuery.id },
+        data: { status: "error" },
+      });
+      return c.json({ error: "Search service unavailable." } as const, 503);
+    }
+
+    const aggregated = aggregateTracks(pythonResult.source_lists);
+    const playable = await dropUnplayableYandex(aggregated);
+    await enrichMissingCovers(playable);
+
+    const urlToId = await saveTracks(searchQuery.id, playable);
+
+    await prisma.searchQuery.update({
+      where: { id: searchQuery.id },
+      data: { status: "done" },
+    });
 
     return c.json({
       id: searchQuery.id,
-      status: searchQuery.status,
-      tracks: searchQuery.results.map((r) => ({
-        ...r.track,
-        score: r.score,
-        // Multiple adapter sources can surface the same identity; the chip-row
-        // in the UI renders one chip per entry. Old SearchResult rows from
-        // before this column existed default to [] — UI falls back to [source].
-        sources: r.sources.length ? r.sources : [r.track.source],
+      tracks: playable.map((t) => ({
+        id: urlToId.get(t.sourceUrl) ?? t.sourceUrl,
+        title: t.title,
+        artist: t.artist,
+        source: t.source,
+        sourceUrl: t.sourceUrl,
+        coverUrl: t.coverUrl ?? null,
+        embedUrl: t.embedUrl ?? null,
+        score: t.score ?? null,
+        sources: uniqueSources(t),
       })),
     });
-  });
+  },
+);

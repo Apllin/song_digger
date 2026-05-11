@@ -1,27 +1,29 @@
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 
-// Caches the Python `/similar` response (SourceList[]) for repeat searches of
-// the same (artist, track) pair. The dominant cost in the search pipeline is
-// the Python adapter fan-out (Cosine + YTM-radio + Yandex are unavoidable
-// 3-8s); RRF + saveTracks are sub-second. Caching the upstream response
-// short-circuits the heavy part while RRF and dislike filter still run fresh
-// per request, so cross-user cache sharing is correctness-safe.
+// Two-layer cache for the search pipeline:
 //
-// TTL = 14 days. Source data drift (new tracks on Cosine/YTM) within 2 weeks
-// is small for the underground-techno catalogue.
+// Layer 1 — SearchQuery row (final result cache):
+//   Keyed by `cacheKey` on `SearchQuery`. On a hit the full fused+enriched
+//   track list is returned directly from Postgres, skipping Python, RRF,
+//   yandex playability checks, and cover enrichment. Results are
+//   user-agnostic (no server-side dislike filtering), so sharing across
+//   users is safe. TTL = 14 days (QUERY_CACHE_TTL_MS in searchApi.ts).
+//
+// Layer 2 — ExternalApiCache (Python response cache):
+//   Keyed by `cacheKey` in `ExternalApiCache` with source="search_response".
+//   Caches the raw Python `/similar` SourceList[] so on a layer-1 miss the
+//   RRF + yandex + cover steps still run fresh but the 3-8s Python fan-out
+//   is skipped. TTL = 14 days (SEARCH_CACHE_TTL_SECONDS).
 //
 // **When to bump SEARCH_CACHE_VERSION:** ANYTHING that changes what Python
-// `/similar` returns. That includes: adding/removing an adapter from the
-// fan-out in `python-service/app/api/routes/similar.py`, changing filtering
-// or source ordering inside that route, modifying any adapter's
-// `find_similar()` shape or ordering, or changing `limit_per_source` /
-// request shape. Bumping the version means old keys are never read again —
-// no SQL flush.
+// `/similar` returns — adding/removing an adapter, changing filtering or
+// source ordering, modifying any adapter's `find_similar()` shape, or
+// changing `limit_per_source`. Bumping invalidates both cache layers
+// simultaneously (same key prefix). No SQL flush needed.
 //
 // **Does NOT need a bump:** changes to `lib/aggregator.ts` (RRF formula,
-// tiebreaker, artist diversification), the dislike filter, cover enrichment,
-// or any saveTracks logic. All of these run fresh on every request and
-// re-process the cached `source_lists`.
+// tiebreaker, artist diversification), cover enrichment, or saveTracks
+// logic — these only affect layer-1 misses and run fresh every time.
 export const SEARCH_CACHE_SOURCE = "search_response";
 export const SEARCH_CACHE_VERSION = "v5";
 export const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
