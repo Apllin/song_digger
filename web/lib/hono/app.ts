@@ -12,9 +12,14 @@ import { healthApi } from "@/features/health/server/healthApi";
 import { labelApi } from "@/features/label/server/labelApi";
 import { searchApi } from "@/features/search/server/searchApi";
 import { suggestionApi } from "@/features/suggestion/server/suggestionApi";
+import { metricsMiddleware } from "@/lib/metrics/hono";
 
 export const app = new Hono<AppEnv>()
   .basePath("/api")
+  // Metrics first so it wraps everything below (incl. the next middleware
+  // and all route handlers). It opens an AsyncLocalStorage context that
+  // the Prisma extension reads to count DB calls per request.
+  .use("*", metricsMiddleware)
   .onError(createErrorHandler())
   .use("*", async (c, next) => {
     c.set("pythonServiceUrl", process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000");
