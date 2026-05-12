@@ -76,6 +76,10 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const justSubmittedRef = useRef(false);
+  // Suggestions should only pop open in response to the user typing — not when
+  // the page remounts with a pre-filled query (e.g. coming back from another
+  // tab) and the suggestions query auto-runs against it.
+  const hasUserTypedRef = useRef(false);
 
   const { history, addToHistory } = useSearchHistory("search-history");
 
@@ -97,7 +101,7 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
 
   // Open the dropdown when fresh suggestions arrive (mirrors original .then handler).
   useEffect(() => {
-    if (justSubmittedRef.current) return;
+    if (justSubmittedRef.current || !hasUserTypedRef.current) return;
     if (debouncedValue.length < 2) {
       setShowSuggestions(false);
       return;
@@ -202,6 +206,7 @@ export function SearchBar({ value, onChange, onSubmit, loading }: SearchBarProps
             value={value}
             onChange={(e) => {
               justSubmittedRef.current = false;
+              hasUserTypedRef.current = true;
               onChange(e.target.value);
               if (e.target.value.length >= 2) {
                 setShowHistory(false);

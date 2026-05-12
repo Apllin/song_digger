@@ -9,9 +9,9 @@ import { useInputList } from "../hooks/useInputList";
 import { ArtistHero } from "./ArtistHero";
 import { ArtistSearchBar } from "./ArtistSearchBar";
 import { DiscographyHero } from "./DiscographyHero";
-import { Pagination } from "./Pagination";
 import { ReleaseTimeline } from "./ReleaseTimeline";
 
+import { Pagination } from "@/components/Pagination";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";

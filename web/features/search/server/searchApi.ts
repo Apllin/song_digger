@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
+import { SEARCH_PAGE_SIZE, searchPageParamSchema, searchPageQuerySchema } from "@/features/search/schemas";
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks } from "@/lib/aggregator";
@@ -35,8 +36,43 @@ function uniqueSources(t: FusedCandidate): string[] {
   return out;
 }
 
-async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<Map<string, string>> {
-  if (!tracks.length) return new Map();
+// Reads one page of a completed search straight from the persisted
+// SearchResult rows. The full fused+enriched list lives in Postgres after
+// `runSearch` (or a previous cache-fill), so paging is a cheap skip/take —
+// no Python fan-out, no re-fusion. Ordering pins `id` as a tiebreaker so a
+// row never straddles a page boundary across requests. Dislike filtering is
+// applied client-side over the returned page; this stays user-agnostic so the
+// page is shareable/cacheable.
+async function fetchSearchPage(searchId: string, page: number, perPage: number) {
+  const where = { searchQueryId: searchId };
+  const [items, rows] = await Promise.all([
+    prisma.searchResult.count({ where }),
+    prisma.searchResult.findMany({
+      where,
+      orderBy: [{ score: "desc" }, { id: "asc" }],
+      skip: (page - 1) * perPage,
+      take: perPage,
+      include: { track: true },
+    }),
+  ]);
+
+  return {
+    tracks: rows.map((r) => ({
+      ...r.track,
+      score: r.score,
+      sources: r.sources.length ? r.sources : [r.track.source],
+    })),
+    pagination: {
+      page,
+      pages: Math.max(1, Math.ceil(items / perPage)),
+      per_page: perPage,
+      items,
+    },
+  };
+}
+
+async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<void> {
+  if (!tracks.length) return;
 
   const urls = tracks.map((t) => t.sourceUrl);
 
@@ -108,8 +144,6 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<M
   //    without a live YTM lookup. Best-effort, never blocks the search
   //    response.
   warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
-
-  return new Map(existing.map((r) => [r.sourceUrl, r.id]));
 }
 
 async function runSearch(
@@ -118,12 +152,7 @@ async function runSearch(
   artist: string,
   track: string | null,
   pythonServiceUrl: string,
-): Promise<{
-  playable: FusedCandidate[];
-  urlToId: Map<string, string>;
-  pythonDurationMs: number;
-  sourcesUsed: string[];
-}> {
+): Promise<{ pythonDurationMs: number; sourcesUsed: string[] }> {
   const pythonStart = performance.now();
   let pythonResult;
   try {
@@ -141,21 +170,18 @@ async function runSearch(
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
   const aggregated = aggregateTracks(pythonResult.source_lists);
   const playable = await enrichMissingCovers(aggregated);
-  const urlToId = await saveTracks(searchId, playable);
+  await saveTracks(searchId, playable);
 
   await prisma.searchQuery.update({
     where: { id: searchId },
     data: { status: "done" },
   });
 
-  return { playable, urlToId, pythonDurationMs, sourcesUsed };
+  return { pythonDurationMs, sourcesUsed };
 }
 
-export const searchApi = new Hono<AppEnv>().post(
-  "/search",
-  anonGate,
-  zValidator("json", SearchBodySchema),
-  async (c) => {
+export const searchApi = new Hono<AppEnv>()
+  .post("/search", anonGate, zValidator("json", SearchBodySchema), async (c) => {
     const { input } = c.req.valid("json");
     const { artist, track } = parseQuery(input);
     const cacheKey = searchCacheKey(artist, track);
@@ -167,25 +193,14 @@ export const searchApi = new Hono<AppEnv>().post(
     const cachedQuery = await prisma.searchQuery.findFirst({
       where: { cacheKey, status: "done", createdAt: { gte: cutoff } },
       orderBy: { createdAt: "desc" },
-      include: {
-        results: {
-          orderBy: { score: "desc" },
-          include: { track: true },
-        },
-      },
+      select: { id: true },
     });
 
     if (cachedQuery) {
       const m = c.var.metrics;
       if (m) m.cacheHit = true;
-      return c.json({
-        id: cachedQuery.id,
-        tracks: cachedQuery.results.map((r) => ({
-          ...r.track,
-          score: r.score,
-          sources: r.sources.length ? r.sources : [r.track.source],
-        })),
-      });
+      const { tracks, pagination } = await fetchSearchPage(cachedQuery.id, 1, SEARCH_PAGE_SIZE);
+      return c.json({ id: cachedQuery.id, tracks, pagination });
     }
 
     // Cache miss — run the full pipeline.
@@ -193,13 +208,12 @@ export const searchApi = new Hono<AppEnv>().post(
       data: { input, cacheKey, status: "running" },
     });
 
-    const pythonServiceUrl = c.var.pythonServiceUrl;
-    const { playable, urlToId, pythonDurationMs, sourcesUsed } = await runSearch(
+    const { pythonDurationMs, sourcesUsed } = await runSearch(
       searchQuery.id,
       input,
       artist,
       track,
-      pythonServiceUrl,
+      c.var.pythonServiceUrl,
     );
     const m = c.var.metrics;
     if (m) {
@@ -207,19 +221,17 @@ export const searchApi = new Hono<AppEnv>().post(
       m.pythonDurationMs = pythonDurationMs;
       m.sourcesUsed = sourcesUsed;
     }
-    return c.json({
-      id: searchQuery.id,
-      tracks: playable.map((t) => ({
-        id: urlToId.get(t.sourceUrl)!,
-        title: t.title,
-        artist: t.artist,
-        source: t.source,
-        sourceUrl: t.sourceUrl,
-        coverUrl: t.coverUrl ?? null,
-        embedUrl: t.embedUrl ?? null,
-        score: t.score ?? null,
-        sources: uniqueSources(t),
-      })),
-    });
-  },
-);
+    const { tracks, pagination } = await fetchSearchPage(searchQuery.id, 1, SEARCH_PAGE_SIZE);
+    return c.json({ id: searchQuery.id, tracks, pagination });
+  })
+  .get(
+    "/search/:id",
+    zValidator("param", searchPageParamSchema),
+    zValidator("query", searchPageQuerySchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const { page, perPage } = c.req.valid("query");
+      const { tracks, pagination } = await fetchSearchPage(id, page, perPage);
+      return c.json({ id, tracks, pagination });
+    },
+  );

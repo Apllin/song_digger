@@ -9,6 +9,7 @@ const TABS = [
   { href: "/", label: "Search" },
   { href: "/discography", label: "Discography" },
   { href: "/labels", label: "Labels" },
+  { href: "/favorites", label: "Favorites" },
 ];
 
 // LaunchDarkly-style pill segmented control:
