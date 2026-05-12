@@ -417,6 +417,7 @@ function LabelsContent() {
                   release={{
                     id: String(r.id),
                     title: r.title,
+                    artist: r.artist ?? null,
                     year: r.year ?? null,
                     type: r.type ?? null,
                     role: null,

@@ -9,6 +9,7 @@ import type { ArtistRelease } from "../types/ArtistRelease";
 export const artistReleaseSchema = z.object({
   id: z.int(),
   title: z.string(),
+  artist: z.optional(z.union([z.string(), z.null()])),
   year: z.optional(z.union([z.int(), z.null()])),
   type: z.optional(z.union([z.string(), z.null()])),
   role: z.optional(z.union([z.string(), z.null()])),

@@ -25,6 +25,7 @@ export const artistReleasesRoute = new Hono<AppEnv>().get(
             artistId,
             releaseId: String(r.id),
             title: r.title,
+            artist: r.artist ?? null,
             year: r.year ?? null,
             type: r.type ?? null,
             role: r.role ?? null,
@@ -67,6 +68,7 @@ export const artistReleasesRoute = new Hono<AppEnv>().get(
       releases: rows.map((r) => ({
         id: r.releaseId,
         title: r.title,
+        artist: r.artist,
         year: r.year,
         type: r.type,
         role: r.role,
