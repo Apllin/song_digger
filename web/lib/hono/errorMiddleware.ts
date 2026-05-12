@@ -37,14 +37,15 @@ function extractData(err: unknown) {
 }
 
 const ErrorCodeLike = z.object({
-  code: z.number(),
+  code: z.number().optional(),
+  status: z.number().optional(),
 });
 
 function extractCode(err: unknown) {
   const parsed = ErrorCodeLike.safeParse(err);
   if (parsed.success) {
-    const code = parsed.data.code;
-    if (code >= 400 && code < 600) {
+    const code = parsed.data.code ?? parsed.data.status;
+    if (code !== undefined && code >= 400 && code < 600) {
       return code as ContentfulStatusCode;
     }
   }
