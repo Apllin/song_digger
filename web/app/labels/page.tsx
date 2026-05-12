@@ -415,13 +415,15 @@ function LabelsContent() {
                 <AlbumAccordion
                   key={r.id}
                   release={{
-                    id: r.id,
+                    id: String(r.id),
                     title: r.title,
-                    year: r.year ?? undefined,
-                    type: r.type ?? "release",
-                    format: r.format ?? undefined,
-                    label: r.catno && r.catno !== "none" ? r.catno : undefined,
-                    thumb: r.thumb ?? undefined,
+                    year: r.year ?? null,
+                    type: r.type ?? null,
+                    role: null,
+                    format: r.format ?? null,
+                    label: r.catno && r.catno !== "none" ? r.catno : null,
+                    thumb: r.thumb ?? null,
+                    resourceUrl: null,
                   }}
                   artistName={r.artist ?? "Various"}
                 />

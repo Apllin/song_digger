@@ -10,11 +10,11 @@ export const labelApi = new Hono<AppEnv>().get(
   zValidator("query", ReleasesQuerySchema),
   async (c) => {
     const { labelId, page, perPage } = c.req.valid("query");
-    try {
-      const data = await getLabelReleases(labelId, { page, per_page: perPage }, { baseURL: c.var.pythonServiceUrl });
-      return c.json(data);
-    } catch {
-      return c.json({ error: "upstream error" } as const, 502);
-    }
+    const data = await getLabelReleases(
+      Number(labelId),
+      { page, per_page: perPage },
+      { baseURL: c.var.pythonServiceUrl },
+    );
+    return c.json(data);
   },
 );

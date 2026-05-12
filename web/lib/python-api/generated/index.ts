@@ -55,13 +55,6 @@ export type { LabelRelease } from "./types/LabelRelease";
 export type { LabelReleasesPagination } from "./types/LabelReleasesPagination";
 export type { LabelReleasesResponse } from "./types/LabelReleasesResponse";
 export type {
-  PlayLookupPlayLookupGet200,
-  PlayLookupPlayLookupGet422,
-  PlayLookupPlayLookupGetQuery,
-  PlayLookupPlayLookupGetQueryParams,
-  PlayLookupPlayLookupGetQueryResponse,
-} from "./types/PlayLookupPlayLookupGet";
-export type {
   SearchArtists200,
   SearchArtists422,
   SearchArtistsQuery,
