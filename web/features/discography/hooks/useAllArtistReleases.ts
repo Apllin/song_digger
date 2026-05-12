@@ -3,21 +3,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 
+import type { ReleasesQuery } from "@/features/discography/schemas";
 import { api } from "@/lib/hono/client";
 
-// The Python service owns dedup + role filter + year sort and returns the full
-// list for an artist (optionally filtered by role). Web just paginates locally.
-export function useAllArtistReleases(artistId: number | undefined, roleFilter: "main" | "all") {
-  const role = roleFilter === "main" ? ("Main" as const) : undefined;
+// artistId comes from the Discogs artist model (number), not from the query
+// string, so we override its type here.
+type Params = Omit<ReleasesQuery, "artistId"> & { artistId: number | undefined };
+
+export function useAllArtistReleases({ artistId, role, page, perPage, sort }: Params) {
   const { data, isPending, isFetching } = useQuery({
-    queryKey: ["artist-releases-all", artistId, role ?? "all"],
+    queryKey: ["artist-releases", artistId, role, page, perPage, sort] as const,
     queryFn: ({ signal }) =>
       parseResponse(
         api.discography.releases.$get(
           {
             query: {
               artistId: String(artistId!),
-              ...(role ? { role } : {}),
+              role,
+              page: String(page),
+              perPage: String(perPage),
+              sort,
             },
           },
           { init: { signal } },
@@ -28,6 +33,8 @@ export function useAllArtistReleases(artistId: number | undefined, roleFilter: "
 
   return {
     releases: data?.releases ?? [],
+    totalItems: data?.pagination.items ?? 0,
+    totalPages: data?.pagination.pages ?? 1,
     loadingReleases: artistId != null && (isPending || isFetching),
   };
 }

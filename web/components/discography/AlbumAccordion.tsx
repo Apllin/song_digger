@@ -6,14 +6,14 @@ import { useAtom } from "jotai";
 import { TrackRow } from "./TrackRow";
 
 import { discographyOpenAtom } from "@/features/discography/atoms";
+import type { DiscographyRelease } from "@/features/discography/types";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
-import type { ArtistRelease } from "@/lib/python-api/generated/types/ArtistRelease";
 import type { TracklistItem } from "@/lib/python-api/generated/types/TracklistItem";
 
 interface AlbumAccordionProps {
-  release: ArtistRelease;
+  release: DiscographyRelease;
   artistName: string;
 }
 

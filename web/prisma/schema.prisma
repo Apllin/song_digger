@@ -266,6 +266,34 @@ model RequestMetric {
   @@index([createdAt])
 }
 
+// Metadata for a fetched artist discography. One row per artist; used for TTL
+// checks and can be extended with fetch telemetry (duration, page count, etc.)
+// without touching the release rows.
+model ArtistReleasesMeta {
+  artistId  String   @id
+  fetchedAt DateTime @default(now()) @updatedAt
+}
+
+// One row per Discogs release per artist. Populated by the Hono layer on cache
+// miss (Python fans out all Discogs pages). Filtering, sorting, and pagination
+// are handled by Prisma; TTL is tracked separately in ArtistReleasesMeta.
+model ArtistRelease {
+  id          String  @id @default(cuid())
+  artistId    String
+  releaseId   String
+  title       String
+  year        Int?
+  type        String?
+  role        String?
+  format      String?
+  label       String?
+  thumb       String?
+  resourceUrl String?
+
+  @@unique([artistId, releaseId])
+  @@index([artistId, role, year(sort: Desc)])
+}
+
 model LastfmArtistSimilars {
   id String @id @default(cuid())
 
