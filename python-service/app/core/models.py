@@ -73,6 +73,7 @@ class DiscogsLabel(BaseModel):
 class ArtistRelease(BaseModel):
     id: int
     title: str
+    artist: str | None = None   # headline artist of the release (≠ searched artist for Remix/Appearance roles)
     year: int | None = None
     type: str | None = None     # "master" | "release"
     role: str | None = None     # "Main" | "Appearance" | "TrackAppearance"

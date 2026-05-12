@@ -282,6 +282,7 @@ model ArtistRelease {
   artistId    String
   releaseId   String
   title       String
+  artist      String?
   year        Int?
   type        String?
   role        String?

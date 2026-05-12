@@ -430,6 +430,17 @@
             "type": "string",
             "title": "Title"
           },
+          "artist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist"
+          },
           "year": {
             "anyOf": [
               {

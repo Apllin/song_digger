@@ -38,11 +38,11 @@ function releaseTag(release: { role?: string | null; format?: string | null }): 
   return "Release";
 }
 
-function toPlayerTrack(t: TracklistItem, i: number, artistName: string, coverUrl?: string | null): PlayerTrack {
+function toPlayerTrack(t: TracklistItem, i: number, fallbackArtist: string, coverUrl?: string | null): PlayerTrack {
   return {
     id: `discography-${i}-${t.title}`,
     title: t.title,
-    artist: t.artists.length > 0 ? t.artists.join(", ") : artistName,
+    artist: t.artists.length > 0 ? t.artists.join(", ") : fallbackArtist,
     source: "discography",
     sourceUrl: "",
     coverUrl: coverUrl ?? null,
@@ -76,7 +76,12 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     setOpenMap((prev) => ({ ...prev, [release.id]: !open }));
   }
 
-  const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, artistName, release.thumb));
+  // Discogs only attaches per-track `artists` when the performer differs from
+  // the release's headline artist, so an empty list means "the release artist".
+  // For Remix/Appearance releases that headline artist is *not* the artist the
+  // user searched for — fall back to the release artist, not `artistName`.
+  const fallbackArtist = release.artist?.trim() || artistName;
+  const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, fallbackArtist, release.thumb));
   const tag = releaseTag(release);
 
   return (
@@ -166,7 +171,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
           {playerTracks.map((pt, i) => (
             <TrackRow
               key={`${tracks[i]!.position}-${i}`}
-              track={{ ...tracks[i]!, albumArtist: artistName, albumCover: release.thumb ?? null }}
+              track={{ ...tracks[i]!, albumArtist: fallbackArtist, albumCover: release.thumb ?? null }}
               isPlaying={currentTrack?.title === pt.title && currentTrack?.artist === pt.artist}
               onPlay={() => play(pt, playerTracks, i)}
             />
