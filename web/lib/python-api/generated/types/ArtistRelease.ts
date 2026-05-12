@@ -15,6 +15,7 @@ export type ArtistRelease = {
    * @type string
    */
   title: string;
+  artist?: string | null;
   year?: number | null;
   type?: string | null;
   role?: string | null;

@@ -172,7 +172,8 @@ class DiscogsAdapter:
         """
         if not settings.discogs_token:
             return {"releases": [], "pagination": {"page": 1, "pages": 1, "per_page": 0, "items": 0}}
-        cache_key = f"{artist_id}|{role or ''}"
+        # v2: payload gained the per-release `artist` field — old entries lack it.
+        cache_key = f"v2|{artist_id}|{role or ''}"
         cached = await fetch_external_cache(
             source="discogs_artist_releases",
             cache_key=cache_key,
@@ -221,6 +222,7 @@ class DiscogsAdapter:
             {
                 "id": r.get("id"),
                 "title": r.get("title"),
+                "artist": r.get("artist"),
                 "year": r.get("year"),
                 "type": r.get("type"),
                 "role": r.get("role"),
