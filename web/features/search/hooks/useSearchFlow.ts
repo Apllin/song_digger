@@ -2,16 +2,18 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import { useCallback } from "react";
+import { useHydrateAtoms } from "jotai/utils";
+import { useCallback, useEffect } from "react";
 
+import type { SearchQueryId } from "@/features/search/schemas";
 import { SEARCH_PAGE_SIZE } from "@/features/search/schemas";
 import { searchAtom } from "@/lib/atoms/search";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
-const searchPageKey = (id: string | null, page: number) => ["search-page", id, page, SEARCH_PAGE_SIZE] as const;
+export function useSearchFlow(initialQuery = "") {
+  useHydrateAtoms([[searchAtom, { query: initialQuery, id: null, page: 1 }]]);
 
-export function useSearchFlow() {
   const [search, setSearch] = useAtom(searchAtom);
   const qc = useQueryClient();
 
@@ -23,8 +25,8 @@ export function useSearchFlow() {
   } = useMutation({
     mutationFn: (input: string) => fetchApi(api.search.$post({ json: { input } })),
     onSuccess: (result) => {
-      qc.setQueryData(searchPageKey(result.id, 1), result);
-      setSearch((prev) => ({ ...prev, id: result.id, page: 1 }));
+      qc.setQueryData(searchPageKey(id, 1), result.id);
+      setSearch((prev) => ({ ...prev, id, page: 1 }));
     },
   });
 
@@ -37,6 +39,12 @@ export function useSearchFlow() {
     },
     [isSearching, mutateAsync, setSearch],
   );
+
+  useEffect(() => {
+    if (initialQuery) {
+      startSearch(initialQuery);
+    }
+  }, [initialQuery, startSearch]);
 
   const pageQuery = useQuery({
     queryKey: searchPageKey(search.id, search.page),
@@ -51,11 +59,7 @@ export function useSearchFlow() {
         ),
       ),
     enabled: search.id != null,
-    // A completed search's pages are immutable, so the cache primed by the
-    // POST never needs an immediate background refetch.
     staleTime: 60_000,
-    // Keep the previous page on screen while the next one loads — Prev/Next
-    // shows a small overlay loader instead of unmounting the whole grid.
     placeholderData: keepPreviousData,
   });
 
@@ -68,7 +72,10 @@ export function useSearchFlow() {
     isFetchingPage: search.id != null && pageQuery.isFetching,
     isSuccess,
     isError,
-    tracks: pageQuery.data?.tracks ?? [],
-    pagination: pageQuery.data?.pagination ?? null,
+    data: pageQuery.data,
   };
+}
+
+function searchPageKey(id: SearchQueryId | null, page: number) {
+  return ["search-page", id, page, SEARCH_PAGE_SIZE] as const;
 }
