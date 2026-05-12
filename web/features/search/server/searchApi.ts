@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
@@ -117,24 +118,25 @@ async function runSearch(
   artist: string,
   track: string | null,
   pythonServiceUrl: string,
-) {
+): Promise<{
+  playable: FusedCandidate[];
+  urlToId: Map<string, string>;
+  pythonDurationMs: number;
+  sourcesUsed: string[];
+}> {
   const pythonStart = performance.now();
-  const pythonResult = await findSimilar(
-    { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-    { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
-  ).catch((err: unknown) => {
+  let pythonResult;
+  try {
+    pythonResult = await findSimilar(
+      { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
+      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+    );
+  } catch (err) {
     console.error("[Search] Python stage failed:", err);
-    return null;
-  });
-  const pythonDurationMs = performance.now() - pythonStart;
-
-  if (!pythonResult) {
-    await prisma.searchQuery.update({
-      where: { id: searchId },
-      data: { status: "error" },
-    });
-    return null;
+    await prisma.searchQuery.update({ where: { id: searchId }, data: { status: "error" } });
+    throw new HTTPException(503, { message: "Search service unavailable.", cause: err });
   }
+  const pythonDurationMs = performance.now() - pythonStart;
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
   const aggregated = aggregateTracks(pythonResult.source_lists);
@@ -192,13 +194,13 @@ export const searchApi = new Hono<AppEnv>().post(
     });
 
     const pythonServiceUrl = c.var.pythonServiceUrl;
-    const result = await runSearch(searchQuery.id, input, artist, track, pythonServiceUrl);
-
-    if (!result) {
-      return c.json({ error: "Search service unavailable." } as const, 503);
-    }
-
-    const { playable, urlToId, pythonDurationMs, sourcesUsed } = result;
+    const { playable, urlToId, pythonDurationMs, sourcesUsed } = await runSearch(
+      searchQuery.id,
+      input,
+      artist,
+      track,
+      pythonServiceUrl,
+    );
     const m = c.var.metrics;
     if (m) {
       m.cacheHit = false;
