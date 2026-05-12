@@ -2,12 +2,12 @@
 
 import { atom } from "jotai";
 
+import type { SearchQueryId } from "@/features/search/schemas";
+
 interface SearchState {
   query: string;
-  // The id of the completed SearchQuery row backing the current results.
-  // Pages 2+ are fetched from `/api/search/:id` keyed off this. `null` until
-  // the first search returns.
-  id: string | null;
+
+  id: SearchQueryId | null;
   page: number;
 }
 

@@ -2,8 +2,11 @@ import { z } from "zod";
 
 export const SEARCH_PAGE_SIZE = 18;
 
+export const SearchQueryIdSchema = z.string().min(1).max(64).brand<"SearchQueryId">();
+export type SearchQueryId = z.infer<typeof SearchQueryIdSchema>;
+
 export const searchPageParamSchema = z.object({
-  id: z.string().min(1).max(64),
+  id: SearchQueryIdSchema,
 });
 
 export const searchPageQuerySchema = z.object({

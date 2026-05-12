@@ -1,15 +1,21 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
-import { SEARCH_PAGE_SIZE, searchPageParamSchema, searchPageQuerySchema } from "@/features/search/schemas";
+import type { SearchQueryId } from "@/features/search/schemas";
+import {
+  SEARCH_PAGE_SIZE,
+  searchPageParamSchema,
+  searchPageQuerySchema,
+  SearchQueryIdSchema,
+} from "@/features/search/schemas";
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
+import { HttpError } from "@/lib/hono/httpError";
 import type { AppEnv } from "@/lib/hono/types";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
@@ -43,7 +49,7 @@ function uniqueSources(t: FusedCandidate): string[] {
 // row never straddles a page boundary across requests. Dislike filtering is
 // applied client-side over the returned page; this stays user-agnostic so the
 // page is shareable/cacheable.
-async function fetchSearchPage(searchId: string, page: number, perPage: number) {
+async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: number) {
   const where = { searchQueryId: searchId };
   const [items, rows] = await Promise.all([
     prisma.searchResult.count({ where }),
@@ -71,7 +77,7 @@ async function fetchSearchPage(searchId: string, page: number, perPage: number) 
   };
 }
 
-async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<void> {
+async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Promise<void> {
   if (!tracks.length) return;
 
   const urls = tracks.map((t) => t.sourceUrl);
@@ -147,7 +153,7 @@ async function saveTracks(searchId: string, tracks: FusedCandidate[]): Promise<v
 }
 
 async function runSearch(
-  searchId: string,
+  searchId: SearchQueryId,
   input: string,
   artist: string,
   track: string | null,
@@ -163,7 +169,7 @@ async function runSearch(
   } catch (err) {
     console.error("[Search] Python stage failed:", err);
     await prisma.searchQuery.update({ where: { id: searchId }, data: { status: "error" } });
-    throw new HTTPException(503, { message: "Search service unavailable.", cause: err });
+    throw new HttpError(503, { message: "Search service unavailable.", cause: err });
   }
   const pythonDurationMs = performance.now() - pythonStart;
 
@@ -199,17 +205,19 @@ export const searchApi = new Hono<AppEnv>()
     if (cachedQuery) {
       const m = c.var.metrics;
       if (m) m.cacheHit = true;
-      const { tracks, pagination } = await fetchSearchPage(cachedQuery.id, 1, SEARCH_PAGE_SIZE);
-      return c.json({ id: cachedQuery.id, tracks, pagination });
+      const id = SearchQueryIdSchema.parse(cachedQuery.id);
+      const { tracks, pagination } = await fetchSearchPage(id, 1, SEARCH_PAGE_SIZE);
+      return c.json({ id, tracks, pagination });
     }
 
     // Cache miss — run the full pipeline.
     const searchQuery = await prisma.searchQuery.create({
       data: { input, cacheKey, status: "running" },
     });
+    const searchQueryId = SearchQueryIdSchema.parse(searchQuery.id);
 
     const { pythonDurationMs, sourcesUsed } = await runSearch(
-      searchQuery.id,
+      searchQueryId,
       input,
       artist,
       track,
@@ -221,8 +229,8 @@ export const searchApi = new Hono<AppEnv>()
       m.pythonDurationMs = pythonDurationMs;
       m.sourcesUsed = sourcesUsed;
     }
-    const { tracks, pagination } = await fetchSearchPage(searchQuery.id, 1, SEARCH_PAGE_SIZE);
-    return c.json({ id: searchQuery.id, tracks, pagination });
+    const { tracks, pagination } = await fetchSearchPage(searchQueryId, 1, SEARCH_PAGE_SIZE);
+    return c.json({ id: searchQueryId, tracks, pagination });
   })
   .get(
     "/search/:id",

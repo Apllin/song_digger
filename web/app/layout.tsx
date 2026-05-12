@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Raleway } from "next/font/google";
 import Script from "next/script";
+import { SessionProvider } from "next-auth/react";
 import "cal-sans/index.css";
 import "./globals.css";
 
@@ -11,6 +12,7 @@ import { NavAuthSection } from "@/components/NavAuthSection";
 import { NetworkErrorHost } from "@/components/NetworkErrorHost";
 import { QueryProvider } from "@/components/QueryProvider";
 import { PlayerProvider } from "@/features/player/components/PlayerProvider";
+import { auth } from "@/lib/auth";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -45,11 +47,12 @@ export const metadata: Metadata = {
   title: "Track Digger",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
   return (
     <html
       lang="en"
@@ -58,14 +61,16 @@ export default function RootLayout({
       <body className="bg-td-bg">
         <HomeBackground />
         <div className="relative z-10 min-h-full flex flex-col">
-          <QueryProvider>
-            <PlayerProvider>
-              <Nav rightSlot={<NavAuthSection />} />
-              {children}
-              <AnonymousLimitModalHost />
-              <NetworkErrorHost />
-            </PlayerProvider>
-          </QueryProvider>
+          <SessionProvider session={session}>
+            <QueryProvider>
+              <PlayerProvider>
+                <Nav rightSlot={<NavAuthSection />} />
+                {children}
+                <AnonymousLimitModalHost />
+                <NetworkErrorHost />
+              </PlayerProvider>
+            </QueryProvider>
+          </SessionProvider>
         </div>
         {/* Cloudflare Turnstile (CAPTCHA) — loaded once at the layout
             level so any mounted widget can find window.turnstile.
