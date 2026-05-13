@@ -17,11 +17,23 @@ export interface ResultsGridProps {
   totalPages: number;
   totalItems: number;
   isLoading: boolean;
+  summaryLabel?: (n: number) => string;
   onPrev: () => void;
   onNext: () => void;
 }
 
-export function ResultsGrid({ tracks, page, totalPages, totalItems, isLoading, onPrev, onNext }: ResultsGridProps) {
+const defaultSummaryLabel = (n: number) => `${n} result${n === 1 ? "" : "s"} · sorted by relevance`;
+
+export function ResultsGrid({
+  tracks,
+  page,
+  totalPages,
+  totalItems,
+  isLoading,
+  summaryLabel = defaultSummaryLabel,
+  onPrev,
+  onNext,
+}: ResultsGridProps) {
   const userId = useUserId();
   const isAuthenticated = !!userId;
 
@@ -48,9 +60,7 @@ export function ResultsGrid({ tracks, page, totalPages, totalItems, isLoading, o
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between font-mono-td text-[11px] uppercase tracking-[0.14em] text-td-fg">
-        <span style={{ textShadow: "0 1px 6px rgba(0,0,0,0.55)" }}>
-          {totalItems} result{totalItems === 1 ? "" : "s"} · sorted by relevance
-        </span>
+        <span style={{ textShadow: "0 1px 6px rgba(0,0,0,0.55)" }}>{summaryLabel(totalItems)}</span>
       </div>
       <div className="relative">
         <div

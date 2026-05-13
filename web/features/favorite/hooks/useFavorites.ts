@@ -2,8 +2,10 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { useMemo } from "react";
+import { useSession } from "next-auth/react";
+import { useEffect, useMemo, useState } from "react";
 
+import { FAVORITES_PAGE_SIZE } from "@/features/favorite/schemas";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
@@ -20,26 +22,39 @@ export function useFavoriteIds(userId: string | null): Set<string> {
   return useMemo(() => new Set(data ?? []), [data]);
 }
 
-export function useFavorites(userId: string | null, page: number, perPage: number) {
+export function useFavoritesFlow() {
+  const { data: session, status: sessionStatus } = useSession();
+  const userId = session?.user?.id ?? null;
+  const [page, setPage] = useState(1);
+
   const query = useQuery({
-    queryKey: [...favoritesListKey(userId), page, perPage] as const,
+    queryKey: [...favoritesListKey(userId), page, FAVORITES_PAGE_SIZE] as const,
     queryFn: ({ signal }) =>
       parseResponse(
-        api.favorites.$get({ query: { page: String(page), perPage: String(perPage) } }, { init: { signal } }),
+        api.favorites.$get(
+          { query: { page: String(page), perPage: String(FAVORITES_PAGE_SIZE) } },
+          { init: { signal } },
+        ),
       ),
     enabled: !!userId,
-    // Keep the current page on screen while the next one loads so Prev/Next
-    // doesn't blank the grid (and `totalPages` doesn't briefly read as the
-    // `?? 1` fallback, which would trip the clamp-to-last-page effect).
     placeholderData: keepPreviousData,
   });
 
+  const totalPages = query.data?.pagination.pages ?? 1;
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   return {
-    tracks: query.data?.tracks ?? [],
-    totalPages: query.data?.pagination.pages ?? 1,
-    totalItems: query.data?.pagination.items ?? 0,
-    loading: !!userId && query.isPending,
+    userId,
+    sessionStatus,
+    page,
+    setPage,
+    data: query.data,
+    isLoading: !!userId && query.isPending,
     isFetchingPage: query.isPlaceholderData,
+    totalPages,
   };
 }
 
