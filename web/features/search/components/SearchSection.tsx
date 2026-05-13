@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
+import { Spinner } from "@/components/Spinner";
 import { ResultsGrid } from "@/features/search/components/ResultsGrid";
 import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
 
@@ -28,10 +29,7 @@ export function SearchSection({ initialQuery }: SearchSectionProps) {
 
       {isSearching && (
         <div className="flex flex-col items-center gap-3 py-20 text-td-fg-d">
-          <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24" style={{ color: "var(--td-accent)" }}>
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-          </svg>
+          <Spinner className="w-8 h-8" />
           <p className="text-sm">Searching across sources…</p>
         </div>
       )}

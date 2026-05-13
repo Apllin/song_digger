@@ -1,4 +1,4 @@
-import { ComponentProps, useCallback } from "react";
+import { type ComponentProps, useCallback } from "react";
 
 type NavigableInputProps = Omit<ComponentProps<"input">, "onSubmit" | "onChange" | "value"> & {
   value: string;
