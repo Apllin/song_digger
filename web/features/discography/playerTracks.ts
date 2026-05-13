@@ -10,6 +10,8 @@ interface ReleaseLike {
   id: string;
   type: string | null;
   thumb: string | null;
+  source?: "discogs" | "bandcamp" | null;
+  sourceUrl?: string | null;
 }
 
 export function discographyTrackId(release: ReleaseLike, index: number): string {
@@ -26,7 +28,13 @@ export function tracklistTypeOf(release: ReleaseLike): "master" | "release" {
 }
 
 export function tracklistQueryKey(release: ReleaseLike) {
-  return ["tracklist", release.id, tracklistTypeOf(release)] as const;
+  const isBandcamp = release.source === "bandcamp" && !!release.sourceUrl;
+  return [
+    "tracklist",
+    release.source ?? "discogs",
+    isBandcamp ? release.sourceUrl : release.id,
+    tracklistTypeOf(release),
+  ] as const;
 }
 
 export function toPlayerTrack(

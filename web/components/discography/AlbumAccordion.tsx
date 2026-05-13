@@ -53,6 +53,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   const [openMap, setOpenMap] = useAtom(discographyOpenAtom);
   const open = openMap[release.id] ?? false;
 
+  const isBandcamp = release.source === "bandcamp" && !!release.sourceUrl;
   const {
     data: tracks = [],
     isFetching,
@@ -62,7 +63,9 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     queryFn: () =>
       parseResponse(
         api.discography.tracklist.$get({
-          query: { releaseId: String(release.id), type: tracklistTypeOf(release) },
+          query: isBandcamp
+            ? { source: "bandcamp", url: release.sourceUrl! }
+            : { source: "discogs", releaseId: String(release.id), type: tracklistTypeOf(release) },
         }),
       ),
     enabled: open,
