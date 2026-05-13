@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
 import { favoritesPageQuerySchema } from "@/features/favorite/schemas";
+import { TrackSourceSchema } from "@/features/player/types";
 import { requireUser } from "@/lib/auth-utils";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
@@ -25,7 +26,7 @@ export const favoriteListRoute = new Hono<AppEnv>().get(
     ]);
 
     return c.json({
-      tracks: rows.map((r) => r.track),
+      tracks: rows.map((r) => ({ ...r.track, source: TrackSourceSchema.safeParse(r.track.source).data ?? null })),
       pagination: {
         page,
         pages: Math.max(1, Math.ceil(items / perPage)),

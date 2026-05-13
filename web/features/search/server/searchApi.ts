@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { TrackSourceSchema } from "@/features/player/types";
 import type { SearchQueryId } from "@/features/search/schemas";
 import {
   SEARCH_PAGE_SIZE,
@@ -65,6 +66,7 @@ async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: n
   return {
     tracks: rows.map((r) => ({
       ...r.track,
+      source: TrackSourceSchema.safeParse(r.track.source).data ?? null,
       score: r.score,
       sources: r.sources.length ? r.sources : [r.track.source],
     })),

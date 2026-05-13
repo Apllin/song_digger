@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ensureYTSingleton, extractVideoId, getYTSingleton, registerYTHandlers } from "@/features/player/ytApi";
 import type { TrackSource } from "@/features/player/types";
+import { ensureYTSingleton, extractVideoId, getYTSingleton, registerYTHandlers } from "@/features/player/ytApi";
 
 interface YTPlayerProps {
   source: TrackSource | null;

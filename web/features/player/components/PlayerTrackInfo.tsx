@@ -15,7 +15,12 @@ export function PlayerTrackInfo({ title, artist, source, resolving }: PlayerTrac
       <p className="text-caption text-td-fg-m truncate">
         {artist}
         <span className="ml-2" style={{ color: "var(--td-fg-m)" }}>
-          · {resolving ? "Finding playable source…" : (source !== null ? (SOURCE_LABELS[source] ?? source) : "No playback available")}
+          ·{" "}
+          {resolving
+            ? "Finding playable source…"
+            : source !== null
+              ? (SOURCE_LABELS[source] ?? source)
+              : "No playback available"}
         </span>
       </p>
     </div>
