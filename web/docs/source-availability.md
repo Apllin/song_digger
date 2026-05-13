@@ -12,8 +12,8 @@ contributors are: YouTube Music Radio, Cosine.club (post-API
 migration), Last.fm, and trackid.net.** Cosine.club moved to a new
 public API at `https://cosine.club/api` (the previous `api.cosine.club`
 host went NXDOMAIN — the adapter was rewritten to point at the new
-endpoint and no longer returns BPM/key/energy/label/genre, which now
-come from Beatport enrichment only). The Bandcamp `/similar` adapter
+endpoint and no longer returns BPM/key/energy/label/genre, which the
+pipeline no longer uses anyway — see ADR-0016 and ADR-0019). The Bandcamp `/similar` adapter
 was removed in ADR-0023 ahead of a SoundCloud replacement (stage 2);
 the web-side Bandcamp scraper + mp3-extraction player path was kept
 as the second-attempt branch in `lib/embed-resolver.ts`, so non-YTM
@@ -29,10 +29,10 @@ public endpoints — `/musictracks`, `/audiostreams?musicTrackId=`,
 `/audiostreams/<slug>` — with `±5` window in up to 15 fresh sets) and
 enabled by default — see ADR-0014; the previous HTML-scraping attempt
 failed because trackid.net is a React SPA with no server-rendered
-tracklist HTML. Beatport is
-still anti-bot-blocked for the public scraper but contributes only as
-inline BPM/key enrichment, not as an RRF input. Yandex is still a no-op
-without a token. 1001tracklists was removed in Stage A.5 v2 (see ADR-0012).
+tracklist HTML. The Beatport adapter was removed in ADR-0015 — once
+BPM/key left the pipeline (ADR-0016) it had no remaining purpose.
+Yandex is still a no-op without a token. 1001tracklists was removed in
+Stage A.5 v2 (see ADR-0012).
 
 This is not a code bug. The aggregator and the adapter wiring are
 correct. It's an external-services bill of health.
@@ -42,7 +42,6 @@ correct. It's an external-services bill of health.
 | Source | Status | Symptom | Action |
 |---|---|---|---|
 | `cosine_club` | ✓ Works (post-API migration 2026-05) | New public API at `https://cosine.club/api` — two-step `/v1/search` → `/v1/tracks/{id}/similar`. Returns rank + YouTube URLs only; BPM/key/energy/label/genre are no longer in the public schema. The previous `api.cosine.club` host went NXDOMAIN; the adapter was rewritten to use the new endpoint. Requires `COSINE_CLUB_API_KEY`. | Watch for `[CosineClub] find_similar error:` log lines indicating the schema or auth shape shifted again. |
-| `beatport` (enrichment + BPM/key fallback, not RRF) | ❌ 403 Forbidden | `Client error '403 Forbidden'` for every `/search/tracks?q=...` URL. Anti-bot (likely Cloudflare) blocking the unauthenticated scraper. | Switch to Beatport's official API (paid, requires partner agreement) or move BPM/key enrichment to a different source (MusicBrainz/AcousticBrainz, Mixed In Key API). |
 | `bandcamp` | ⛔ Removed from `/similar` (ADR-0023, 2026-05-11) — ✓ Kept as YTM-fallback embed | The Python adapter and the bandcamp `SourceList` are gone from `/similar`. The web-side surface (`web/lib/scrapers/bandcamp.ts` + `useBandcampAudio` hook + `<audio>` element + `frame-src https://bandcamp.com` + `media-src https://*.bcbits.com`) was kept as the second-attempt branch in `embed-resolver.ts`: when YTM exact-match misses, the resolver searches Bandcamp's public `bcsearch_public_api` for a match and returns its EmbeddedPlayer / mp3 stream. Results land in `TrackEmbed` with `source="bandcamp"`, so the per-(title, artist) Bandcamp probe amortizes across users. | Watch for `[Bandcamp] search error:` or `[Bandcamp] extract audio error:` log lines indicating Imperva expanded the challenge to the search API or the `data-tralbum` mp3 selector changed. If the player fallback dies too, drop it and live with "unavailable" until SoundCloud (stage 2) lands. |
 | `yandex_music` | ⚠ No-op without token | `YANDEX_MUSIC_TOKEN` env var is unset; adapter early-returns `[]`. Documented behavior, but the env is empty in the dev `.env`. | Set the token if the developer has a Yandex account. Cheapest single improvement to source diversity. |
 | `lastfm` | ✓ Works | `track.getSimilar` populates the primary list for Artist–Track queries. When that returns empty, OR when the input is artist-only (no `" - Track"`), the adapter falls back unconditionally to `artist.getSimilar` → top-3 per similar artist, capped at 30. Requires `LASTFM_API_KEY`. Per-artist similars cached in `LastfmArtistSimilars` (30-day TTL). See ADR-0022. | Watch for `[Lastfm]` log prefixes; nothing user-facing fails when the API key is missing (adapter early-returns `[]`). |
@@ -54,32 +53,18 @@ correct. It's an external-services bill of health.
 Run these before relying on this document for new decisions:
 
 ```bash
-# 1. Cosine.club DNS
-host api.cosine.club
-# Expected when healthy: an A-record. NXDOMAIN means still down.
+# 1. Cosine.club API reachability
+curl -s -o /dev/null -w "%{http_code}\n" "https://cosine.club/api/v1/docs"
+# Expected when healthy: 200.
 
-# 2. Beatport scraper
-curl -s -o /dev/null -w "%{http_code}\n" \
-  "https://www.beatport.com/search/tracks?q=Oscar+Mulero"
-# Expected when healthy: 200. 403 means still anti-bot-blocked.
-
-# 3. Yandex token
+# 2. Yandex token
 grep -c '^YANDEX_MUSIC_TOKEN=' .env
 ```
 
 ## Triage tasks
 
-1. **Cosine.club: find or replace.** Either locate the new endpoint
-   (Discord, registry.scalar.com page, email the provider) or pick a
-   replacement: AcousticBrainz, MusicBrainz with audio features,
-   Spotify's audio-features API. If replaced, ADR-0001
-   (cosine-confidence-threshold) and ADR-0007 (beatport-cache-strategy)
-   need a paragraph each on the migration.
-2. **Beatport: API or replace.** The free scraper is dead. Beatport
-   has an official API behind a partner agreement. Alternative:
-   MusicBrainz's CC0 metadata + AcousticBrainz for audio features.
-3. **Yandex token.** Easy win if the developer has an account.
-4. **Stage 2 — SoundCloud replacement.** Bandcamp's `/similar`
+1. **Yandex token.** Easy win if the developer has an account.
+2. **Stage 2 — SoundCloud replacement.** Bandcamp's `/similar`
    adapter was removed in ADR-0023; the web-side Bandcamp embed
    fallback stays until SoundCloud lands. The SoundCloud adapter is
    the planned replacement; new ADR will land with the wiring.
