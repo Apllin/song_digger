@@ -37,22 +37,28 @@ export function LabelsPage() {
   const defaultLabel = useSearchParams().get("label") ?? undefined;
   const [s, setS] = useAtom(labelsAtom);
 
+  const onSelectLabel = useCallback(
+    (item: DiscogsLabel) => setS((prev) => ({ ...prev, page: 1, selectedName: item.name })),
+    [setS],
+  );
+
+  const fetchLabels = useCallback(
+    (q: string, signal: AbortSignal) =>
+      fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } })),
+    [],
+  );
+
   const search = useEntitySearch<DiscogsLabel>({
     historyKey: "labels-history",
     queryKeyPrefix: "label-suggestions",
-    fetchFn: (q, signal) => fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } })),
-    defaultValue: defaultLabel,
-    onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
+    fetchFn: fetchLabels,
+    defaultValue: s.selectedName ?? defaultLabel,
+    onSelect: onSelectLabel,
   });
 
   const labelId = search.selectedItem?.id;
   const labelName = search.selectedItem?.name;
-  const { releases, totalItems, totalPages, loadingReleases } = useLabelReleases(
-    labelId,
-    labelName,
-    s.page,
-    PAGE_SIZE,
-  );
+  const { releases, totalItems, totalPages, loadingReleases } = useLabelReleases(labelId, labelName, s.page, PAGE_SIZE);
 
   const qc = useQueryClient();
   const releasesQueryKey = useCallback(
