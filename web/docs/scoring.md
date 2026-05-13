@@ -50,9 +50,14 @@ fetches, comes back to web for dislike filtering, fusion, and persistence:
    Artist similars cached in `LastfmArtistSimilars` with 30-day TTL.
    This is the highest-yield underground-seed recovery path. See
    ADR-0022.
-5. **Phase 2** (only when `cosine_confident == False`): reversed-order
-   Cosine query and Cosine artist-only search. When still not confident,
-   individual Cosine results below the 0.5 score threshold are dropped.
+5. **Phase 2** (only when `cosine_confident == False`): one reversed-order
+   Cosine query (`"Track - Artist"`, covers swapped input order — still
+   the same track, gated by the adapter's seed-relevance check). There is
+   **no** artist-only Cosine fallback — if Cosine's catalogue doesn't have
+   the queried track under either word order, Cosine contributes nothing
+   rather than recommending off an unrelated seed (ADR-0024). When still
+   not confident, individual Cosine results below the 0.5 score threshold
+   are dropped.
 6. Per-source `SourceList` objects are built, each filtered through
    `_filter_artist` (remove the seed's own artist by token match) and
    `_dedup_within_source` (drop duplicate `sourceUrl`).

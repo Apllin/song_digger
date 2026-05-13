@@ -97,10 +97,6 @@ def _cosine_is_confident(cosine_tracks: list[TrackMeta]) -> bool:
     return bool(scores) and (sum(scores) / len(scores)) >= COSINE_CONFIDENCE_THRESHOLD
 
 
-async def _empty_list() -> list:
-    return []
-
-
 def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     """Drop duplicate sourceUrls within a single source's ranked list, preserving order."""
     seen: set[str] = set()
@@ -117,8 +113,8 @@ async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
     full_query = f"{artist} - {track}"
-    # Users sometimes type queries as "Track - Artist" instead of "Artist - Track".
-    # Try both orderings for Cosine so we hit its catalog regardless of input order.
+    # Word-swapped retry for "Track - Artist" input order — see Phase 2. No
+    # artist-only Cosine fallback: if Cosine lacks the track, it contributes nothing.
     reversed_query = f"{track} - {artist}"
 
     # Phase 1: all external sources in parallel.
@@ -159,44 +155,22 @@ async def _find_by_artist_and_track(
 
     cosine_confident = _cosine_is_confident(cosine_tracks)
 
-    # Phase 2 (slow path): all fallbacks run in parallel so sequential waits collapse.
-    artist_cosine: list[TrackMeta] = []
-    if not cosine_confident:
-        reversed_coro = (
-            _cosine.find_similar(reversed_query, limit)
-            if reversed_query != full_query
-            else _empty_list()
-        )
-
-        (
-            reversed_cosine_raw,
-            artist_cosine_raw,
-        ) = await asyncio.gather(
-            reversed_coro,
-            _cosine.find_similar(artist, limit),
-            return_exceptions=True,
-        )
-
-        reversed_cosine = reversed_cosine_raw if isinstance(reversed_cosine_raw, list) else []
-
+    # Phase 2: retry Cosine with the words swapped (handles "Track - Artist" input).
+    if not cosine_confident and reversed_query != full_query:
+        try:
+            reversed_cosine = await _cosine.find_similar(reversed_query, limit)
+        except Exception as e:
+            print(f"[CosineClub] reversed-query error: {e}")
+            reversed_cosine = []
         if reversed_cosine:
             rev_confident = _cosine_is_confident(reversed_cosine)
             if rev_confident or len(reversed_cosine) > len(cosine_tracks):
                 cosine_tracks = reversed_cosine
                 cosine_confident = rev_confident
 
-        # Cosine artist fallback: style-adjacent tracks for the artist.
-        # No score filter here — artist search often returns score=None (text-matched
-        # results) which are still genre-relevant. The aggregator scores them on
-        # BPM/key/sourceRank; audioSimilarity simply contributes 0 when score is None.
-        artist_cosine = artist_cosine_raw if isinstance(artist_cosine_raw, list) else []
-
-    # Drop low-confidence track Cosine results.
+    # Drop low-confidence Cosine results when no query order landed a confident seed.
     if not cosine_confident:
         cosine_tracks = [t for t in cosine_tracks if t.score is not None and t.score >= COSINE_CONFIDENCE_THRESHOLD]
-
-    # Append artist-based Cosine tracks as supplement (after filtering above).
-    cosine_tracks = cosine_tracks + artist_cosine
 
     # Priority for source_artist:
     #   1. YTM search result artist (most reliable — it's the actual queried track)

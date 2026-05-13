@@ -1,7 +1,9 @@
 # 0001 — Cosine.club confidence threshold = 0.5
 
 **Date:** 2025-01-XX
-**Status:** Accepted
+**Status:** Accepted (the confidence threshold and per-track filter stand;
+the "artist-only seeding" and "beatport BPM enrichment" Phase 2 fallbacks
+mentioned below have since been removed — see ADR-0015 and ADR-0024)
 
 **Context:**
 Cosine.club returns a similarity score per result. Below some threshold, the

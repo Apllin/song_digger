@@ -76,3 +76,4 @@ Body:
 | 0021 | Anonymous limits and security (Stage J) | Accepted |
 | 0022 | Trust adapter similarity (Last.fm artist path) | Accepted |
 | 0023 | Remove Bandcamp adapter | Accepted |
+| 0024 | Cosine contributes nothing when it lacks the queried track | Accepted |
