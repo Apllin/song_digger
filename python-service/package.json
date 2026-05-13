@@ -1,6 +1,6 @@
 {
   "name": "@trackdigger/python-service",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.0",
   "private": true,
   "scripts": {
     "codegen": "pnpm run with-env .venv/bin/python scripts/export_openapi.py",
