@@ -90,7 +90,7 @@ update: {
 }
 ```
 
-Rationale: a track might be in the DB with BPM=128 from a previous Beatport enrichment. The current fetch may not have BPM (e.g., YTM Radio doesn't return it). Setting BPM to null in the update would clobber good data.
+Rationale: a track might already be in the DB with BPM=128. The current fetch may not have BPM (e.g., YTM Radio doesn't return it). Setting BPM to null in the update would clobber good data.
 
 `?? undefined` tells Prisma: "skip this field". Setting to `null` tells Prisma: "set this field to null in the DB".
 
