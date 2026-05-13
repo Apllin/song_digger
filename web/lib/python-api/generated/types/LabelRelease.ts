@@ -21,4 +21,6 @@ export type LabelRelease = {
   catno?: string | null;
   thumb?: string | null;
   type?: string | null;
+  source?: string | null;
+  sourceUrl?: string | null;
 };

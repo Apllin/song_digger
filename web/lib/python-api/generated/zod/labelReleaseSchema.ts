@@ -15,4 +15,6 @@ export const labelReleaseSchema = z.object({
   catno: z.optional(z.union([z.string(), z.null()])),
   thumb: z.optional(z.union([z.string(), z.null()])),
   type: z.optional(z.union([z.string(), z.null()])),
+  source: z.optional(z.union([z.string(), z.null()])),
+  sourceUrl: z.optional(z.union([z.string(), z.null()])),
 }) as unknown as z.ZodType<LabelRelease>;

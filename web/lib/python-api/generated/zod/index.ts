@@ -1,5 +1,18 @@
 export { artistReleaseSchema } from "./artistReleaseSchema";
 export { artistReleasesResponseSchema } from "./artistReleasesResponseSchema";
+export { bandcampLabelSchema } from "./bandcampLabelSchema";
+export {
+  bandcampReleaseTracklist200Schema,
+  bandcampReleaseTracklist422Schema,
+  bandcampReleaseTracklistQueryParamsSchema,
+  bandcampReleaseTracklistQueryResponseSchema,
+} from "./bandcampReleaseTracklistSchema";
+export {
+  bandcampSearchLabel200Schema,
+  bandcampSearchLabel422Schema,
+  bandcampSearchLabelQueryParamsSchema,
+  bandcampSearchLabelQueryResponseSchema,
+} from "./bandcampSearchLabelSchema";
 export { discogsArtistSchema } from "./discogsArtistSchema";
 export { discogsLabelSchema } from "./discogsLabelSchema";
 export {
@@ -15,6 +28,13 @@ export {
   getArtistReleasesQueryParamsSchema,
   getArtistReleasesQueryResponseSchema,
 } from "./getArtistReleasesSchema";
+export {
+  getLabelReleasesCombined200Schema,
+  getLabelReleasesCombined422Schema,
+  getLabelReleasesCombinedPathParamsSchema,
+  getLabelReleasesCombinedQueryParamsSchema,
+  getLabelReleasesCombinedQueryResponseSchema,
+} from "./getLabelReleasesCombinedSchema";
 export {
   getLabelReleases200Schema,
   getLabelReleases422Schema,

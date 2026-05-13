@@ -1,5 +1,20 @@
 export type { ArtistRelease } from "./ArtistRelease";
 export type { ArtistReleasesResponse } from "./ArtistReleasesResponse";
+export type { BandcampLabel } from "./BandcampLabel";
+export type {
+  BandcampReleaseTracklist200,
+  BandcampReleaseTracklist422,
+  BandcampReleaseTracklistQuery,
+  BandcampReleaseTracklistQueryParams,
+  BandcampReleaseTracklistQueryResponse,
+} from "./BandcampReleaseTracklist";
+export type {
+  BandcampSearchLabel200,
+  BandcampSearchLabel422,
+  BandcampSearchLabelQuery,
+  BandcampSearchLabelQueryParams,
+  BandcampSearchLabelQueryResponse,
+} from "./BandcampSearchLabel";
 export type { DiscogsArtist } from "./DiscogsArtist";
 export type { DiscogsLabel } from "./DiscogsLabel";
 export type {
@@ -25,6 +40,14 @@ export type {
   GetLabelReleasesQueryParams,
   GetLabelReleasesQueryResponse,
 } from "./GetLabelReleases";
+export type {
+  GetLabelReleasesCombined200,
+  GetLabelReleasesCombined422,
+  GetLabelReleasesCombinedPathParams,
+  GetLabelReleasesCombinedQuery,
+  GetLabelReleasesCombinedQueryParams,
+  GetLabelReleasesCombinedQueryResponse,
+} from "./GetLabelReleasesCombined";
 export type {
   GetReleaseTracklist200,
   GetReleaseTracklist422,
