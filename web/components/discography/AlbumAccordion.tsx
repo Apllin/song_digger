@@ -43,7 +43,7 @@ function toPlayerTrack(t: TracklistItem, i: number, fallbackArtist: string, cove
     id: `discography-${i}-${t.title}`,
     title: t.title,
     artist: t.artists.length > 0 ? t.artists.join(", ") : fallbackArtist,
-    source: "discography",
+    source: null,
     sourceUrl: "",
     coverUrl: coverUrl ?? null,
   };

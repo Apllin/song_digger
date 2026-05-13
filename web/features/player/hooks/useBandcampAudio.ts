@@ -5,8 +5,8 @@ import { parseResponse } from "hono/client";
 import type { SyntheticEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
-import { api } from "@/lib/hono/client";
 import type { TrackSource } from "@/features/player/types";
+import { api } from "@/lib/hono/client";
 
 interface BandcampAudioData {
   audioUrl: string;
