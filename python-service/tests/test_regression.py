@@ -71,6 +71,41 @@ async def test_find_by_artist_only_survives_cosine_dns_error():
 
 
 @pytest.mark.asyncio
+async def test_cosine_track_miss_does_not_fall_back_to_artist_seed():
+    """Track absent from Cosine under either word order → empty Cosine list, and
+    no bare-artist Cosine query. Regression for "BLANKA (ES) - Klock"."""
+    # Bare-artist queries bypass the adapter's seed-relevance gate; nothing else does.
+    bare_artist_hit = make_track(
+        title="Unrelated Techno Thing", artist="Someone Else",
+        source="cosine_club", sourceUrl="https://www.youtube.com/watch?v=zzz",
+        score=0.9,
+    )
+
+    async def fake_cosine_find_similar(query, limit=20):
+        return [bare_artist_hit] if " - " not in query else []
+
+    cosine_mock = AsyncMock(side_effect=fake_cosine_find_similar)
+
+    with (
+        patch("app.api.routes.similar._cosine.find_similar", new=cosine_mock),
+        patch("app.api.routes.similar._ytm.find_similar", new_callable=AsyncMock, return_value=[]),
+        patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock, return_value=[]),
+        patch("app.api.routes.similar._yandex.find_similar", new_callable=AsyncMock, return_value=[]),
+        patch("app.api.routes.similar._lastfm.find_similar", new_callable=AsyncMock, return_value=[]),
+        patch("app.api.routes.similar._trackidnet.find_similar", new_callable=AsyncMock, return_value=[]),
+    ):
+        source_lists, _source_artist = await _find_by_artist_and_track(
+            "BLANKA (ES)", "Klock", limit=5
+        )
+
+    cosine_list = next(sl for sl in source_lists if sl.source == "cosine_club")
+    assert cosine_list.tracks == [], "Cosine must stay empty when it lacks the track"
+    # And the bare-artist fallback query must not be issued at all.
+    queries = [c.args[0] if c.args else c.kwargs.get("query") for c in cosine_mock.call_args_list]
+    assert all(" - " in q for q in queries), f"unexpected bare-artist Cosine query in {queries}"
+
+
+@pytest.mark.asyncio
 async def test_find_by_artist_and_track_returns_ytm_when_cosine_fails():
     """YTM results from OTHER artists must reach the caller even when CosineClub is down.
 
