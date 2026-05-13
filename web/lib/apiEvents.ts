@@ -3,6 +3,7 @@ import mitt from "mitt";
 type Events = {
   "error:anon-limit": void;
   "error:network": void;
+  "error:session-expired": void;
 };
 
 const emitter = mitt<Events>();
