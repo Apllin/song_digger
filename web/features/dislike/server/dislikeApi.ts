@@ -7,9 +7,6 @@ import { requireUser } from "@/lib/auth-utils";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 
-// Length caps protect against pathological strings (a 10MB title would still
-// upsert successfully and bloat the index). 500 covers real-world long titles
-// like remixes-of-extended-club-versions.
 const DislikeBodySchema = z.object({
   artist: z.string().trim().min(1).max(500),
   title: z.string().trim().min(1).max(500),

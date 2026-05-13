@@ -25,8 +25,8 @@ export function useSearchFlow(initialQuery = "") {
   } = useMutation({
     mutationFn: (input: string) => fetchApi(api.search.$post({ json: { input } })),
     onSuccess: (result) => {
-      qc.setQueryData(searchPageKey(id, 1), result.id);
-      setSearch((prev) => ({ ...prev, id, page: 1 }));
+      qc.setQueryData(searchPageKey(result.id, 1), result);
+      setSearch((prev) => ({ ...prev, id: result.id, page: 1 }));
     },
   });
 

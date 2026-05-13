@@ -189,12 +189,29 @@ CREATE TABLE "RequestMetric" (
 );
 
 -- CreateTable
-CREATE TABLE "ArtistReleasesCache" (
+CREATE TABLE "ArtistReleasesMeta" (
     "artistId" TEXT NOT NULL,
-    "releases" JSONB NOT NULL,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "fetchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "ArtistReleasesCache_pkey" PRIMARY KEY ("artistId")
+    CONSTRAINT "ArtistReleasesMeta_pkey" PRIMARY KEY ("artistId")
+);
+
+-- CreateTable
+CREATE TABLE "ArtistRelease" (
+    "id" TEXT NOT NULL,
+    "artistId" TEXT NOT NULL,
+    "releaseId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "artist" TEXT,
+    "year" INTEGER,
+    "type" TEXT,
+    "role" TEXT,
+    "format" TEXT,
+    "label" TEXT,
+    "thumb" TEXT,
+    "resourceUrl" TEXT,
+
+    CONSTRAINT "ArtistRelease_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -284,7 +301,10 @@ CREATE INDEX "RequestMetric_route_createdAt_idx" ON "RequestMetric"("route", "cr
 CREATE INDEX "RequestMetric_createdAt_idx" ON "RequestMetric"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "ArtistReleasesCache_updatedAt_idx" ON "ArtistReleasesCache"("updatedAt");
+CREATE INDEX "ArtistRelease_artistId_role_year_idx" ON "ArtistRelease"("artistId", "role", "year" DESC);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ArtistRelease_artistId_releaseId_key" ON "ArtistRelease"("artistId", "releaseId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LastfmArtistSimilars_seedArtist_key" ON "LastfmArtistSimilars"("seedArtist");
