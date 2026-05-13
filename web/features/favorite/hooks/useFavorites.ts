@@ -10,12 +10,23 @@ import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
 const favoriteIdsKey = (userId: string | null) => ["favorite-ids", userId] as const;
+const favoriteSourceUrlsKey = (userId: string | null) => ["favorite-source-urls", userId] as const;
 const favoritesListKey = (userId: string | null) => ["favorites", userId] as const;
 
 export function useFavoriteIds(userId: string | null): Set<string> {
   const { data } = useQuery({
     queryKey: favoriteIdsKey(userId),
     queryFn: () => parseResponse(api.favorites.ids.$get()),
+    enabled: !!userId,
+    staleTime: 60_000,
+  });
+  return useMemo(() => new Set(data ?? []), [data]);
+}
+
+export function useFavoriteSourceUrls(userId: string | null): Set<string> {
+  const { data } = useQuery({
+    queryKey: favoriteSourceUrlsKey(userId),
+    queryFn: () => parseResponse(api.favorites["source-urls"].$get()),
     enabled: !!userId,
     staleTime: 60_000,
   });
@@ -77,6 +88,41 @@ export function useToggleFavorite(userId: string | null) {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: idsKey });
+      qc.invalidateQueries({ queryKey: favoriteSourceUrlsKey(userId) });
+      qc.invalidateQueries({ queryKey: favoritesListKey(userId) });
+    },
+  });
+}
+
+export interface ToggleFavoriteBySourceArgs {
+  source: string;
+  sourceUrl: string;
+  title: string;
+  artist: string;
+  coverUrl?: string | null;
+  isFav: boolean;
+}
+
+export function useToggleFavoriteBySource(userId: string | null) {
+  const qc = useQueryClient();
+  const urlsKey = favoriteSourceUrlsKey(userId);
+  return useMutation({
+    mutationFn: ({ source, sourceUrl, title, artist, coverUrl, isFav }: ToggleFavoriteBySourceArgs) =>
+      isFav
+        ? fetchApi(api.favorites["by-source"].$delete({ query: { sourceUrl } }))
+        : fetchApi(api.favorites["by-source"].$post({ json: { source, sourceUrl, title, artist, coverUrl } })),
+    onMutate: async ({ sourceUrl, isFav }) => {
+      await qc.cancelQueries({ queryKey: urlsKey });
+      const previous = qc.getQueryData<string[]>(urlsKey) ?? [];
+      qc.setQueryData<string[]>(urlsKey, isFav ? previous.filter((u) => u !== sourceUrl) : [sourceUrl, ...previous]);
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(urlsKey, ctx.previous);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: urlsKey });
+      qc.invalidateQueries({ queryKey: favoriteIdsKey(userId) });
       qc.invalidateQueries({ queryKey: favoritesListKey(userId) });
     },
   });

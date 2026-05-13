@@ -10,4 +10,5 @@ export const SOURCE_LABELS: Record<TrackSource, string> = {
   trackidnet: "trackid.net",
   soundcloud: "SoundCloud",
   lastfm: "Last.fm",
+  discogs: "Discogs",
 };

@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 
 import { SOURCE_LABELS } from "@/features/player/constants";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
-import type { PlayerTrack, TrackSource } from "@/features/player/types";
+import type { PlayerTrack } from "@/features/player/types";
 
 interface TrackCardProps {
   track: PlayerTrack;
@@ -65,7 +65,9 @@ export function TrackCard({
     window.open(`/discography?artist=${encodeURIComponent(track.artist)}`, "_blank");
   };
 
-  const sourceLabel = track.source ? SOURCE_LABELS[track.source] : "Unavailable";
+  const sourceLabel = track.source ? (SOURCE_LABELS[track.source] ?? track.source) : "Unavailable";
+  const linkHref =
+    track.source === "discogs" ? (discogsReleaseUrl(track.sourceUrl) ?? track.sourceUrl) : track.sourceUrl;
 
   return (
     <div
@@ -236,7 +238,7 @@ export function TrackCard({
           </button>
         </div>
         <a
-          href={track.sourceUrl}
+          href={linkHref}
           target="_blank"
           rel="noopener noreferrer"
           className="font-mono-td text-[10px] text-td-fg-m hover:text-td-accent transition-colors truncate"
@@ -257,4 +259,9 @@ export function TrackCard({
       </div>
     </div>
   );
+}
+
+function discogsReleaseUrl(syntheticSourceUrl: string): string | null {
+  const m = syntheticSourceUrl.match(/^discogs:release\/([^/]+)/);
+  return m ? `https://www.discogs.com/release/${m[1]}` : null;
 }

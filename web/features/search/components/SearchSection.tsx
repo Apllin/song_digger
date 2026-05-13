@@ -4,6 +4,7 @@ import { useCallback } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
 import { Spinner } from "@/components/Spinner";
+import type { PlayerTrack } from "@/features/player/types";
 import { ResultsGrid } from "@/features/search/components/ResultsGrid";
 import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
 
@@ -62,7 +63,7 @@ export function SearchSection({ initialQuery }: SearchSectionProps) {
 
       {!isSearching && pagination != null && pagination.items > 0 && (
         <ResultsGrid
-          tracks={tracks}
+          tracks={tracks as unknown as PlayerTrack[]}
           page={page}
           totalPages={pagination.pages}
           totalItems={pagination.items}

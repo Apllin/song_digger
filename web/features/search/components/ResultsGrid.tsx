@@ -22,6 +22,7 @@ export interface ResultsGridProps {
   summaryLabel?: (n: number) => string;
   onPrev: () => void;
   onNext: () => void;
+  showDislike?: boolean;
 }
 
 const defaultSummaryLabel = (n: number) => `${n} result${n === 1 ? "" : "s"} · sorted by relevance`;
@@ -36,6 +37,7 @@ export function ResultsGrid({
   summaryLabel = defaultSummaryLabel,
   onPrev,
   onNext,
+  showDislike = true,
 }: ResultsGridProps) {
   const userId = useUserId();
   const isAuthenticated = !!userId;
@@ -77,7 +79,7 @@ export function ResultsGrid({
                 trackIndex={idx}
                 isFavorite={favoriteIds.has(track.id)}
                 onFavoriteToggle={isAuthenticated ? toggleFavorite : undefined}
-                onDislike={isAuthenticated ? () => handleDislike(track) : undefined}
+                onDislike={isAuthenticated && showDislike ? () => handleDislike(track) : undefined}
               />
               {searchQueryId && <TrainerFeedbackButtons searchQueryId={searchQueryId} trackId={track.id} />}
             </div>
