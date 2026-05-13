@@ -7,11 +7,13 @@ export interface PlayerAdapter {
   seekTo(t: number): void;
 }
 
+export type TrackSource = "youtube_music" | "bandcamp" | "cosine_club" | "lastfm";
+
 export interface PlayerTrack {
   id: string;
   title: string;
   artist: string;
-  source: string;
+  source: TrackSource | null;
   sourceUrl: string;
   coverUrl?: string | null;
   embedUrl?: string | null;

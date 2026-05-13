@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ensureYTSingleton, extractVideoId, getYTSingleton, registerYTHandlers } from "@/features/player/ytApi";
+import type { TrackSource } from "@/features/player/types";
 
 interface YTPlayerProps {
-  source: string | null;
+  source: TrackSource | null;
   sourceUrl: string | null;
   embedUrl: string | null;
   volume: number;
@@ -106,25 +107,29 @@ export function useYTPlayer({ source, sourceUrl, embedUrl, volume, onEnded }: YT
     return () => clearInterval(id);
   }, [playing, source]);
 
+  const toggle = useCallback(() => {
+    const player = getYTSingleton();
+    if (player) {
+      // Read ground-truth state from the player to avoid stale closure issues.
+      if (player.getPlayerState() === 1) {
+        player.pauseVideo();
+      } else {
+        player.playVideo();
+      }
+    }
+  }, []);
+
+  const seekTo = useCallback((t: number) => {
+    getYTSingleton()?.seekTo(t, true);
+    setCurrentTime(t);
+  }, []);
+
   return {
     videoId,
     playing,
     currentTime,
     duration,
-    toggle: () => {
-      const player = getYTSingleton();
-      if (player) {
-        // Read ground-truth state from the player to avoid stale closure issues.
-        if (player.getPlayerState() === 1) {
-          player.pauseVideo();
-        } else {
-          player.playVideo();
-        }
-      }
-    },
-    seekTo: (t: number) => {
-      getYTSingleton()?.seekTo(t, true);
-      setCurrentTime(t);
-    },
+    toggle,
+    seekTo,
   };
 }

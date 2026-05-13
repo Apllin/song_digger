@@ -46,9 +46,10 @@ export function useEntitySearch<T extends SearchableEntity>({
   const suggestions = useMemo<T[]>(() => suggestionsQuery.data ?? [], [suggestionsQuery.data]);
 
   useEffect(() => {
+    if (selectedItem) return;
     if (!suggestionsQuery.data || suggestionsQuery.data.length === 0) return;
     setShowSuggestions(true);
-  }, [suggestionsQuery.data]);
+  }, [suggestionsQuery.data, selectedItem]);
 
   const selectItem = useCallback(
     (item: T) => {

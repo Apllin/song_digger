@@ -6,6 +6,7 @@ import type { SyntheticEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/hono/client";
+import type { TrackSource } from "@/features/player/types";
 
 interface BandcampAudioData {
   audioUrl: string;
@@ -13,7 +14,7 @@ interface BandcampAudioData {
 }
 
 interface BandcampProps {
-  source: string | null;
+  source: TrackSource | null;
   sourceUrl: string | null;
   volume: number;
   onEnded: () => void;

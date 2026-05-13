@@ -1,3 +1,5 @@
+import type { TrackSource } from "./types";
+
 export interface YTPlayer {
   playVideo(): void;
   pauseVideo(): void;
@@ -20,7 +22,7 @@ declare global {
 }
 
 export function extractVideoId(
-  source: string | null,
+  source: TrackSource | null,
   sourceUrl: string | null | undefined,
   embedUrl: string | null | undefined,
 ): string | null {

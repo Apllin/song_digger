@@ -73,7 +73,7 @@ export function TrackCard({
     window.open(`/discography?artist=${encodeURIComponent(track.artist)}`, "_blank");
   };
 
-  const sourceLabel = SOURCE_LABELS[track.source] ?? track.source;
+  const sourceLabel = track.source ? SOURCE_LABELS[track.source] : "Unavailable";
 
   return (
     <div

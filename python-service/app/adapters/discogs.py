@@ -269,7 +269,7 @@ class DiscogsAdapter:
                 "resourceUrl": r.get("resource_url"),
             }
             for r in results
-            if r.get("id")
+            if r.get("id") and r.get("title")
         ]
         await upsert_external_cache(
             source="discogs_search_label",

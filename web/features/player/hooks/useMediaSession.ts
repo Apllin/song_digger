@@ -1,7 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
-import { useEffect } from "react";
+import { type RefObject, useEffect } from "react";
 
 import type { PlayerTrack } from "@/features/player/types";
 import { getYTSingleton } from "@/features/player/ytApi";
@@ -15,6 +14,7 @@ interface MediaSessionProps {
   playlist: PlayerTrack[];
   playNext: () => void;
   playPrev: () => void;
+  seekTo: (t: number) => void;
   audioRef: RefObject<HTMLAudioElement | null> | null;
 }
 
@@ -27,6 +27,7 @@ export function useMediaSession({
   playlist,
   playNext,
   playPrev,
+  seekTo,
   audioRef,
 }: MediaSessionProps) {
   useEffect(() => {
@@ -62,6 +63,9 @@ export function useMediaSession({
     navigator.mediaSession.setActionHandler("previoustrack", () => {
       if (playingIndex !== null && playingIndex > 0) playPrev();
     });
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.seekTime !== undefined) seekTo(details.seekTime);
+    });
 
     return () => {
       try {
@@ -69,11 +73,12 @@ export function useMediaSession({
         navigator.mediaSession.setActionHandler("pause", null);
         navigator.mediaSession.setActionHandler("nexttrack", null);
         navigator.mediaSession.setActionHandler("previoustrack", null);
+        navigator.mediaSession.setActionHandler("seekto", null);
       } catch {
         // Ignore if Media Session API is unavailable
       }
     };
-  }, [track, playing, playingIndex, playlist.length, playNext, playPrev, audioRef]);
+  }, [track, playing, audioRef, playNext, playPrev, seekTo, playingIndex, playlist.length]);
 
   // Keep OS scrubber position in sync (iOS uses this for the lockscreen slider).
   useEffect(() => {

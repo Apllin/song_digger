@@ -15,7 +15,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8
 
 interface EmbedResult {
   embedUrl: string | null;
-  source: string | null;
+  source: "youtube_music" | "bandcamp" | null;
   sourceUrl?: string | null;
   coverUrl?: string | null;
 }

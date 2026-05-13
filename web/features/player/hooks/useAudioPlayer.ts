@@ -7,7 +7,7 @@ import { useBandcampAudio } from "./useBandcampAudio";
 import { useYTPlayer } from "./useYTPlayer";
 
 import { PLAYABLE_SOURCES } from "@/features/player/constants";
-import type { PlayerAdapter, PlayerTrack } from "@/features/player/types";
+import type { PlayerAdapter, PlayerTrack, TrackSource } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
 
 interface Props {
@@ -18,7 +18,7 @@ interface Props {
 
 interface EmbedData {
   embedUrl: string | null;
-  source: string | null;
+  source: TrackSource | null;
   sourceUrl: string | null;
   coverUrl: string | null;
 }
@@ -64,12 +64,17 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
   });
 
   // Resolve non-playable sources (lastfm, cosine_club, etc.) to a YTM/Bandcamp embed.
-  const shouldResolve = !!track && !PLAYABLE_SOURCES.has(track.source) && track.source !== "unavailable";
+  const shouldResolve = !!track && track.source !== null && !PLAYABLE_SOURCES.has(track.source);
 
   const { data: embedData, status: embedStatus } = useQuery<EmbedData | null>({
     queryKey: ["embed", track?.title, track?.artist],
-    queryFn: async ({ signal }) =>
-      parseResponse(api.embed.$get({ query: { title: track!.title, artist: track!.artist } }, { init: { signal } })),
+    queryFn: async ({ signal }) => {
+      const raw = await parseResponse(
+        api.embed.$get({ query: { title: track!.title, artist: track!.artist } }, { init: { signal } }),
+      );
+      if (!raw) return null;
+      return { ...raw, source: raw.source as TrackSource | null };
+    },
     enabled: shouldResolve,
     staleTime: Infinity,
     retry: 1,
@@ -88,7 +93,7 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
         coverUrl: track!.coverUrl ?? embedData.coverUrl,
       });
     } else {
-      swapTrack({ source: "unavailable", embedUrl: null });
+      swapTrack({ source: null, embedUrl: null });
     }
     // swapTrack is stable (useCallback). track.sourceUrl/coverUrl are structural
     // values captured when the query result arrived for this track's title/artist key.
