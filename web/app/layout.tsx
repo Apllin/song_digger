@@ -6,6 +6,7 @@ import "cal-sans/index.css";
 import "./globals.css";
 
 import { AnonymousLimitModalHost } from "@/components/auth/AnonymousLimitModalHost";
+import { SessionExpiredHost } from "@/components/auth/SessionExpiredHost";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Nav } from "@/components/Nav";
 import { NavAuthSection } from "@/components/NavAuthSection";
@@ -68,6 +69,7 @@ export default async function RootLayout({
                 {children}
                 <AnonymousLimitModalHost />
                 <NetworkErrorHost />
+                <SessionExpiredHost />
               </PlayerProvider>
             </QueryProvider>
           </SessionProvider>
