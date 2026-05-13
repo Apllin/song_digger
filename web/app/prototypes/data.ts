@@ -2,14 +2,13 @@ export interface MockTrack {
   id: string;
   title: string;
   artist: string;
-  source: "youtube_music" | "bandcamp" | "cosine_club" | "yandex_music" | "lastfm" | "trackidnet";
+  source: "youtube_music" | "cosine_club" | "yandex_music" | "lastfm" | "trackidnet";
   sourceUrl: string;
   coverUrl: string;
 }
 
 export const SOURCE_LABEL: Record<MockTrack["source"], string> = {
   youtube_music: "YouTube Music",
-  bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
   yandex_music: "Yandex.Music",
   lastfm: "Last.fm",
@@ -23,8 +22,8 @@ export const MOCK_TRACKS: MockTrack[] = [
     id: "t1",
     title: "Strangelove",
     artist: "Bicep",
-    source: "bandcamp",
-    sourceUrl: "https://bicep.bandcamp.com/track/strangelove",
+    source: "youtube_music",
+    sourceUrl: "https://music.youtube.com/watch?v=strangelove",
     coverUrl: "https://picsum.photos/seed/strangelove/600/600",
   },
   {
@@ -47,8 +46,8 @@ export const MOCK_TRACKS: MockTrack[] = [
     id: "t4",
     title: "Glue",
     artist: "Bicep",
-    source: "bandcamp",
-    sourceUrl: "https://bicep.bandcamp.com/track/glue",
+    source: "youtube_music",
+    sourceUrl: "https://music.youtube.com/watch?v=glue",
     coverUrl: "https://picsum.photos/seed/glue/600/600",
   },
   {
@@ -87,8 +86,8 @@ export const MOCK_TRACKS: MockTrack[] = [
     id: "t9",
     title: "Nineteen Eighty Five",
     artist: "Floating Points",
-    source: "bandcamp",
-    sourceUrl: "https://floatingpoints.bandcamp.com/track/1985",
+    source: "youtube_music",
+    sourceUrl: "https://music.youtube.com/watch?v=1985",
     coverUrl: "https://picsum.photos/seed/1985/600/600",
   },
   {

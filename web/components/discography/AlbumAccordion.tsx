@@ -1,56 +1,88 @@
 "use client";
 
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
+import { useAtom } from "jotai";
 import { TrackRow } from "./TrackRow";
 
-interface Track {
-  position: string;
-  title: string;
-  duration: string;
-  artists: string[];
-}
-
-interface Release {
-  id: number;
-  title: string;
-  year?: number;
-  type: string;
-  format?: string;
-  label?: string;
-  thumb?: string;
-}
+import { discographyOpenAtom } from "@/features/discography/atoms";
+import type { DiscographyRelease } from "@/features/discography/types";
+import { usePlayer } from "@/features/player/hooks/usePlayer";
+import type { PlayerTrack } from "@/features/player/types";
+import { api } from "@/lib/hono/client";
+import type { TracklistItem } from "@/lib/python-api/generated/types/TracklistItem";
 
 interface AlbumAccordionProps {
-  release: Release;
+  release: DiscographyRelease;
   artistName: string;
 }
 
-export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
-  const [open, setOpen] = useState(false);
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-
-  async function handleToggle() {
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    setOpen(true);
-    if (loaded) return;
-
-    setLoading(true);
-    try {
-      const releaseType = release.type === "master" ? "master" : "release";
-      const res = await fetch(`/api/discography/tracklist?releaseId=${release.id}&type=${releaseType}`);
-      const data: Track[] = await res.json();
-      setTracks(data);
-      setLoaded(true);
-    } finally {
-      setLoading(false);
-    }
+// Discogs gives us `role` (Main / Remix / Producer / Appearance / TrackAppearance)
+// and a free-form `format` string ("5xFile, FLAC, EP, 24-", "11xFile, WAV, Album",
+// "12\"", …). Appearance and TrackAppearance both mean "the artist's content sits
+// on someone else's release" — collapsed into "Featured". For Main / null role we
+// pick the first format keyword; if nothing matches (e.g. bare "12\"" vinyl tag),
+// fall back to "Release" so every card has a tag.
+function releaseTag(release: { role?: string | null; format?: string | null }): string {
+  const role = release.role;
+  if (role && role !== "Main") {
+    if (role === "Appearance" || role === "TrackAppearance") return "Featured";
+    return role;
   }
+  const fmt = release.format ?? "";
+  if (/\bEP\b/i.test(fmt)) return "EP";
+  if (/\bAlbum\b/i.test(fmt)) return "Album";
+  if (/\bMixed\b/i.test(fmt)) return "Mix";
+  if (/\bSingle\b/i.test(fmt)) return "Single";
+  if (/\bCompilation\b/i.test(fmt)) return "Compilation";
+  return "Release";
+}
+
+function toPlayerTrack(t: TracklistItem, i: number, fallbackArtist: string, coverUrl?: string | null): PlayerTrack {
+  return {
+    id: `discography-${i}-${t.title}`,
+    title: t.title,
+    artist: t.artists.length > 0 ? t.artists.join(", ") : fallbackArtist,
+    source: null,
+    sourceUrl: "",
+    coverUrl: coverUrl ?? null,
+  };
+}
+
+export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
+  const [openMap, setOpenMap] = useAtom(discographyOpenAtom);
+  const open = openMap[release.id] ?? false;
+
+  const releaseType = release.type === "master" ? "master" : "release";
+  const {
+    data: tracks = [],
+    isFetching,
+    isFetched,
+  } = useQuery({
+    queryKey: ["tracklist", release.id, releaseType],
+    queryFn: () =>
+      parseResponse(
+        api.discography.tracklist.$get({
+          query: { releaseId: String(release.id), type: releaseType },
+        }),
+      ),
+    enabled: open,
+    staleTime: Infinity,
+  });
+
+  const { track: currentTrack, play } = usePlayer();
+
+  function handleToggle() {
+    setOpenMap((prev) => ({ ...prev, [release.id]: !open }));
+  }
+
+  // Discogs only attaches per-track `artists` when the performer differs from
+  // the release's headline artist, so an empty list means "the release artist".
+  // For Remix/Appearance releases that headline artist is *not* the artist the
+  // user searched for — fall back to the release artist, not `artistName`.
+  const fallbackArtist = release.artist?.trim() || artistName;
+  const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, fallbackArtist, release.thumb));
+  const tag = releaseTag(release);
 
   return (
     <div
@@ -62,11 +94,11 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
     >
       <button
         onClick={handleToggle}
-        className="w-full flex items-center gap-4 p-3 transition-colors text-left hover:bg-white/[0.03]"
+        className="w-full flex items-center gap-4 p-3 transition-colors text-left hover:bg-white/3"
       >
         {/* Cover */}
         <div
-          className="w-[56px] h-[56px] rounded-[10px] shrink-0 overflow-hidden"
+          className="w-14 h-14 rounded-[10px] shrink-0 overflow-hidden"
           style={{ border: "1px solid var(--td-hair)" }}
         >
           {release.thumb ? (
@@ -89,9 +121,18 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
         {/* Info */}
         <div className="flex-1 min-w-0">
           <p className="text-[15px] font-medium tracking-[-0.01em] text-td-fg truncate">{release.title}</p>
-          <div className="flex gap-3 mt-1 font-mono-td text-[12px] text-td-fg-d flex-wrap">
+          <div className="flex items-center gap-3 mt-1 font-mono-td text-[12px] text-td-fg-d flex-wrap">
             {release.year && <span>{release.year}</span>}
-            {release.format && <span>{release.format}</span>}
+            <span
+              className="px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] rounded-md border"
+              style={{
+                borderColor: "var(--td-hair-2)",
+                background: "var(--td-accent-soft)",
+                color: "var(--td-accent)",
+              }}
+            >
+              {tag}
+            </span>
             {release.label && <span style={{ color: "var(--td-fg-m)" }}>{release.label}</span>}
           </div>
         </div>
@@ -111,7 +152,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
 
       {open && (
         <div className="px-2 py-2 flex flex-col gap-0.5 border-t" style={{ borderColor: "var(--td-hair)" }}>
-          {loading && (
+          {isFetching && (
             <div className="flex items-center justify-center py-6">
               <svg
                 className="w-5 h-5 animate-spin"
@@ -124,17 +165,15 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
               </svg>
             </div>
           )}
-          {!loading && tracks.length === 0 && loaded && (
+          {!isFetching && isFetched && tracks.length === 0 && (
             <p className="text-xs text-td-fg-m py-4 text-center">No tracks found</p>
           )}
-          {tracks.map((t, i) => (
+          {playerTracks.map((pt, i) => (
             <TrackRow
-              key={`${t.position}-${i}`}
-              track={{ ...t, albumArtist: artistName, albumCover: release.thumb ?? null }}
-              isPlaying={playingIndex === i}
-              onPlayToggle={() => setPlayingIndex(playingIndex === i ? null : i)}
-              onPrev={i > 0 ? () => setPlayingIndex(i - 1) : undefined}
-              onNext={i < tracks.length - 1 ? () => setPlayingIndex(i + 1) : undefined}
+              key={`${tracks[i]!.position}-${i}`}
+              track={{ ...tracks[i]!, albumArtist: fallbackArtist, albumCover: release.thumb ?? null }}
+              isPlaying={currentTrack?.title === pt.title && currentTrack?.artist === pt.artist}
+              onPlay={() => play(pt, playerTracks, i)}
             />
           ))}
         </div>

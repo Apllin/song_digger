@@ -80,7 +80,7 @@ Date is when the status was set, not when the file was edited.
 The "why we needed to decide" section. Should make sense to a reader 6 months later who has forgotten the project state.
 
 Good context:
-- "Cosine.club's audio embedding similarity is the strongest single signal but the API is occasionally unavailable for hours at a time. When silent, the previous pipeline fell back to Beatport rank, which heavily biased toward genre-tagged peak-time techno regardless of seed style."
+- "Cosine.club's audio embedding similarity is the strongest single signal but the API is occasionally unavailable for hours at a time."
 
 Bad context:
 - "We were thinking about how to make the system better." (no specifics)

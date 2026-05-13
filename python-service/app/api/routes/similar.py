@@ -5,7 +5,6 @@ from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMe
 from app.core.title_norm import strip_recording_suffixes
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
-from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
@@ -14,12 +13,10 @@ router = APIRouter()
 
 _ytm = YouTubeMusicAdapter()
 _cosine = CosineClubAdapter()
-_bandcamp = BandcampAdapter()
 _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 
-BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the response
 # Trackidnet does up to 17 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 15 detail fetches with Semaphore(5) inside the
 # adapter — see ADR-0014). Cold-path wall clock is ~8-15s when trackid is
@@ -27,18 +24,6 @@ BANDCAMP_TIMEOUT = 4.0  # seconds — skip if Bandcamp is slow, don't block the 
 # don't silently drop trackid contributions on every fresh search, but still
 # bounded so one slow seed doesn't stall the /similar fan-out.
 TRACKIDNET_TIMEOUT = 25.0
-
-
-async def _bandcamp_safe(query: str) -> list[TrackMeta]:
-    """Run Bandcamp 'you may also like' with a hard timeout so it never blocks the main flow."""
-    try:
-        return await asyncio.wait_for(_bandcamp.find_similar(query), timeout=BANDCAMP_TIMEOUT)
-    except asyncio.TimeoutError:
-        print(f"[Bandcamp] timed out after {BANDCAMP_TIMEOUT}s, skipping")
-        return []
-    except Exception as e:
-        print(f"[Bandcamp] error: {e}")
-        return []
 
 
 async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
@@ -112,10 +97,6 @@ def _cosine_is_confident(cosine_tracks: list[TrackMeta]) -> bool:
     return bool(scores) and (sum(scores) / len(scores)) >= COSINE_CONFIDENCE_THRESHOLD
 
 
-async def _empty_list() -> list:
-    return []
-
-
 def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     """Drop duplicate sourceUrls within a single source's ranked list, preserving order."""
     seen: set[str] = set()
@@ -132,15 +113,14 @@ async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
     full_query = f"{artist} - {track}"
-    # Users sometimes type queries as "Track - Artist" instead of "Artist - Track".
-    # Try both orderings for Cosine so we hit its catalog regardless of input order.
+    # Word-swapped retry for "Track - Artist" input order — see Phase 2. No
+    # artist-only Cosine fallback: if Cosine lacks the track, it contributes nothing.
     reversed_query = f"{track} - {artist}"
 
     # Phase 1: all external sources in parallel.
     (
         cosine_tracks,
         ytm_tracks,
-        bandcamp_tracks,
         yandex_tracks,
         lastfm_tracks,
         trackidnet_tracks,
@@ -148,7 +128,6 @@ async def _find_by_artist_and_track(
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
-        _bandcamp_safe(full_query),
         _yandex.find_similar(full_query, limit),
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
@@ -158,7 +137,6 @@ async def _find_by_artist_and_track(
 
     cosine_tracks = cosine_tracks if isinstance(cosine_tracks, list) else []
     ytm_tracks = ytm_tracks if isinstance(ytm_tracks, list) else []
-    bandcamp_tracks = bandcamp_tracks if isinstance(bandcamp_tracks, list) else []
     yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
@@ -177,55 +155,22 @@ async def _find_by_artist_and_track(
 
     cosine_confident = _cosine_is_confident(cosine_tracks)
 
-    # Phase 2 (slow path): all fallbacks run in parallel so sequential waits collapse.
-    artist_cosine: list[TrackMeta] = []
-    if not cosine_confident:
-        reversed_coro = (
-            _cosine.find_similar(reversed_query, limit)
-            if reversed_query != full_query
-            else _empty_list()
-        )
-        # Bandcamp artist fallback: only needed when Phase 1 returned nothing.
-        bandcamp_fallback_coro = (
-            _bandcamp_safe(artist) if not bandcamp_tracks else _empty_list()
-        )
-
-        (
-            reversed_cosine_raw,
-            artist_cosine_raw,
-            bandcamp_fallback_raw,
-        ) = await asyncio.gather(
-            reversed_coro,
-            _cosine.find_similar(artist, limit),
-            bandcamp_fallback_coro,
-            return_exceptions=True,
-        )
-
-        reversed_cosine = reversed_cosine_raw if isinstance(reversed_cosine_raw, list) else []
-        bandcamp_fallback = bandcamp_fallback_raw if isinstance(bandcamp_fallback_raw, list) else []
-
+    # Phase 2: retry Cosine with the words swapped (handles "Track - Artist" input).
+    if not cosine_confident and reversed_query != full_query:
+        try:
+            reversed_cosine = await _cosine.find_similar(reversed_query, limit)
+        except Exception as e:
+            print(f"[CosineClub] reversed-query error: {e}")
+            reversed_cosine = []
         if reversed_cosine:
             rev_confident = _cosine_is_confident(reversed_cosine)
             if rev_confident or len(reversed_cosine) > len(cosine_tracks):
                 cosine_tracks = reversed_cosine
                 cosine_confident = rev_confident
 
-        # Cosine artist fallback: style-adjacent tracks for the artist.
-        # No score filter here — artist search often returns score=None (text-matched
-        # results) which are still genre-relevant. The aggregator scores them on
-        # BPM/key/sourceRank; audioSimilarity simply contributes 0 when score is None.
-        artist_cosine = artist_cosine_raw if isinstance(artist_cosine_raw, list) else []
-
-        # Use Bandcamp artist results if the track-specific search found nothing.
-        if not bandcamp_tracks:
-            bandcamp_tracks = bandcamp_fallback
-
-    # Drop low-confidence track Cosine results.
+    # Drop low-confidence Cosine results when no query order landed a confident seed.
     if not cosine_confident:
         cosine_tracks = [t for t in cosine_tracks if t.score is not None and t.score >= COSINE_CONFIDENCE_THRESHOLD]
-
-    # Append artist-based Cosine tracks as supplement (after filtering above).
-    cosine_tracks = cosine_tracks + artist_cosine
 
     # Priority for source_artist:
     #   1. YTM search result artist (most reliable — it's the actual queried track)
@@ -247,7 +192,6 @@ async def _find_by_artist_and_track(
     source_lists = [
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
-        SourceList(source="bandcamp", tracks=_dedup_within_source(_filter_artist(bandcamp_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
@@ -295,7 +239,11 @@ async def _find_by_artist_only(
     return source_lists, artist
 
 
-@router.post("/similar", response_model=SimilarResponse)
+@router.post(
+    "/similar",
+    operation_id="find_similar",
+    response_model=SimilarResponse,
+)
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(

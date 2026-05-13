@@ -96,9 +96,12 @@ model PasswordResetToken {
 model SearchQuery {
   id        String         @id @default(cuid())
   input     String
+  cacheKey  String?
   status    String         @default("pending")
   createdAt DateTime       @default(now())
   results   SearchResult[]
+
+  @@index([cacheKey, status, createdAt])
 }
 
 model SearchResult {
@@ -210,7 +213,7 @@ model TrackEmbed {
 }
 
 // Generic cache for external-API responses (Discogs metadata, iTunes covers,
-// Bandcamp page scrapes, MusicBrainz suggestions, Trackidnet DJ-set tracklists).
+// MusicBrainz suggestions, Trackidnet DJ-set tracklists).
 // One row per (source, cacheKey). `payload` is the raw JSON response shape
 // that the caller persisted; readers cast it back to a typed shape themselves.
 //
@@ -229,6 +232,67 @@ model ExternalApiCache {
 
   @@unique([source, cacheKey])
   @@index([source, updatedAt])
+}
+
+// Per-request cost telemetry. One row per HTTP request handled by the Hono
+// app, plus one row per background task that wraps itself in
+// `runWithMetrics(...)` (currently: the fire-and-forget search worker).
+//
+// Used for cost attribution before launch: which routes burn the most CPU,
+// which run the most DB queries, which call into Python and how long that
+// took. Read-only analysis target — query with SQL, no UI yet.
+//
+// `route` for background work is prefixed with `BG ` so it's visually
+// distinct from the synchronous request that spawned it (e.g. `BG /api/search`
+// is the post-response worker for `POST /api/search`).
+model RequestMetric {
+  id            String   @id @default(cuid())
+  route         String
+  method        String
+  statusCode    Int
+  durationMs    Int
+  cpuMs         Int
+  responseBytes Int      @default(0)
+  // Null for routes that never call Python.
+  pythonDurationMs Int?
+  // True = served from SearchQuery cache, false = live Python fan-out, null = not a search route.
+  cacheHit      Boolean?
+  // Adapter source names that returned tracks (search route only).
+  sourcesUsed   Json?
+  userId        String?
+  createdAt     DateTime @default(now())
+
+  @@index([route, createdAt])
+  @@index([createdAt])
+}
+
+// Metadata for a fetched artist discography. One row per artist; used for TTL
+// checks and can be extended with fetch telemetry (duration, page count, etc.)
+// without touching the release rows.
+model ArtistReleasesMeta {
+  artistId  String   @id
+  fetchedAt DateTime @default(now()) @updatedAt
+}
+
+// One row per Discogs release per artist. Populated by the Hono layer on cache
+// miss (Python fans out all Discogs pages). Filtering, sorting, and pagination
+// are handled by Prisma; TTL is tracked separately in ArtistReleasesMeta.
+model ArtistRelease {
+  id          String  @id @default(cuid())
+  artistId    String
+  releaseId   String
+  title       String
+  artist      String?
+  year        Int?
+  type        String?
+  role        String?
+  format      String?
+  label       String?
+  thumb       String?
+  resourceUrl String?
+
+  @@unique([artistId, releaseId])
+  @@index([artistId, role, year(sort: Desc)])
 }
 
 model LastfmArtistSimilars {

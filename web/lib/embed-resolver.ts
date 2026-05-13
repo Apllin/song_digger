@@ -1,6 +1,13 @@
 /**
  * Tries to find an embeddable player for a track.
- * Priority: YTM exact-match → Bandcamp.
+ * Priority: YTM exact-match → Bandcamp search.
+ *
+ * Bandcamp here is a player-only fallback: ADR-0023 removed the Bandcamp
+ * `/similar` adapter, but kept the Bandcamp search + mp3 extraction surface
+ * so non-YTM tracks (yandex/lastfm/cosine/trackid) that YTM exact-match
+ * can't resolve still get a chance at inline playback before falling
+ * through to "unavailable".
+ *
  * Returns embedUrl or null.
  */
 
@@ -8,7 +15,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8
 
 interface EmbedResult {
   embedUrl: string | null;
-  source: string | null;
+  source: "youtube_music" | "bandcamp" | null;
   sourceUrl?: string | null;
   coverUrl?: string | null;
 }
@@ -73,10 +80,9 @@ async function tryBandcamp(title: string, cleanedArtist: string): Promise<EmbedR
 export async function resolveEmbed(title: string, artist: string): Promise<EmbedResult> {
   const cleanedArtist = cleanArtist(artist);
 
-  // Run both lookups in parallel, then prefer YTM when it has a hit.
-  // Priority is preserved (YTM > Bandcamp); the Bandcamp work is "free"
-  // when YTM hits, and saves the full YTM timeout when YTM misses.
-  const [ytm, bc] = await Promise.all([tryYtmExact(title, cleanedArtist), tryBandcamp(title, cleanedArtist)]);
+  const ytm = await tryYtmExact(title, cleanedArtist);
+  if (ytm) return ytm;
 
-  return ytm ?? bc ?? { embedUrl: null, source: null };
+  const bc = await tryBandcamp(title, cleanedArtist);
+  return bc ?? { embedUrl: null, source: null };
 }

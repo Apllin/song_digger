@@ -1,5 +1,5 @@
 /**
- * /api/search end-to-end latency — web → Python → web → DB → response-ready.
+ * /api/search end-to-end latency — web → Python → web → DB → response.
  *
  * Wall-clock covers Python /similar (~2s) plus saveTracks Postgres writes
  * (createMany Track + SELECT for id mapping + createMany SearchResult ≈ 3s
@@ -14,57 +14,35 @@
  *
  * Run with:  pnpm test:speed
  */
+import { hc } from "hono/client";
 import { beforeAll, describe, expect, it } from "vitest";
 
-const WEB_URL = "http://localhost:3000";
-const POLL_INTERVAL_MS = 250;
-const POLL_TIMEOUT_MS = 60_000;
+import type { AppType } from "@/lib/hono/app";
 
+const WEB_URL = "http://localhost:3000";
 const RUNS = 5;
 const P95_THRESHOLD_S = 12;
+
+const client = hc<AppType>(WEB_URL).api;
 
 let serverUp = false;
 
 beforeAll(async () => {
   try {
-    serverUp = (await fetch(`${WEB_URL}/api/dislikes`, { signal: AbortSignal.timeout(2000) })).ok;
+    const resp = await client.health.$get({}, { init: { signal: AbortSignal.timeout(2000) } });
+    const body = await resp.json();
+    serverUp = resp.ok && body.python_service === "ok";
   } catch {
     serverUp = false;
   }
 });
 
-interface SearchStatus {
-  id: string;
-  status: string;
-  tracks: Array<{ artist: string; title: string }>;
-}
-
 async function timeOneSearch(input: string): Promise<number> {
   const start = performance.now();
-  const post = await fetch(`${WEB_URL}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
-  });
-  const { id } = (await post.json()) as { id: string };
-
-  // Poll until status === 'done'. End-to-end time is from POST start
-  // through "done" — the user-visible "results ready" moment.
-  const pollDeadline = Date.now() + POLL_TIMEOUT_MS;
-  while (Date.now() < pollDeadline) {
-    const r = await fetch(`${WEB_URL}/api/search/${id}`);
-    if (r.ok) {
-      const body = (await r.json()) as SearchStatus;
-      if (body.status === "done") {
-        return (performance.now() - start) / 1000;
-      }
-      if (body.status === "error") {
-        throw new Error(`search ${id} ended with status=error`);
-      }
-    }
-    await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
-  }
-  throw new Error(`poll timeout for search ${id}`);
+  const resp = await client.search.$post({ json: { input } });
+  if (!resp.ok) throw new Error(`POST failed: ${resp.status}`);
+  await resp.json();
+  return (performance.now() - start) / 1000;
 }
 
 describe("/api/search speed", () => {

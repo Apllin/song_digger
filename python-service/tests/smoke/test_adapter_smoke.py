@@ -17,7 +17,6 @@ Run with:  pytest -m smoke tests/smoke/test_adapter_smoke.py
 """
 import pytest
 
-from app.adapters.bandcamp import BandcampAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
@@ -64,18 +63,6 @@ async def test_youtube_music_smoke(popular_seed_queries):
     print(f"\n[YTM smoke] {counts}")
     assert _hits(counts) >= MIN_HITS_THRESHOLD, (
         f"YouTube Music returned 0 results on too many seeds: {counts}"
-    )
-
-
-# ── Bandcamp (no key — public 'you may also like' scrape) ─────────────────────
-
-async def test_bandcamp_smoke(popular_seed_queries):
-    counts = await _run_seeds(BandcampAdapter(), popular_seed_queries)
-    print(f"\n[Bandcamp smoke] {counts}")
-    # Bandcamp scrapes 'you may also like' from public release pages and
-    # is more brittle than API-backed sources — 2/4 is acceptable here.
-    assert _hits(counts) >= 2, (
-        f"Bandcamp returned 0 results on too many seeds: {counts}"
     )
 
 
@@ -127,7 +114,6 @@ async def test_returned_tracks_have_required_fields(popular_seed_queries):
     seed = popular_seed_queries[0]
     adapters = [
         ("youtube_music", YouTubeMusicAdapter()),
-        ("bandcamp", BandcampAdapter()),
     ]
     if settings.cosine_club_api_key:
         adapters.append(("cosine_club", CosineClubAdapter()))

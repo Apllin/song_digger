@@ -11,14 +11,15 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { aggregateTracks, type SourceList } from "@/lib/aggregator";
-import type { TrackMeta } from "@/lib/python-client";
+import { aggregateTracks } from "@/lib/aggregator";
+import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
+import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 const RUNS = 100;
 const P95_INDEX = Math.floor(RUNS * 0.95) - 1; // 94 for 100 runs
 const P95_THRESHOLD_MS = 200;
 
-const SOURCES = ["cosine_club", "youtube_music", "bandcamp", "yandex_music", "lastfm", "trackidnet"] as const;
+const SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet"] as const;
 
 function buildMockSourceLists(targetTotal: number): SourceList[] {
   // ~30% of tracks appear in 3+ sources, ~30% in 2, ~40% unique. Mirrors

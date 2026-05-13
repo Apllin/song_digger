@@ -1,10 +1,11 @@
 "use client";
 
+import { DetailedError, parseResponse } from "hono/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TurnstileWidget } from "./TurnstileWidget";
 
-import { registerAction } from "@/app/actions/register";
+import { api } from "@/lib/hono/client";
 
 export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
@@ -27,15 +28,30 @@ export function RegisterForm() {
       return;
     }
 
-    formData.set("turnstileToken", turnstileToken);
-    const result = await registerAction(formData);
+    let result;
+    try {
+      result = await parseResponse(
+        api.account.register.$post({
+          json: {
+            email: String(formData.get("email") ?? ""),
+            password: String(formData.get("password") ?? ""),
+            turnstileToken,
+            website: String(formData.get("website") ?? ""),
+          },
+        }),
+      );
+    } catch (err) {
+      setPending(false);
+      const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;
+      setError(data?.error ?? "Something went wrong. Please try again.");
+      setTurnstileToken("");
+      return;
+    }
     setPending(false);
 
     if ("error" in result) {
       setError(result.error);
-      // Token is single-use; force a fresh one before retry. Re-mount
-      // by clearing the local copy — the widget calls onVerify again
-      // when Cloudflare auto-resets.
+      // Token is single-use; force a fresh one before retry.
       setTurnstileToken("");
     } else {
       router.push(`/verify-email?email=${encodeURIComponent(result.email)}`);

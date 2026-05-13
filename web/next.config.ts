@@ -25,9 +25,11 @@ const cspDirectives = [
   "font-src 'self' data:",
 
   // Bandcamp serves the mp3 stream from its CDN subdomains (typically
-  // t4.bcbits.com); the BottomPlayer <audio> element loads it directly.
-  // Without a media-src directive the browser falls back to default-src
-  // and blocks the stream.
+  // t4.bcbits.com); the BottomPlayer <audio> element loads it directly
+  // when /api/embed resolves a non-YTM track to Bandcamp (ADR-0023:
+  // adapter removed, player fallback kept). Without a media-src
+  // directive the browser falls back to default-src and blocks the
+  // stream.
   "media-src 'self' https://*.bcbits.com",
 
   // Outgoing fetch destinations: same-origin API + Cloudflare's
@@ -36,7 +38,8 @@ const cspDirectives = [
 
   // Embedded iframes the app actually mounts.
   // - youtube.com/embed (BottomPlayer + EmbedPlayer for YT)
-  // - bandcamp.com EmbeddedPlayer
+  // - bandcamp.com EmbeddedPlayer (kept as the YTM-fallback player
+  //   surface per ADR-0023; the /similar adapter is gone)
   // - challenges.cloudflare.com (Turnstile widget renders inside an iframe)
   // music.yandex.* is reachable via Discogs links but not rendered
   // as an iframe today; if that changes, add it here.

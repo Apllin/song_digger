@@ -38,10 +38,6 @@ export default function CookiePolicyPage() {
           <span className="font-mono-td text-td-fg">cf_*</span> — set by Cloudflare Turnstile during human verification
           on sign-in and registration. Governed by Cloudflare&rsquo;s privacy terms.
         </li>
-        <li>
-          <span className="font-mono-td text-td-fg">td_cookie_consent</span> — records that this notice has been
-          acknowledged. Retained for one year.
-        </li>
       </ul>
 
       <h2 className="font-display text-[22px] mb-4" style={{ letterSpacing: "-0.01em", fontWeight: 600 }}>

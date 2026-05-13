@@ -1,8 +1,9 @@
 "use client";
 
+import { DetailedError, parseResponse } from "hono/client";
 import { useState } from "react";
 
-import { resendVerificationCodeAction, verifyEmailAction } from "@/app/actions/verify-email";
+import { api } from "@/lib/hono/client";
 
 export function VerifyEmailForm({ email }: { email: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -14,8 +15,17 @@ export function VerifyEmailForm({ email }: { email: string }) {
     setPending(true);
     setError(null);
     setResendMsg(null);
-    formData.set("email", email);
-    const result = await verifyEmailAction(formData);
+    let result;
+    try {
+      result = await parseResponse(
+        api.account["verify-email"].$post({ json: { email, code: String(formData.get("code") ?? "") } }),
+      );
+    } catch (err) {
+      setPending(false);
+      const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;
+      setError(data?.error ?? "Something went wrong. Please try again.");
+      return;
+    }
     setPending(false);
 
     if ("error" in result) {
@@ -34,9 +44,15 @@ export function VerifyEmailForm({ email }: { email: string }) {
     setResendPending(true);
     setResendMsg(null);
     setError(null);
-    const fd = new FormData();
-    fd.set("email", email);
-    const result = await resendVerificationCodeAction(fd);
+    let result;
+    try {
+      result = await parseResponse(api.account["resend-verification"].$post({ json: { email } }));
+    } catch (err) {
+      setResendPending(false);
+      const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;
+      setError(data?.error ?? "Something went wrong. Please try again.");
+      return;
+    }
     setResendPending(false);
     if ("error" in result) {
       setError(result.error);

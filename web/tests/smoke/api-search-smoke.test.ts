@@ -4,74 +4,52 @@
  * Prerequisite: dev servers running.
  *   pnpm dev            # web on :3000 + python-service on :8000
  *
- * The route persists a SearchQuery, fans out to Python /similar, fuses
- * with the aggregator, persists Tracks + SearchResults, and returns a
- * SearchQuery id. Polling on the SearchQuery row tells us when it
- * finished. Skipped if the dev servers aren't reachable.
+ * The route fans out to Python /similar, fuses with the aggregator,
+ * persists Tracks + SearchResults, and returns the ranked list in one
+ * response. Skipped if the dev servers aren't reachable.
  *
  * Run with:  pnpm test:smoke
  */
+import { hc } from "hono/client";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import type { AppType } from "@/lib/hono/app";
+
 const WEB_URL = "http://localhost:3000";
-const POLL_INTERVAL_MS = 500;
-const POLL_TIMEOUT_MS = 60_000;
+
+const client = hc<AppType>(WEB_URL).api;
 
 let serversUp = false;
 
 beforeAll(async () => {
   try {
-    const [web, py] = await Promise.all([
-      fetch(`${WEB_URL}/api/dislikes`, {
-        signal: AbortSignal.timeout(2000),
-      }).then((r) => r.ok),
-      fetch("http://localhost:8000/health", {
-        signal: AbortSignal.timeout(2000),
-      }).then((r) => r.ok),
-    ]);
-    serversUp = web && py;
+    const resp = await client.health.$get({}, { init: { signal: AbortSignal.timeout(2000) } });
+    const body = await resp.json();
+    serversUp = resp.ok && body.python_service === "ok";
   } catch {
     serversUp = false;
   }
 });
 
 interface SearchTrack {
+  id: string;
   artist: string;
   title: string;
   source: string;
   sourceUrl: string;
   score: number | null;
+  sources: string[];
 }
 
-interface SearchStatus {
+interface SearchResponse {
   id: string;
-  status: string;
   tracks: SearchTrack[];
 }
 
-async function startSearch(input: string): Promise<string> {
-  const resp = await fetch(`${WEB_URL}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
-  });
+async function search(input: string): Promise<SearchResponse> {
+  const resp = await client.search.$post({ json: { input } });
   expect(resp.ok).toBe(true);
-  const body = (await resp.json()) as { id: string; status: string };
-  expect(body.id).toBeTruthy();
-  return body.id;
-}
-
-async function pollUntilDone(searchId: string): Promise<SearchStatus> {
-  const start = Date.now();
-  while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const resp = await fetch(`${WEB_URL}/api/search/${searchId}`);
-    if (resp.ok) {
-      const body = (await resp.json()) as SearchStatus;
-      if (body.status === "done" || body.status === "error") return body;
-    }
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-  }
-  throw new Error(`search ${searchId} did not finish within ${POLL_TIMEOUT_MS}ms`);
+  return resp.json() as Promise<SearchResponse>;
 }
 
 describe("/api/search smoke", () => {
@@ -81,21 +59,20 @@ describe("/api/search smoke", () => {
       return;
     }
 
-    const id = await startSearch("Oscar Mulero - Horses");
-    const final = await pollUntilDone(id);
-    expect(final.status).toBe("done");
-    expect(final.tracks.length).toBeGreaterThanOrEqual(10);
+    const { id, tracks } = await search("Oscar Mulero - Horses");
+    expect(id).toBeTruthy();
+    expect(tracks.length).toBeGreaterThanOrEqual(10);
 
-    for (const t of final.tracks.slice(0, 5)) {
+    for (const t of tracks.slice(0, 5)) {
+      expect(t.id).toBeTruthy();
       expect(t.artist).toBeTruthy();
       expect(t.title).toBeTruthy();
       expect(t.source).toBeTruthy();
       expect(t.sourceUrl).toMatch(/^https?:\/\//);
+      expect(Array.isArray(t.sources)).toBe(true);
     }
 
-    // Multiple source badges should be represented in the top-20 — RRF
-    // coverage check, not single-source dominance.
-    const topSources = new Set(final.tracks.slice(0, 20).map((t) => t.source));
+    const topSources = new Set(tracks.slice(0, 20).map((t) => t.source));
     console.log(`[/api/search smoke] top-20 source mix:`, Array.from(topSources));
     expect(topSources.size).toBeGreaterThanOrEqual(3);
   }, 90_000);
@@ -107,11 +84,8 @@ describe("/api/search smoke — request validation", () => {
       console.warn("[skip] web/python dev servers not reachable");
       return;
     }
-    const resp = await fetch(`${WEB_URL}/api/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    // @ts-expect-error intentionally omitting required `input` to verify schema validation
+    const resp = await client.search.$post({ json: {} });
     expect(resp.status).toBe(400);
   });
 
@@ -120,11 +94,7 @@ describe("/api/search smoke — request validation", () => {
       console.warn("[skip] web/python dev servers not reachable");
       return;
     }
-    const resp = await fetch(`${WEB_URL}/api/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: "" }),
-    });
+    const resp = await client.search.$post({ json: { input: "" } });
     expect(resp.status).toBe(400);
   });
 });

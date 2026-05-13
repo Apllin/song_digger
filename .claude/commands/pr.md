@@ -1,4 +1,4 @@
-Analyze the current changes, create a branch with a meaningful name, and open a PR against `develop` with a comprehensive description.
+Analyze the current changes, create a branch with a meaningful name, and open a PR against `develop` with a short, focused description.
 
 ## Steps
 
@@ -117,32 +117,17 @@ gh pr create \
   --title "<Conventional title: type(scope): description>" \
   --base develop \
   --body "$(cat <<'EOF'
-## Summary
+<2-3 sentences max. What changed and why — only what a reviewer needs to know. Skip if the title is self-explanatory.>
 
-<1-3 sentences: what problem this solves or what feature it adds>
-
-## What changed
-
-<Bulleted list grouped by area. Focus on behavioral/structural changes, not file-level noise. Highlight anything that might surprise a reviewer.>
-
-## How to test
-
-<Bulleted checklist of scenarios a reviewer can follow to verify correctness>
-
-## Notes
-
-<Optional: breaking changes, migration steps, trade-offs, follow-up work>
+> **Notes:** <one line — breaking changes, migrations, or non-obvious trade-offs only. Omit entirely if nothing notable.>
 EOF
 )"
 ```
-
-Omit the **Notes** section if there is nothing notable.
 
 ### 9. Return the PR URL to the user.
 
 ## Guidelines
 
-- Be concise but thorough — a reviewer should understand the full scope from the description alone.
-- Group related changes (e.g., "New onboarding flow" rather than listing each file).
-- If there are breaking changes or required migrations, call them out explicitly in **Notes**.
+- Keep the body under 5 lines. The title carries the message; the body is for things the title can't fit.
+- Only add a Notes line when there is a genuine gotcha: a breaking change, a required migration step, or a non-obvious trade-off.
 - Do NOT include `Co-Authored-By` lines or metadata in the PR body.

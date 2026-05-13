@@ -17,7 +17,7 @@ class TrackMeta(BaseModel):
 
 
 class SimilarRequest(BaseModel):
-    input: str                  # raw query string (kept for Bandcamp)
+    input: str                  # raw query string (preserved for adapters that key off the full input)
     artist: str                 # parsed artist name
     track: str | None = None    # parsed track name (None = artist-only search)
     limit_per_source: int = 20
@@ -54,3 +54,42 @@ class LabelReleasesPagination(BaseModel):
 class LabelReleasesResponse(BaseModel):
     releases: list[LabelRelease]
     pagination: LabelReleasesPagination
+
+
+class DiscogsArtist(BaseModel):
+    id: int
+    name: str
+    imageUrl: str | None = None
+    resourceUrl: str | None = None
+
+
+class DiscogsLabel(BaseModel):
+    id: int
+    name: str
+    imageUrl: str | None = None
+    resourceUrl: str | None = None
+
+
+class ArtistRelease(BaseModel):
+    id: int
+    title: str
+    artist: str | None = None   # headline artist of the release (≠ searched artist for Remix/Appearance roles)
+    year: int | None = None
+    type: str | None = None     # "master" | "release"
+    role: str | None = None     # "Main" | "Appearance" | "TrackAppearance"
+    format: str | None = None
+    label: str | None = None
+    thumb: str | None = None
+    resourceUrl: str | None = None
+
+
+class ArtistReleasesResponse(BaseModel):
+    releases: list[ArtistRelease]
+    pagination: LabelReleasesPagination
+
+
+class TracklistItem(BaseModel):
+    position: str
+    title: str
+    duration: str
+    artists: list[str]

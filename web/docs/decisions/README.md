@@ -58,7 +58,7 @@ Body:
 | 0003 | RRF fusion replaces weighted-sum + balanceBySource | Accepted |
 | 0004 | Tempo doubling treated as near-match | Superseded by ADR-0003 |
 | 0005 | Camelot key as soft signal, not hard filter | Deferred / superseded by ADR-0016 |
-| 0006 | Bandcamp 4-second timeout | Accepted |
+| 0006 | Bandcamp 4-second timeout | Superseded by ADR-0023 |
 | 0007 | Beatport cache strategy | Superseded by ADR-0015 |
 | 0008 | Tier-based fallback for unknown seeds | Superseded by Stage B+ |
 | 0009 | Eval harness as merge gate | Accepted |
@@ -72,3 +72,8 @@ Body:
 | 0017 | Track-level dislike filter via identity match | Accepted |
 | 0018 | Test coverage strategy (unit / smoke / speed) | Accepted |
 | 0019 | Remove feature extraction infrastructure | Accepted |
+| 0020 | Authentication (Stage I) | Accepted |
+| 0021 | Anonymous limits and security (Stage J) | Accepted |
+| 0022 | Trust adapter similarity (Last.fm artist path) | Accepted |
+| 0023 | Remove Bandcamp adapter | Accepted |
+| 0024 | Cosine contributes nothing when it lacks the queried track | Accepted |

@@ -2,32 +2,17 @@
 
 import { atom } from "jotai";
 
-export interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  source: string;
-  sourceUrl: string;
-  coverUrl?: string | null;
-  embedUrl?: string | null;
-  score?: number | null;
-  sources?: string[] | null;
-}
-
-export type SearchStatus = "idle" | "running" | "done" | "error";
+import type { SearchQueryId } from "@/features/search/schemas";
 
 interface SearchState {
   query: string;
-  tracks: Track[];
-  status: SearchStatus;
-  errorMsg: string;
-  displayCount: number;
+
+  id: SearchQueryId | null;
+  page: number;
 }
 
 export const searchAtom = atom<SearchState>({
   query: "",
-  tracks: [],
-  status: "idle",
-  errorMsg: "",
-  displayCount: 18,
+  id: null,
+  page: 1,
 });

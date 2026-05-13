@@ -1,8 +1,9 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useState } from "react";
 
-import { forgotPasswordAction } from "@/app/actions/password-reset";
+import { api } from "@/lib/hono/client";
 
 export function ForgotPasswordForm() {
   const [submitted, setSubmitted] = useState(false);
@@ -10,7 +11,7 @@ export function ForgotPasswordForm() {
 
   async function handleSubmit(formData: FormData) {
     setPending(true);
-    await forgotPasswordAction(formData);
+    await parseResponse(api.account["forgot-password"].$post({ json: { email: String(formData.get("email") ?? "") } }));
     setPending(false);
     setSubmitted(true);
   }

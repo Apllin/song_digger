@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
  *     `cacheKey`). Avoids 8 narrow tables for what is the same shape.
  *   - TTL lives at the call site, not in the row. `lookupCache(..., ttlSeconds)`
  *     decides freshness. A `ttlSeconds` of `undefined` means "never expires"
- *     (Discogs tracklist, iTunes covers, Bandcamp recommendations).
+ *     (Discogs tracklist, iTunes covers).
  *   - Empty payloads (`[]`, `{}`) are valid cache values and distinct from a
  *     row-not-found miss. Callers that want negative caching write
  *     `payload: null` or an empty array; callers that don't (iTunes) just

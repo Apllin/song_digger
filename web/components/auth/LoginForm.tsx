@@ -1,11 +1,12 @@
 "use client";
 
+import { parseResponse } from "hono/client";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import { TurnstileWidget } from "./TurnstileWidget";
 
-import { loginPrecheckAction } from "@/app/actions/login-precheck";
+import { api } from "@/lib/hono/client";
 
 export function LoginForm({
   initialEmail = "",
@@ -46,7 +47,7 @@ export function LoginForm({
     const trimmed = email.trim();
     if (!trimmed) return;
     try {
-      const result = await loginPrecheckAction(trimmed);
+      const result = await parseResponse(api.account["login-precheck"].$post({ json: { email: trimmed } }));
       if (result.requireCaptcha) setRequireCaptcha(true);
     } catch {
       // Network glitch — leave requireCaptcha as is. The server still

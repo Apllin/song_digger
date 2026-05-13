@@ -1,6 +1,5 @@
-import type { SourceList, TrackMeta } from "@/lib/python-client";
-
-export type { SourceList } from "@/lib/python-client";
+import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
+import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 // ── RRF constants ────────────────────────────────────────────────────────────
 // Cormack 2009 default. RRF score = Σ 1 / (k + rank). Larger k flattens the

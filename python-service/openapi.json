@@ -8,7 +8,7 @@
     "/similar": {
       "post": {
         "summary": "Find Similar",
-        "operationId": "find_similar_similar_post",
+        "operationId": "find_similar",
         "requestBody": {
           "content": {
             "application/json": {
@@ -89,7 +89,7 @@
     "/discogs/search": {
       "get": {
         "summary": "Search Artist",
-        "operationId": "search_artist_discogs_search_get",
+        "operationId": "search_artists",
         "parameters": [
           {
             "name": "q",
@@ -107,7 +107,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DiscogsArtist"
+                  },
+                  "title": "Response Search Artists"
+                }
               }
             }
           },
@@ -127,7 +133,7 @@
     "/discogs/artist/{artist_id}/releases": {
       "get": {
         "summary": "Get Releases",
-        "operationId": "get_releases_discogs_artist__artist_id__releases_get",
+        "operationId": "get_artist_releases",
         "parameters": [
           {
             "name": "artist_id",
@@ -139,26 +145,20 @@
             }
           },
           {
-            "name": "page",
+            "name": "role",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 50,
-              "title": "Per Page"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
             }
           }
         ],
@@ -167,7 +167,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ArtistReleasesResponse"
+                }
               }
             }
           },
@@ -187,7 +189,7 @@
     "/discogs/label/search": {
       "get": {
         "summary": "Search Label",
-        "operationId": "search_label_discogs_label_search_get",
+        "operationId": "search_labels",
         "parameters": [
           {
             "name": "q",
@@ -205,7 +207,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DiscogsLabel"
+                  },
+                  "title": "Response Search Labels"
+                }
               }
             }
           },
@@ -287,7 +295,7 @@
     "/discogs/release/{release_id}/tracklist": {
       "get": {
         "summary": "Get Tracklist",
-        "operationId": "get_tracklist_discogs_release__release_id__tracklist_get",
+        "operationId": "get_release_tracklist",
         "parameters": [
           {
             "name": "release_id",
@@ -315,7 +323,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TracklistItem"
+                  },
+                  "title": "Response Get Release Tracklist"
+                }
               }
             }
           },
@@ -383,56 +397,6 @@
         }
       }
     },
-    "/play-lookup": {
-      "get": {
-        "summary": "Play Lookup",
-        "operationId": "play_lookup_play_lookup_get",
-        "parameters": [
-          {
-            "name": "artist",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Artist"
-            }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Title"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Play Lookup Play Lookup Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -456,6 +420,212 @@
   },
   "components": {
     "schemas": {
+      "ArtistRelease": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "artist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "thumb": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb"
+          },
+          "resourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ArtistRelease"
+      },
+      "ArtistReleasesResponse": {
+        "properties": {
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/ArtistRelease"
+            },
+            "type": "array",
+            "title": "Releases"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/LabelReleasesPagination"
+          }
+        },
+        "type": "object",
+        "required": [
+          "releases",
+          "pagination"
+        ],
+        "title": "ArtistReleasesResponse"
+      },
+      "DiscogsArtist": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageurl"
+          },
+          "resourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DiscogsArtist"
+      },
+      "DiscogsLabel": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageurl"
+          },
+          "resourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DiscogsLabel"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -798,6 +968,37 @@
           "sourceUrl"
         ],
         "title": "TrackMeta"
+      },
+      "TracklistItem": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "duration": {
+            "type": "string",
+            "title": "Duration"
+          },
+          "artists": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Artists"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "title",
+          "duration",
+          "artists"
+        ],
+        "title": "TracklistItem"
       },
       "ValidationError": {
         "properties": {
