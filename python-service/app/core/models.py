@@ -42,6 +42,8 @@ class LabelRelease(BaseModel):
     catno: str | None = None
     thumb: str | None = None
     type: str | None = None
+    source: str | None = None  # "discogs" | "bandcamp" — chooses tracklist endpoint
+    sourceUrl: str | None = None
 
 
 class LabelReleasesPagination(BaseModel):
