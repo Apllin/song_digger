@@ -18,9 +18,10 @@ def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
 
     YTM search is fuzzy: a query with no exact match still returns the closest
     text-similar song, and `get_watch_playlist()` on that mismatched seed
-    yields a radio of the wrong genre. Picking the highest-scoring candidate
-    (exact signature > substring) lets a version-specific query prefer the
-    version-specific catalog entry over the bare title.
+    yields a radio of the wrong genre. Scoring rules come from
+    `_seed_match.query_match_score`: "Artist - Title" requires an exact
+    title-signature match; bare-artist accepts the first hit whose artist
+    matches. No qualifying candidate → return None and emit no radio.
     """
     best_vid: str | None = None
     best_score = 0
