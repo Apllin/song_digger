@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
+from app.core.title_norm import strip_recording_suffixes
 
 SC_BASE = "https://soundcloud.com"
 SC_EMBED_BASE = "https://w.soundcloud.com/player/"
@@ -36,6 +37,27 @@ _HEADERS = {
 
 # /artist/track — exactly 2 non-empty path segments.
 _TRACK_PATH_RE = re.compile(r"^/[^/]+/[^/]+$")
+# SoundCloud track title prefixes added by labels/channels. Three forms:
+#   "PREMIERE: Ignez - …"   (colon separator)
+#   "PREMIERE | BENZA - …"  (pipe separator)
+#   "[FREE DL] MAURER - …"  (bracketed prefix)
+_PROMO_WORDS = r"(?:premiere|exclusive|free\s+(?:download|dl)|out\s+now|official)"
+_TITLE_PREFIX_RE = re.compile(
+    rf"^(?:\[{_PROMO_WORDS}\]\s*|{_PROMO_WORDS}\s*[:|]\s*)",
+    re.IGNORECASE,
+)
+# Catalog-number suffixes (e.g. "[SOMOV010]", "[DT120]") at the end of a title
+_CATALOG_SUFFIX_RE = re.compile(r"\s*\[[A-Z]{2,}[A-Z0-9]*\d+\]\s*$", re.IGNORECASE)
+# Label-name suffixes (e.g. "[Divinity Records]", "[Tresor Music]") at the end of a title
+_LABEL_SUFFIX_RE = re.compile(
+    r"\s*\[[^\]]*\b(?:records?|recordings?|music|label)\]\s*$",
+    re.IGNORECASE,
+)
+# Promotional suffixes in brackets or parens (e.g. "[Free DL]", "(Free Download)")
+_PROMO_SUFFIX_RE = re.compile(
+    r"\s*[([](?:free\s+(?:dl|download)|out\s+now|premiere|exclusive)[)\]]\s*$",
+    re.IGNORECASE,
+)
 # SoundCloud system pages that appear as the first path segment.
 _SKIP_FIRST_SEGMENTS = frozenset({
     "search", "discover", "you", "upload", "settings",
@@ -66,6 +88,17 @@ def _embed_url(source_url: str) -> str:
 
 def _slug_to_name(slug: str) -> str:
     return slug.replace("-", " ").title()
+
+
+def _clean_title(raw: str) -> str:
+    title = _TITLE_PREFIX_RE.sub("", raw).strip()
+    # Promo suffix before catalog: "[MY01] (FREE DOWNLOAD)" needs promo stripped
+    # first to expose the catalog number at the end.
+    title = _PROMO_SUFFIX_RE.sub("", title).strip()
+    title = _CATALOG_SUFFIX_RE.sub("", title).strip()
+    title = _LABEL_SUFFIX_RE.sub("", title).strip()
+    title = strip_recording_suffixes(title).strip()
+    return title
 
 
 def _resolve_path(href: str) -> str | None:
@@ -130,7 +163,7 @@ def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
 
         artist_slug, track_slug = path.strip("/").split("/", 1)
 
-        title = a.get_text(strip=True) or _slug_to_name(track_slug)
+        title = _clean_title(a.get_text(strip=True)) or _slug_to_name(track_slug)
         artist_name = _slug_to_name(artist_slug)
 
         # Look for a sibling <a> whose href matches the artist slug exactly.
@@ -167,10 +200,11 @@ class SoundCloudAdapter(AbstractAdapter):
 
     async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
         artist, track = _split_query(query)
-        if not track:
-            return []
+        # Artist-only: search by name — _first_track_url skips the artist profile
+        # page (single-segment path) and picks the first track result as seed.
+        search_query = f"{artist} {track}" if track else artist
 
-        seed_url = await self._search_seed(f"{artist} {track}")
+        seed_url = await self._search_seed(search_query)
         if not seed_url:
             return []
 
