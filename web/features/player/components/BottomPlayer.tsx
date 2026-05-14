@@ -14,6 +14,7 @@ import {
   type YTPlayerReturn,
 } from "@/features/player/hooks/useAudioPlayer";
 import { useMediaSession } from "@/features/player/hooks/useMediaSession";
+import { useNextTrackPreload } from "@/features/player/hooks/useNextTrackPreload";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import { usePlayerKeyboard } from "@/features/player/hooks/usePlayerKeyboard";
 import type { PlayerTrack } from "@/features/player/types";
@@ -36,14 +37,14 @@ interface SharedProps {
 }
 
 function BottomPlayerContent({ track }: { track: PlayerTrack }) {
-  const { playingIndex, playlist, close, playNext, playPrev, swapTrack } = usePlayer();
+  const { playingIndex, playlist, close, playNext, playPrev, swapTrack, hasPrev, hasNext } = usePlayer();
   const player = useAudioPlayer({ track, onEnded: playNext, swapTrack });
+
+  useNextTrackPreload({ playlist, playingIndex });
 
   const audioRef = player.source === "bandcamp" ? player.audioRef : null;
 
   const resolving = !player.source && !!track.source;
-  const hasPrev = playingIndex !== null && playingIndex > 0;
-  const hasNext = playingIndex !== null && playingIndex < playlist.length - 1;
 
   useMediaSession({
     track,
