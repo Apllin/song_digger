@@ -23,7 +23,9 @@
       "persistent": true
     },
     "lint": {},
-    "lint:fix": {},
+    "lint:fix": {
+      "cache": false
+    },
     "typecheck": {},
     "test": {},
     "setup": {

@@ -36,8 +36,8 @@ services:
 
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile.railway
+      context: .
+      dockerfile: web/Dockerfile.railway
       args:
         # Build-time only. lib/prisma.ts evaluates at module load during `next
         # build` so DATABASE_URL must be defined; the build itself does not
