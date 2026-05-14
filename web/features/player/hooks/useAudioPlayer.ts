@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useEffect, useState } from "react";
 import { useBandcampAudio } from "./useBandcampAudio";
+import { useSoundCloudPlayer } from "./useSoundCloudPlayer";
 import { useYTPlayer } from "./useYTPlayer";
 
 import { PLAYABLE_SOURCES } from "@/features/player/constants";
@@ -37,13 +38,19 @@ export type BCPlayerReturn = PlayerAdapter &
     volume: number;
     setVolume: (v: number) => void;
   };
+export type SCPlayerReturn = PlayerAdapter &
+  Pick<ReturnType<typeof useSoundCloudPlayer>, "iframeRef" | "embedUrl"> & {
+    source: "soundcloud";
+    volume: number;
+    setVolume: (v: number) => void;
+  };
 export type IdlePlayerReturn = PlayerAdapter & {
   source: null;
   volume: number;
   setVolume: (v: number) => void;
 };
 
-export type AudioPlayerReturn = YTPlayerReturn | BCPlayerReturn | IdlePlayerReturn;
+export type AudioPlayerReturn = YTPlayerReturn | BCPlayerReturn | SCPlayerReturn | IdlePlayerReturn;
 
 export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlayerReturn {
   const [volume, setVolume] = useState(100);
@@ -59,6 +66,13 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
   const bc = useBandcampAudio({
     source: track?.source ?? null,
     sourceUrl: track?.sourceUrl ?? null,
+    volume,
+    onEnded,
+  });
+
+  const sc = useSoundCloudPlayer({
+    source: track?.source ?? null,
+    embedUrl: track?.embedUrl ?? null,
     volume,
     onEnded,
   });
@@ -127,6 +141,22 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
       isReady: !!bc.audioUrl,
       toggle: bc.toggle,
       seekTo: bc.seekTo,
+      volume,
+      setVolume,
+    };
+  }
+
+  if (track?.source === "soundcloud") {
+    return {
+      source: "soundcloud",
+      iframeRef: sc.iframeRef,
+      embedUrl: sc.embedUrl,
+      playing: sc.playing,
+      currentTime: sc.currentTime,
+      duration: sc.duration,
+      isReady: sc.isReady,
+      toggle: sc.toggle,
+      seekTo: sc.seekTo,
       volume,
       setVolume,
     };

@@ -3,15 +3,16 @@
 import { useCallback, useState } from "react";
 
 import { usePlayer } from "@/features/player/hooks/usePlayer";
-import type { PlayerTrack } from "@/features/player/types";
+import type { PlayerTrack, TrackSource } from "@/features/player/types";
 
-const SOURCE_LABELS: Record<string, string> = {
+const SOURCE_LABELS: Record<TrackSource, string> = {
   youtube_music: "YouTube Music",
   bandcamp: "Bandcamp",
   cosine_club: "Cosine.club",
   yandex_music: "Yandex.Music",
   lastfm: "Last.fm",
   trackidnet: "trackid.net",
+  soundcloud: "Soundcloud",
 };
 
 interface TrackCardProps {
