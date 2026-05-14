@@ -2,11 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { useEffect, useState } from "react";
+import { useSetAtom } from "jotai";
+import { useEffect, useRef, useState } from "react";
 import { useBandcampAudio } from "./useBandcampAudio";
 import { useSoundCloudPlayer } from "./useSoundCloudPlayer";
 import { useYTPlayer } from "./useYTPlayer";
 
+import { unplayableTrackIdsAtom } from "@/features/player/atoms";
 import { PLAYABLE_SOURCES } from "@/features/player/constants";
 import type { PlayerAdapter, PlayerTrack, TrackSource } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
@@ -54,6 +56,12 @@ export type AudioPlayerReturn = YTPlayerReturn | BCPlayerReturn | SCPlayerReturn
 
 export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlayerReturn {
   const [volume, setVolume] = useState(100);
+  const setUnplayable = useSetAtom(unplayableTrackIdsAtom);
+
+  const onEndedRef = useRef(onEnded);
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
 
   const yt = useYTPlayer({
     source: track?.source ?? null,
@@ -77,8 +85,10 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     onEnded,
   });
 
-  // Resolve non-playable sources (lastfm, cosine_club, etc.) to a YTM/Bandcamp embed.
-  const shouldResolve = !!track && track.source !== null && !PLAYABLE_SOURCES.has(track.source);
+   // Resolve non-playable sources (lastfm, cosine_club, null-coerced, etc.) to a
+  // YTM/Bandcamp embed. Includes source=null so tracks whose original source
+  // fell outside TrackSourceSchema still get a chance — and a route to skip.
+  const shouldResolve = !!track && (track.source === null || !PLAYABLE_SOURCES.has(track.source));
 
   const { data: embedData, status: embedStatus } = useQuery<EmbedData | null>({
     queryKey: ["embed", track?.title, track?.artist],
@@ -107,7 +117,20 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
         coverUrl: track!.coverUrl ?? embedData.coverUrl,
       });
     } else {
+      // Mark the active track unplayable and skip forward. playNext (via onEnded)
+      // walks past unplayable IDs, so we land on the next playable track without
+      // the user ever seeing "No playback available".
+      const trackId = track?.id;
+      if (trackId) {
+        setUnplayable((prev) => {
+          if (prev.has(trackId)) return prev;
+          const next = new Set(prev);
+          next.add(trackId);
+          return next;
+        });
+      }
       swapTrack({ source: null, embedUrl: null });
+      onEndedRef.current();
     }
     // swapTrack is stable (useCallback). track.sourceUrl/coverUrl are structural
     // values captured when the query result arrived for this track's title/artist key.

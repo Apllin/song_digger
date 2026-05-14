@@ -43,7 +43,7 @@ export function useNextTrackPreload({ playlist, playingIndex }: Props) {
 
   const queries = useQueries({
     queries: upcoming.map((t) => {
-      const needsResolution = !!t.source && !PLAYABLE_SOURCES.has(t.source);
+      const needsResolution = t.source === null || !PLAYABLE_SOURCES.has(t.source);
       return {
         queryKey: ["embed", t.title, t.artist],
         queryFn: async ({ signal }: { signal: AbortSignal }): Promise<EmbedData | null> => {
