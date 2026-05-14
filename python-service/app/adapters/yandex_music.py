@@ -76,9 +76,10 @@ class YandexMusicAdapter(AbstractAdapter):
 
         Yandex search is fuzzy and will resolve unknown queries to the closest
         text-similar track in its catalog, so blindly trusting `results[0]`
-        leads to off-genre similars (see ADR for the cosine.club incident).
-        Picking the highest-scoring hit (exact signature > substring) also
-        prevents version-specific queries from collapsing onto the bare title.
+        leads to off-genre similars. Scoring rules come from
+        `_seed_match.query_match_score`: an "Artist - Title" query requires an
+        exact title-signature match; a bare-artist query accepts the first
+        candidate whose artist matches. Anything else is rejected.
         """
         best: Any | None = None
         best_score = 0

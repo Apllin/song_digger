@@ -80,10 +80,10 @@ class CosineClubAdapter(AbstractAdapter):
         Cosine.club's `/v1/search` is fuzzy and returns *something* for almost
         any input. Without validation we end up using an off-genre track as the
         seed and the recommendations are nonsense. Scan up to `SEED_CANDIDATES`
-        hits and pick the candidate with the best artist+title match — exact
-        signature wins over substring, ties go to upstream order. This makes
-        version-specific queries ("... (NK & David Löhlein Version)") prefer
-        the version-specific catalog entry over the bare "Bailando".
+        hits and apply the two regimes from `_seed_match.query_match_score`:
+        "Artist - Title" queries require an exact title-signature match;
+        bare-artist queries pick the first candidate whose artist matches. If
+        no candidate qualifies, return None and the caller emits no results.
         """
         resp = await self._client.get(
             "/v1/search",
