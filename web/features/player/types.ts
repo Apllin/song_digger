@@ -30,6 +30,14 @@ export interface PlayerTrack {
   embedUrl?: string | null;
 }
 
+// Registered by paginated playlist owners (e.g. search) so that `playNext`
+// past the end of the current playlist can pull in the next page of tracks
+// instead of stalling on hasNext=false.
+export interface PlaylistExtender {
+  hasMore: boolean;
+  loadMore: () => Promise<PlayerTrack[]>;
+}
+
 export interface DiscographyTrack {
   position: string;
   title: string;
