@@ -8,6 +8,7 @@ from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
+from app.adapters.soundcloud import SoundCloudAdapter
 
 router = APIRouter()
 
@@ -16,6 +17,7 @@ _cosine = CosineClubAdapter()
 _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
+_soundcloud = SoundCloudAdapter()
 
 # Trackidnet does up to 17 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 15 detail fetches with Semaphore(5) inside the
@@ -124,6 +126,7 @@ async def _find_by_artist_and_track(
         yandex_tracks,
         lastfm_tracks,
         trackidnet_tracks,
+        soundcloud_tracks,
         ytm_source_search,
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
@@ -131,6 +134,7 @@ async def _find_by_artist_and_track(
         _yandex.find_similar(full_query, limit),
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
+        _soundcloud.find_similar(full_query, limit),
         _ytm.search_songs(full_query, limit=1),
         return_exceptions=True,
     )
@@ -140,6 +144,7 @@ async def _find_by_artist_and_track(
     yandex_tracks = yandex_tracks if isinstance(yandex_tracks, list) else []
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
+    soundcloud_tracks = soundcloud_tracks if isinstance(soundcloud_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -195,6 +200,7 @@ async def _find_by_artist_and_track(
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
+        SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
     ]
 
     return source_lists, source_artist

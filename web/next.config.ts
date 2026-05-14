@@ -11,7 +11,7 @@ const cspDirectives = [
   // are unavoidable. Cloudflare Turnstile loads from challenges.cloudflare.com.
   // www.youtube.com hosts the IFrame Player API script that BottomPlayer /
   // EmbedPlayer inject at runtime — without it the player hangs on "loading".
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://www.youtube.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://www.youtube.com https://w.soundcloud.com",
 
   // Inline styles come from Tailwind's hashed classes plus framework
   // injected styles; can't be tightened without a code change.
@@ -43,7 +43,7 @@ const cspDirectives = [
   // - challenges.cloudflare.com (Turnstile widget renders inside an iframe)
   // music.yandex.* is reachable via Discogs links but not rendered
   // as an iframe today; if that changes, add it here.
-  "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://bandcamp.com https://challenges.cloudflare.com",
+  "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://bandcamp.com https://challenges.cloudflare.com https://w.soundcloud.com",
 
   // Where forms can submit. Anything cross-origin is suspicious for
   // this app — auth flows post to /api/auth/* same-origin.
@@ -73,7 +73,7 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=(), encrypted-media=(self)",
   },
   { key: "Content-Security-Policy", value: cspDirectives },
 ];

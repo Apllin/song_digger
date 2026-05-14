@@ -9,7 +9,15 @@ export interface PlayerAdapter {
   seekTo(t: number): void;
 }
 
-export const TrackSourceSchema = z.enum(["youtube_music", "bandcamp", "cosine_club", "lastfm"]);
+export const TrackSourceSchema = z.enum([
+  "youtube_music",
+  "bandcamp",
+  "cosine_club",
+  "lastfm",
+  "yandex_music",
+  "trackidnet",
+  "soundcloud",
+]);
 export type TrackSource = z.infer<typeof TrackSourceSchema>;
 
 export interface PlayerTrack {
