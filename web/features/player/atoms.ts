@@ -11,3 +11,7 @@ export const playerAtom = atom<PlayerState>({
   playlist: [],
   playingIndex: null,
 });
+
+// Track IDs whose embed resolution returned null — skipped by playNext/playPrev
+// so onEnded transitions and manual next-clicks never land on an unplayable track.
+export const unplayableTrackIdsAtom = atom<Set<string>>(new Set<string>());

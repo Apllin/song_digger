@@ -1,14 +1,33 @@
 "use client";
 
-import { useAtom } from "jotai";
-import { useCallback } from "react";
+import { useAtom, useAtomValue } from "jotai";
+import { useCallback, useMemo } from "react";
 
-import { playerAtom } from "@/features/player/atoms";
+import { playerAtom, unplayableTrackIdsAtom } from "@/features/player/atoms";
 import type { PlayerTrack } from "@/features/player/types";
 
 export function usePlayer() {
   const [state, setState] = useAtom(playerAtom);
+  const unplayableIds = useAtomValue(unplayableTrackIdsAtom);
   const track = state.playingIndex !== null ? (state.playlist[state.playingIndex] ?? null) : null;
+
+  const nextPlayableIndex = useMemo(() => {
+    if (state.playingIndex === null) return null;
+    for (let i = state.playingIndex + 1; i < state.playlist.length; i++) {
+      const candidate = state.playlist[i];
+      if (candidate && !unplayableIds.has(candidate.id)) return i;
+    }
+    return null;
+  }, [state.playingIndex, state.playlist, unplayableIds]);
+
+  const prevPlayableIndex = useMemo(() => {
+    if (state.playingIndex === null) return null;
+    for (let i = state.playingIndex - 1; i >= 0; i--) {
+      const candidate = state.playlist[i];
+      if (candidate && !unplayableIds.has(candidate.id)) return i;
+    }
+    return null;
+  }, [state.playingIndex, state.playlist, unplayableIds]);
 
   const play = useCallback(
     (_track: PlayerTrack, playlist: PlayerTrack[], index: number) =>
@@ -42,27 +61,15 @@ export function usePlayer() {
     [setState],
   );
 
-  const playNext = useCallback(
-    () =>
-      setState((prev) => {
-        if (prev.playingIndex === null || prev.playlist.length === 0) return prev;
-        const next = prev.playingIndex + 1;
-        if (next >= prev.playlist.length) return prev;
-        return { ...prev, playingIndex: next };
-      }),
-    [setState],
-  );
+  const playNext = useCallback(() => {
+    if (nextPlayableIndex === null) return;
+    setState((prev) => ({ ...prev, playingIndex: nextPlayableIndex }));
+  }, [setState, nextPlayableIndex]);
 
-  const playPrev = useCallback(
-    () =>
-      setState((prev) => {
-        if (prev.playingIndex === null || prev.playlist.length === 0) return prev;
-        const prevIdx = prev.playingIndex - 1;
-        if (prevIdx < 0) return prev;
-        return { ...prev, playingIndex: prevIdx };
-      }),
-    [setState],
-  );
+  const playPrev = useCallback(() => {
+    if (prevPlayableIndex === null) return;
+    setState((prev) => ({ ...prev, playingIndex: prevPlayableIndex }));
+  }, [setState, prevPlayableIndex]);
 
   return {
     ...state,
@@ -72,5 +79,7 @@ export function usePlayer() {
     swapTrack,
     playNext,
     playPrev,
+    hasNext: nextPlayableIndex !== null,
+    hasPrev: prevPlayableIndex !== null,
   };
 }
