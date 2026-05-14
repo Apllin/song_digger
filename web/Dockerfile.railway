@@ -1,20 +1,39 @@
 # syntax=docker/dockerfile:1.7
 
-# Production image for Railway. Build context = web/ (Railway "Root Directory" = web).
+# Production image for the `web` service on Railway.
+#
+# Build context MUST be the repo root (not web/) so the workspace lockfile is
+# available — pnpm-lock.yaml lives at the repo root because this is a pnpm
+# workspace. Without it pnpm freshly resolves caret ranges every build, which
+# pulled in a broken @kubb/plugin-client@4.37.7 and failed CI.
+#
+# Railway service settings for this service:
+#   Root Directory:   (empty / repo root)
+#   Dockerfile Path:  web/Dockerfile.railway
 
 # === deps =====================================================================
 FROM node:24-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
-WORKDIR /app
-COPY package.json ./
-RUN pnpm install --prod=false
+WORKDIR /repo
+
+# Workspace metadata first so layer cache survives source edits.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+# All workspace package.jsons must be present before a filtered install resolves
+# the graph, even though we only build web.
+COPY web/package.json ./web/package.json
+COPY python-service/package.json ./python-service/package.json
+
+RUN pnpm install --frozen-lockfile --filter @trackdigger/web...
 
 # === builder ==================================================================
 FROM node:24-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+WORKDIR /repo
+
+COPY --from=deps /repo ./
+COPY web ./web
+
+WORKDIR /repo/web
 
 # Build-time env. Railway only forwards a service Variable into the Docker
 # build phase when there is a matching `ARG` declared here — without ARG the
@@ -51,18 +70,24 @@ RUN pnpm exec next build
 # === runner ===================================================================
 FROM node:24-alpine AS runner
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
-WORKDIR /app
+WORKDIR /repo
 ENV NODE_ENV=production
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/next.config.ts ./next.config.ts
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/app/generated ./app/generated
+# pnpm symlinks in web/node_modules point into /repo/node_modules/.pnpm, so both
+# trees must be preserved together — copying only web/node_modules breaks them.
+COPY --from=builder /repo/node_modules ./node_modules
+COPY --from=builder /repo/package.json ./package.json
+COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /repo/web/node_modules ./web/node_modules
+COPY --from=builder /repo/web/.next ./web/.next
+COPY --from=builder /repo/web/public ./web/public
+COPY --from=builder /repo/web/package.json ./web/package.json
+COPY --from=builder /repo/web/next.config.ts ./web/next.config.ts
+COPY --from=builder /repo/web/prisma ./web/prisma
+COPY --from=builder /repo/web/prisma.config.ts ./web/prisma.config.ts
+COPY --from=builder /repo/web/app/generated ./web/app/generated
 
+WORKDIR /repo/web
 EXPOSE 3000
 # Run migrations on boot, then start Next on Railway-assigned $PORT.
 # Bypass the package.json `start` script — it wraps next in dotenv-cli looking
