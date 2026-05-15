@@ -1,7 +1,10 @@
 """Unit tests for SoundCloud adapter helpers."""
+from unittest.mock import AsyncMock, MagicMock
+
+import httpx
 import pytest
 
-from app.adapters.soundcloud import _clean_title, _split_query
+from app.adapters.soundcloud import SoundCloudAdapter, _clean_title, _split_query
 
 
 # ── _split_query ──────────────────────────────────────────────────────────────
@@ -81,3 +84,57 @@ def test_clean_title_remix_suffix_preserved():
 
 def test_clean_title_radio_edit_stripped():
     assert _clean_title("Buurman Uit Berlijn [Radio Edit] (feat. Joost)") == "Buurman Uit Berlijn"
+
+
+# ── _fetch_recommended seed exclusion ─────────────────────────────────────────
+
+def _mock_async_client(html: str, monkeypatch):
+    resp = MagicMock(spec=httpx.Response)
+    resp.raise_for_status = MagicMock(return_value=None)
+    resp.text = html
+
+    client = MagicMock()
+    client.get = AsyncMock(return_value=resp)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
+    monkeypatch.setattr("app.adapters.soundcloud.httpx.AsyncClient", lambda **_: client)
+
+
+async def test_fetch_recommended_excludes_seed_track(monkeypatch):
+    # The /recommended page links back to the seed (player widget at the top).
+    # Without exclusion, the queried track itself leaks into the results.
+    html = """
+    <noscript>
+      <a href="/rill/onyx-balls-baile">Rill - Onyx Balls Baile</a>
+      <a href="/oscar-mulero/horses">Oscar Mulero - Horses</a>
+      <a href="/surgeon/vortex">Surgeon - Vortex</a>
+    </noscript>
+    """
+    _mock_async_client(html, monkeypatch)
+    adapter = SoundCloudAdapter()
+    seed_url = "https://soundcloud.com/rill/onyx-balls-baile"
+
+    results = await adapter._fetch_recommended(seed_url, limit=5)
+
+    urls = [t.sourceUrl for t in results]
+    assert seed_url not in urls
+    assert urls == [
+        "https://soundcloud.com/oscar-mulero/horses",
+        "https://soundcloud.com/surgeon/vortex",
+    ]
+
+
+async def test_fetch_recommended_seed_exclusion_ignores_trailing_slash(monkeypatch):
+    html = """
+    <noscript>
+      <a href="/rill/onyx-balls-baile/">Rill - Onyx Balls Baile</a>
+      <a href="/surgeon/vortex">Surgeon - Vortex</a>
+    </noscript>
+    """
+    _mock_async_client(html, monkeypatch)
+    adapter = SoundCloudAdapter()
+
+    results = await adapter._fetch_recommended("https://soundcloud.com/rill/onyx-balls-baile", limit=5)
+
+    assert [t.sourceUrl for t in results] == ["https://soundcloud.com/surgeon/vortex"]
