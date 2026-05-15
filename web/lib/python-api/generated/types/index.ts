@@ -45,6 +45,7 @@ export type { HTTPValidationError } from "./HTTPValidationError";
 export type { LabelRelease } from "./LabelRelease";
 export type { LabelReleasesPagination } from "./LabelReleasesPagination";
 export type { LabelReleasesResponse } from "./LabelReleasesResponse";
+export type { SampleFeatures } from "./SampleFeatures";
 export type {
   SearchArtists200,
   SearchArtists422,
@@ -68,7 +69,18 @@ export type {
 } from "./SearchLabels";
 export type { SimilarRequest } from "./SimilarRequest";
 export type { SimilarResponse } from "./SimilarResponse";
+export type { SourceAppearance } from "./SourceAppearance";
 export type { SourceList } from "./SourceList";
 export type { TracklistItem } from "./TracklistItem";
 export type { TrackMeta } from "./TrackMeta";
+export type { TrainingRequest } from "./TrainingRequest";
+export type { TrainingResult } from "./TrainingResult";
+export type { TrainingSample } from "./TrainingSample";
+export type {
+  TrainWeights200,
+  TrainWeights422,
+  TrainWeightsMutation,
+  TrainWeightsMutationRequest,
+  TrainWeightsMutationResponse,
+} from "./TrainWeights";
 export type { ValidationError } from "./ValidationError";

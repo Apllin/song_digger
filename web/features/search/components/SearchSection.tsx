@@ -67,6 +67,7 @@ export function SearchSection({ initialQuery }: SearchSectionProps) {
           totalPages={pagination.pages}
           totalItems={pagination.items}
           isLoading={isFetchingPage}
+          searchQueryId={search.id}
           onPrev={() => setSearch((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
           onNext={() => setSearch((prev) => ({ ...prev, page: Math.min(pagination.pages, prev.page + 1) }))}
         />
