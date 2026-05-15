@@ -1,5 +1,5 @@
+import process from "node:process";
 import { PrismaPg } from "@prisma/adapter-pg";
-
 import { PrismaClient } from "../app/generated/prisma/client.ts";
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
