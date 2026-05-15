@@ -85,7 +85,7 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     onEnded,
   });
 
-   // Resolve non-playable sources (lastfm, cosine_club, null-coerced, etc.) to a
+  // Resolve non-playable sources (lastfm, cosine_club, null-coerced, etc.) to a
   // YTM/Bandcamp embed. Includes source=null so tracks whose original source
   // fell outside TrackSourceSchema still get a chance — and a route to skip.
   const shouldResolve = !!track && (track.source === null || !PLAYABLE_SOURCES.has(track.source));

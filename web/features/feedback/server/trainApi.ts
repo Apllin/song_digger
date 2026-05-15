@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 
+import { SimilaritySource } from "@/app/generated/prisma/client";
 import { TrackFeaturesSchema } from "@/lib/aggregator";
 import { requireTrainer } from "@/lib/auth-utils";
 import type { AppEnv } from "@/lib/hono/types";
@@ -43,30 +44,32 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
   const pythonServiceUrl = c.var.pythonServiceUrl;
   const result = await trainWeights({ samples }, { baseURL: pythonServiceUrl });
 
-  const version = await prisma.modelWeights.count();
+  const latest = await prisma.modelWeights.findFirst({
+    orderBy: { version: "desc" },
+    select: { version: true },
+  });
+  const nextVersion = (latest?.version ?? 0) + 1;
 
-  await prisma.$transaction([
-    prisma.modelWeights.create({
-      data: {
-        version: version + 1,
-        trainedAt: new Date(),
-        sampleSize: result.sample_size,
-        rankDecayK: result.rank_decay_k,
-        cosineScoreWeight: result.cosine_score_weight,
-        numSourcesWeight: result.num_sources_weight,
-        sourceWeights: {
-          create: Object.entries(result.source_weights).map(([source, weight]) => ({
-            source: source as Parameters<typeof prisma.sourceWeight.create>[0]["data"]["source"],
-            weight,
-          })),
-        },
+  await prisma.modelWeights.create({
+    data: {
+      version: nextVersion,
+      trainedAt: new Date(),
+      sampleSize: result.sample_size,
+      rankDecayK: result.rank_decay_k,
+      cosineScoreWeight: result.cosine_score_weight,
+      numSourcesWeight: result.num_sources_weight,
+      sourceWeights: {
+        create: Object.entries(result.source_weights).map(([source, weight]) => ({
+          source: source as SimilaritySource,
+          weight,
+        })),
       },
-    }),
-  ]);
+    },
+  });
 
   return c.json({
     ok: true,
-    version: version + 1,
+    version: nextVersion,
     sampleSize: result.sample_size,
     sourceWeights: result.source_weights,
   } as const);

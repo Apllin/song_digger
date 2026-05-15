@@ -63,7 +63,7 @@ export function SearchSection({ initialQuery }: SearchSectionProps) {
 
       {!isSearching && pagination != null && pagination.items > 0 && (
         <ResultsGrid
-          tracks={tracks as unknown as PlayerTrack[]}
+          tracks={tracks}
           page={page}
           totalPages={pagination.pages}
           totalItems={pagination.items}
