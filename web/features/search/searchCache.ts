@@ -25,7 +25,7 @@ import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 // tiebreaker, artist diversification), cover enrichment, or saveTracks
 // logic — these only affect layer-1 misses and run fresh every time.
 export const SEARCH_CACHE_SOURCE = "search_response";
-export const SEARCH_CACHE_VERSION = "v10";
+export const SEARCH_CACHE_VERSION = "v11";
 export const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
 export const PYTHON_LIMIT_PER_SOURCE = 40;
 

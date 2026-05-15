@@ -229,7 +229,12 @@ class SoundCloudAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[SoundCloud] recommended error: {e}")
             return []
-        return _parse_tracks(resp.text, limit)
+        # The page links back to the seed (player widget at the top), so without
+        # this exclusion the queried track itself leaks into the results.
+        # Parse limit+1 so dropping the seed still yields `limit` tracks.
+        tracks = _parse_tracks(resp.text, limit + 1)
+        seed_normalized = seed_url.rstrip("/")
+        return [t for t in tracks if t.sourceUrl.rstrip("/") != seed_normalized][:limit]
 
     async def random_techno_track(self) -> TrackMeta | None:
         return None
