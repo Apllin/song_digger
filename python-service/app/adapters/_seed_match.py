@@ -16,6 +16,10 @@ similarity recommendations are then wildly off-genre.
 - Bare-artist queries (no ` - ` separator) accept any candidate whose artist
   tokens overlap with the query — the intent is "pick the first track by this
   artist as a seed". Candidates whose artist doesn't match are rejected.
+  Within the matching pool, candidates whose artist *equals* the query (after
+  splitting collabs on `,` / `&` / `feat` / `vs` / `x`) outrank ones that only
+  match by subset — so a query like "Rill" prefers an artist named "rill" or
+  "rill & X" over a single-name artist "Rill Saionji".
 
 `query_matches()` is the boolean wrapper kept for callers that only need a
 yes/no answer.
@@ -35,8 +39,9 @@ SEED_CANDIDATES = 5
 # Match scores returned by query_match_score(). Callers pick the candidate
 # with the highest score among the top SEED_CANDIDATES hits.
 MATCH_NONE = 0
-MATCH_ARTIST = 1  # bare-artist query: artist tokens overlap with the candidate
-MATCH_EXACT = 3   # "Artist - Title" query: title signatures equal after normalisation
+MATCH_ARTIST = 1         # bare-artist: query tokens are a subset of the candidate's combined artist tokens
+MATCH_ARTIST_EXACT = 2   # bare-artist: query equals one of the candidate's collab-split artist entities
+MATCH_EXACT = 3          # "Artist - Title": title signatures equal after normalisation
 
 
 def _normalize(s: str) -> str:
@@ -53,6 +58,14 @@ _COLLAB_SPLIT = re.compile(
 def _artist_tokens(s: str) -> set[str]:
     s = _COLLAB_SPLIT.sub(" ", _normalize(s))
     return set(s.split())
+
+
+def _artist_entities(s: str) -> list[set[str]]:
+    """Split candidate artist by collab separators into per-artist token sets.
+    Lets us tell apart "Rill, Saionji" (collab — `Rill` is one entity) from
+    "Rill Saionji" (single artist whose name happens to contain `Rill`)."""
+    parts = _COLLAB_SPLIT.split(_normalize(s))
+    return [set(p.split()) for p in parts if p.strip()]
 
 
 def _title_signature(s: str) -> str:
@@ -76,18 +89,23 @@ def query_match_score(query: str, cand_artist: str, cand_title: str) -> int:
     """Score a candidate against the query.
 
     Returns:
-        MATCH_EXACT  — "Artist - Title" query: artist tokens overlap *and* title
-                       signatures are equal after normalisation. The only score
-                       that makes an "Artist - Title" query accept a candidate.
-        MATCH_ARTIST — bare-artist query (no ' - '): artist tokens overlap with
-                       the candidate. Caller uses the first such candidate as
-                       the seed track for that artist.
-        MATCH_NONE   — neither rule matched. Caller should reject this
-                       candidate and, if no candidate scores higher than
-                       MATCH_NONE, drop the source from the response entirely.
+        MATCH_EXACT         — "Artist - Title" query: artist tokens overlap *and*
+                              title signatures equal after normalisation.
+        MATCH_ARTIST_EXACT  — bare-artist: query tokens equal one of the
+                              candidate's collab-split artist entities.
+                              Preferred over MATCH_ARTIST so that a query like
+                              "Rill" picks "rill" over "Rill Saionji".
+        MATCH_ARTIST        — bare-artist: query tokens are a (proper) subset of
+                              the candidate's combined artist tokens.
+        MATCH_NONE          — no rule matched. Caller rejects the candidate.
     """
     if " - " not in query:
-        return MATCH_ARTIST if _artists_match(query, cand_artist) else MATCH_NONE
+        if not _artists_match(query, cand_artist):
+            return MATCH_NONE
+        q_tokens = _artist_tokens(query)
+        if any(q_tokens == entity for entity in _artist_entities(cand_artist)):
+            return MATCH_ARTIST_EXACT
+        return MATCH_ARTIST
     q_artist, q_title = (p.strip() for p in query.split(" - ", 1))
     if not _artists_match(q_artist, cand_artist):
         return MATCH_NONE
