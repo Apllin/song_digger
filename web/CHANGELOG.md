@@ -1,5 +1,21 @@
 # @trackdigger/web
 
+## 0.3.0-rc.0
+
+### Minor Changes
+
+- f1b1e1c: Player now resolves embeds for tracks with a null or incomplete source, so discography and label tracks fall through to the YTM/Bandcamp resolver instead of stalling on "No playback available". On the discography and label pages, the player chains album-by-album: after the last track of a release it auto-loads the next release (and the next page of releases when needed), and the matching accordion auto-expands.
+- f6d8047: Add trainer feedback system and ML-based per-source RRF weight learning
+- 8b56c91: Add heart button to tracks in Labels and Discography tabs so they can be saved to Favorites; the source link on a favorited discography track points to the Discogs release page.
+- d880932: Player gains a paginated playlist extender so the search queue continues across page boundaries; unplayable tracks now auto-skip via onEnded. Seed search in cosine/yandex/ytm now requires an exact title match for "Artist - Title" queries and falls back to artist-only matching for bare-artist queries, dropping the source when no candidate qualifies.
+
+### Patch Changes
+
+- 1568bbb: Fix SoundCloud title noise (PREMIERE/FREE DL prefixes, catalog and label suffixes) and add artist-only query support
+- 3603750: Fix SoundCloud results leaking the queried track itself — the `/recommended` page links back to the seed via its player widget, so the seed is now excluded from the parsed results.
+- 9af76f8: Stop YouTube playback when closing the player by clicking the playing card again
+- 1f397f6: Fix SSR hydration mismatch in SearchBar and infinite /api/search loop when opening a query URL (Find Similar).
+
 ## 0.2.0
 
 ### Minor Changes
