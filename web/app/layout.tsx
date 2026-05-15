@@ -1,3 +1,4 @@
+import { Provider as JotaiProvider } from "jotai";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Raleway } from "next/font/google";
 import Script from "next/script";
@@ -64,13 +65,15 @@ export default async function RootLayout({
         <div className="relative z-10 min-h-full flex flex-col">
           <SessionProvider session={session}>
             <QueryProvider>
-              <PlayerProvider>
-                <Nav rightSlot={<NavAuthSection />} />
-                {children}
-                <AnonymousLimitModalHost />
-                <NetworkErrorHost />
-                <SessionExpiredHost />
-              </PlayerProvider>
+              <JotaiProvider>
+                <PlayerProvider>
+                  <Nav rightSlot={<NavAuthSection />} />
+                  {children}
+                  <AnonymousLimitModalHost />
+                  <NetworkErrorHost />
+                  <SessionExpiredHost />
+                </PlayerProvider>
+              </JotaiProvider>
             </QueryProvider>
           </SessionProvider>
         </div>
