@@ -3,7 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useHydrateAtoms } from "jotai/utils";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { playerAtom, playlistExtenderAtom } from "@/features/player/atoms";
 import type { PlayerTrack } from "@/features/player/types";
@@ -32,14 +32,20 @@ export function useSearchFlow(initialQuery = "") {
     },
   });
 
+  // Via a ref so startSearch stays stable — otherwise the mount effect re-fires after each mutation and loops.
+  const isSearchingRef = useRef(isSearching);
+  useEffect(() => {
+    isSearchingRef.current = isSearching;
+  }, [isSearching]);
+
   const startSearch = useCallback(
     async (rawQuery: string) => {
       const trimmed = rawQuery.trim();
-      if (!trimmed || isSearching) return;
+      if (!trimmed || isSearchingRef.current) return;
       setSearch((prev) => ({ ...prev, id: null, page: 1 }));
       await mutateAsync(trimmed).catch(() => {});
     },
-    [isSearching, mutateAsync, setSearch],
+    [mutateAsync, setSearch],
   );
 
   useEffect(() => {
