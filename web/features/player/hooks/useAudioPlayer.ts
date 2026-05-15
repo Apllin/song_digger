@@ -2,13 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
-import { useSetAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useAtom, useSetAtom } from "jotai";
+import { useEffect, useRef } from "react";
 import { useBandcampAudio } from "./useBandcampAudio";
 import { useSoundCloudPlayer } from "./useSoundCloudPlayer";
 import { useYTPlayer } from "./useYTPlayer";
 
-import { unplayableTrackIdsAtom } from "@/features/player/atoms";
+import { playerVolumeAtom, unplayableTrackIdsAtom } from "@/features/player/atoms";
 import type { PlayerAdapter, PlayerTrack, TrackSource } from "@/features/player/types";
 import { extractVideoId } from "@/features/player/ytApi";
 import { api } from "@/lib/hono/client";
@@ -63,7 +63,7 @@ function canAdapterPlay(track: PlayerTrack): boolean {
 }
 
 export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlayerReturn {
-  const [volume, setVolume] = useState(100);
+  const [volume, setVolume] = useAtom(playerVolumeAtom);
   const setUnplayable = useSetAtom(unplayableTrackIdsAtom);
 
   const onEndedRef = useRef(onEnded);
