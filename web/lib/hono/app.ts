@@ -8,6 +8,8 @@ import { discographyApi } from "@/features/discography/server/discographyApi";
 import { dislikeApi } from "@/features/dislike/server/dislikeApi";
 import { embedApi } from "@/features/embed/server/embedApi";
 import { favoriteApi } from "@/features/favorite/server/favoriteApi";
+import { feedbackApi } from "@/features/feedback/server/feedbackApi";
+import { trainApi } from "@/features/feedback/server/trainApi";
 import { healthApi } from "@/features/health/server/healthApi";
 import { labelApi } from "@/features/label/server/labelApi";
 import { searchApi } from "@/features/search/server/searchApi";
@@ -29,6 +31,8 @@ export const app = new Hono<AppEnv>()
   .route("/", bandcampAudioApi)
   .route("/", discographyApi)
   .route("/", dislikeApi)
+  .route("/", feedbackApi)
+  .route("/", trainApi)
   .route("/", embedApi)
   .route("/", favoriteApi)
   .route("/", healthApi)

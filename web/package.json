@@ -6,6 +6,8 @@
     "build": "pnpm run with-env next build",
     "codegen": "kubb",
     "db:generate": "pnpm run with-env prisma generate",
+    "db:migrate": "pnpm run with-env prisma migrate dev",
+    "db:deploy": "pnpm run with-env prisma migrate deploy",
     "dev": "pnpm run with-env next dev",
     "lint": "pnpm run with-env eslint",
     "lint:fix": "pnpm run with-env eslint --fix",

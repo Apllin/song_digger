@@ -9,6 +9,7 @@ import { useUserId } from "@/features/auth/hooks/useUserId";
 import { useDislikedKeys, useDislikeTrack } from "@/features/dislike/hooks/useDislikes";
 import { makeDislikeKey } from "@/features/dislike/types";
 import { useFavoriteIds, useToggleFavorite } from "@/features/favorite/hooks/useFavorites";
+import { TrainerFeedbackButtons } from "@/features/feedback/components/TrainerFeedbackButtons";
 import type { PlayerTrack } from "@/features/player/types";
 
 export interface ResultsGridProps {
@@ -17,6 +18,7 @@ export interface ResultsGridProps {
   totalPages: number;
   totalItems: number;
   isLoading: boolean;
+  searchQueryId?: string | null;
   summaryLabel?: (n: number) => string;
   onPrev: () => void;
   onNext: () => void;
@@ -30,6 +32,7 @@ export function ResultsGrid({
   totalPages,
   totalItems,
   isLoading,
+  searchQueryId,
   summaryLabel = defaultSummaryLabel,
   onPrev,
   onNext,
@@ -67,15 +70,17 @@ export function ResultsGrid({
           className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6 transition-opacity ${isLoading ? "opacity-40" : ""}`}
         >
           {visibleTracks.map((track, idx) => (
-            <TrackCard
-              key={track.id}
-              track={track}
-              playlist={visibleTracks}
-              trackIndex={idx}
-              isFavorite={favoriteIds.has(track.id)}
-              onFavoriteToggle={isAuthenticated ? toggleFavorite : undefined}
-              onDislike={isAuthenticated ? () => handleDislike(track) : undefined}
-            />
+            <div key={track.id} className="flex flex-col">
+              <TrackCard
+                track={track}
+                playlist={visibleTracks}
+                trackIndex={idx}
+                isFavorite={favoriteIds.has(track.id)}
+                onFavoriteToggle={isAuthenticated ? toggleFavorite : undefined}
+                onDislike={isAuthenticated ? () => handleDislike(track) : undefined}
+              />
+              {searchQueryId && <TrainerFeedbackButtons searchQueryId={searchQueryId} trackId={track.id} />}
+            </div>
           ))}
         </div>
         {isLoading && <PageLoader />}

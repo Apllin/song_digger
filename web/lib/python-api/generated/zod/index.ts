@@ -40,6 +40,7 @@ export { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 export { labelReleaseSchema } from "./labelReleaseSchema";
 export { labelReleasesPaginationSchema } from "./labelReleasesPaginationSchema";
 export { labelReleasesResponseSchema } from "./labelReleasesResponseSchema";
+export { sampleFeaturesSchema } from "./sampleFeaturesSchema";
 export {
   searchArtists200Schema,
   searchArtists422Schema,
@@ -60,7 +61,17 @@ export {
 } from "./searchLabelsSchema";
 export { similarRequestSchema } from "./similarRequestSchema";
 export { similarResponseSchema } from "./similarResponseSchema";
+export { sourceAppearanceSchema } from "./sourceAppearanceSchema";
 export { sourceListSchema } from "./sourceListSchema";
 export { tracklistItemSchema } from "./tracklistItemSchema";
 export { trackMetaSchema } from "./trackMetaSchema";
+export { trainingRequestSchema } from "./trainingRequestSchema";
+export { trainingResultSchema } from "./trainingResultSchema";
+export { trainingSampleSchema } from "./trainingSampleSchema";
+export {
+  trainWeights200Schema,
+  trainWeights422Schema,
+  trainWeightsMutationRequestSchema,
+  trainWeightsMutationResponseSchema,
+} from "./trainWeightsSchema";
 export { validationErrorSchema } from "./validationErrorSchema";

@@ -1,159 +1,180 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+    provider = "prisma-client"
+    output   = "../app/generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+    provider = "postgresql"
+}
+
+enum UserRole {
+    USER
+    TRAINER
+}
+
+enum SimilaritySource {
+    cosine_club
+    youtube_music
+    yandex_music
+    lastfm
+    trackidnet
+    soundcloud
 }
 
 model Track {
-  id             String          @id @default(cuid())
-  title          String
-  artist         String
-  source         String
-  sourceUrl      String          @unique
-  coverUrl       String?
-  embedUrl       String?
-  createdAt      DateTime        @default(now())
-  favorites      Favorite[]
-  searchResults  SearchResult[]
+    id                 String               @id @default(cuid())
+    title              String
+    artist             String
+    source             String
+    sourceUrl          String               @unique
+    coverUrl           String?
+    embedUrl           String?
+    createdAt          DateTime             @default(now())
+    favorites          Favorite[]
+    searchResults      SearchResult[]
+    similarityFeedback SimilarityFeedback[]
 
-  @@index([source])
+    @@index([source])
 }
 
 // Auth.js v5 — see ADR-0020. JWT sessions, but Prisma adapter still
 // requires Account/Session tables. Account stays empty until OAuth lands.
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  emailVerified DateTime?
-  passwordHash  String?
-  name          String?
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+    id            String    @id @default(cuid())
+    email         String    @unique
+    emailVerified DateTime?
+    passwordHash  String?
+    name          String?
+    image         String?
+    createdAt     DateTime  @default(now())
+    updatedAt     DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  favorites      Favorite[]
-  dislikedTracks DislikedTrack[]
+    role               UserRole             @default(USER)
+    accounts           Account[]
+    sessions           Session[]
+    favorites          Favorite[]
+    dislikedTracks     DislikedTrack[]
+    similarityFeedback SimilarityFeedback[]
 
-  @@index([email])
+    @@index([email])
 }
 
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
+    id                String  @id @default(cuid())
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String? @db.Text
+    access_token      String? @db.Text
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String? @db.Text
+    session_state     String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+    @@unique([provider, providerAccountId])
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
+    id           String   @id @default(cuid())
+    sessionToken String   @unique
+    userId       String
+    expires      DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // 6-digit email verification codes. Stored bcrypt-hashed so DB
 // compromise doesn't leak in-flight codes. 15-minute expiry.
 model VerificationCode {
-  id        String   @id @default(cuid())
-  email     String
-  code      String
-  expires   DateTime
-  createdAt DateTime @default(now())
+    id        String   @id @default(cuid())
+    email     String
+    code      String
+    expires   DateTime
+    createdAt DateTime @default(now())
 
-  @@index([email])
+    @@index([email])
 }
 
 // 32-byte hex token mailed as a reset link. 1-hour expiry.
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  email     String
-  token     String   @unique
-  expires   DateTime
-  createdAt DateTime @default(now())
+    id        String   @id @default(cuid())
+    email     String
+    token     String   @unique
+    expires   DateTime
+    createdAt DateTime @default(now())
 
-  @@index([email])
+    @@index([email])
 }
 
 model SearchQuery {
-  id        String         @id @default(cuid())
-  input     String
-  cacheKey  String?
-  status    String         @default("pending")
-  createdAt DateTime       @default(now())
-  results   SearchResult[]
+    id                 String               @id @default(cuid())
+    input              String
+    cacheKey           String?
+    status             String               @default("pending")
+    createdAt          DateTime             @default(now())
+    results            SearchResult[]
+    similarityFeedback SimilarityFeedback[]
 
-  @@index([cacheKey, status, createdAt])
+    @@index([cacheKey, status, createdAt])
 }
 
 model SearchResult {
-  id            String      @id @default(cuid())
-  searchQueryId String
-  trackId       String
-  score         Float?
-  // All adapter sources that contributed this candidate to THIS search,
-  // captured from the aggregator's `appearances` (RRF fusion). Track.source
-  // stores only the first/primary source — that loses attribution when
-  // multiple sources surface the same identity. The UI renders one chip
-  // per entry.
-  sources       String[]    @default([])
-  searchQuery   SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
-  track         Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+    id            String      @id @default(cuid())
+    searchQueryId String
+    trackId       String
+    score         Float?
+    // All adapter sources that contributed this candidate to THIS search,
+    // captured from the aggregator's `appearances` (RRF fusion). Track.source
+    // stores only the first/primary source — that loses attribution when
+    // multiple sources surface the same identity. The UI renders one chip
+    // per entry.
+    sources       String[]    @default([])
+    // TrackFeatures snapshot at aggregation time — used as ML training input.
+    // Shape mirrors web/lib/aggregator.ts TrackFeatures.
+    features      Json?
+    searchQuery   SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
+    track         Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
-  @@unique([searchQueryId, trackId])
-  @@index([searchQueryId])
+    @@unique([searchQueryId, trackId])
+    @@index([searchQueryId])
 }
 
 model Favorite {
-  id        String   @id @default(cuid())
-  userId    String
-  trackId   String
-  createdAt DateTime @default(now())
+    id        String   @id @default(cuid())
+    userId    String
+    trackId   String
+    createdAt DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, trackId])
-  @@index([userId])
+    @@unique([userId, trackId])
+    @@index([userId])
 }
 
 model DislikedTrack {
-  id        String   @id @default(cuid())
-  userId    String
-  // Normalized identity keys for matching against candidate tracks.
-  // Same normalization as web/lib/aggregator.ts:normalizeArtist /
-  // normalizeTitle (NFKD diacritic strip + lowercase + drop
-  // non-alphanumerics for artist; whitelisted suffix-strip + lowercase
-  // for title).
-  artistKey String
-  titleKey  String
-  // Originals retained for UI display.
-  artist    String
-  title     String
-  createdAt DateTime @default(now())
+    id        String   @id @default(cuid())
+    userId    String
+    // Normalized identity keys for matching against candidate tracks.
+    // Same normalization as web/lib/aggregator.ts:normalizeArtist /
+    // normalizeTitle (NFKD diacritic strip + lowercase + drop
+    // non-alphanumerics for artist; whitelisted suffix-strip + lowercase
+    // for title).
+    artistKey String
+    titleKey  String
+    // Originals retained for UI display.
+    artist    String
+    title     String
+    createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, artistKey, titleKey])
-  @@index([userId, artistKey])
+    @@unique([userId, artistKey, titleKey])
+    @@index([userId, artistKey])
 }
 
 // Per-IP counter for anonymous (unauthenticated) requests. Pooled across
@@ -161,11 +182,11 @@ model DislikedTrack {
 // Persistent until the user registers — Stage K may add periodic cleanup.
 // See ADR-0021.
 model AnonymousRequest {
-  id      String   @id @default(cuid())
-  ip      String   @unique
-  count   Int      @default(0)
-  firstAt DateTime @default(now())
-  lastAt  DateTime @default(now())
+    id      String   @id @default(cuid())
+    ip      String   @unique
+    count   Int      @default(0)
+    firstAt DateTime @default(now())
+    lastAt  DateTime @default(now())
 }
 
 // One row per login attempt, kept for as long as the rate-limit and
@@ -173,16 +194,16 @@ model AnonymousRequest {
 // Stage K may add a periodic cleanup job — for now the table grows
 // unbounded but stays small in absolute terms. ADR-0021.
 model LoginAttempt {
-  id        String   @id @default(cuid())
-  ip        String
-  // null when the submitted email failed Zod parse (still recorded
-  // against IP so the per-IP cap protects against random probing).
-  email     String?
-  success   Boolean  @default(false)
-  createdAt DateTime @default(now())
+    id        String   @id @default(cuid())
+    ip        String
+    // null when the submitted email failed Zod parse (still recorded
+    // against IP so the per-IP cap protects against random probing).
+    email     String?
+    success   Boolean  @default(false)
+    createdAt DateTime @default(now())
 
-  @@index([ip, createdAt])
-  @@index([email, createdAt])
+    @@index([ip, createdAt])
+    @@index([email, createdAt])
 }
 
 // Embed-URL cache keyed by normalized (artistKey, titleKey). Populated lazily
@@ -192,24 +213,24 @@ model LoginAttempt {
 // uploaded tracks eventually become discoverable. Lazy invalidation on player
 // error is in the backlog.
 model TrackEmbed {
-  id String @id @default(cuid())
+    id String @id @default(cuid())
 
-  // Same normalization convention as DislikedTrack: aggregator.ts
-  // normalizeArtist / normalizeTitle.
-  artistKey String
-  titleKey  String
+    // Same normalization convention as DislikedTrack: aggregator.ts
+    // normalizeArtist / normalizeTitle.
+    artistKey String
+    titleKey  String
 
-  // null = "we looked and didn't find" (negative cache, 7-day TTL via updatedAt).
-  embedUrl  String?
-  sourceUrl String?
-  source    String? // "youtube_music" | "bandcamp" | null
-  coverUrl  String?
+    // null = "we looked and didn't find" (negative cache, 7-day TTL via updatedAt).
+    embedUrl  String?
+    sourceUrl String?
+    source    String? // "youtube_music" | "bandcamp" | null
+    coverUrl  String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([artistKey, titleKey])
-  @@index([updatedAt])
+    @@unique([artistKey, titleKey])
+    @@index([updatedAt])
 }
 
 // Generic cache for external-API responses (Discogs metadata, iTunes covers,
@@ -223,15 +244,15 @@ model TrackEmbed {
 // payload can be served with different freshness windows from different
 // callers if needed.
 model ExternalApiCache {
-  id        String   @id @default(cuid())
-  source    String
-  cacheKey  String
-  payload   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    source    String
+    cacheKey  String
+    payload   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([source, cacheKey])
-  @@index([source, updatedAt])
+    @@unique([source, cacheKey])
+    @@index([source, updatedAt])
 }
 
 // Per-request cost telemetry. One row per HTTP request handled by the Hono
@@ -246,70 +267,108 @@ model ExternalApiCache {
 // distinct from the synchronous request that spawned it (e.g. `BG /api/search`
 // is the post-response worker for `POST /api/search`).
 model RequestMetric {
-  id            String   @id @default(cuid())
-  route         String
-  method        String
-  statusCode    Int
-  durationMs    Int
-  cpuMs         Int
-  responseBytes Int      @default(0)
-  // Null for routes that never call Python.
-  pythonDurationMs Int?
-  // True = served from SearchQuery cache, false = live Python fan-out, null = not a search route.
-  cacheHit      Boolean?
-  // Adapter source names that returned tracks (search route only).
-  sourcesUsed   Json?
-  userId        String?
-  createdAt     DateTime @default(now())
+    id               String   @id @default(cuid())
+    route            String
+    method           String
+    statusCode       Int
+    durationMs       Int
+    cpuMs            Int
+    responseBytes    Int      @default(0)
+    // Null for routes that never call Python.
+    pythonDurationMs Int?
+    // True = served from SearchQuery cache, false = live Python fan-out, null = not a search route.
+    cacheHit         Boolean?
+    // Adapter source names that returned tracks (search route only).
+    sourcesUsed      Json?
+    userId           String?
+    createdAt        DateTime @default(now())
 
-  @@index([route, createdAt])
-  @@index([createdAt])
+    @@index([route, createdAt])
+    @@index([createdAt])
 }
 
 // Metadata for a fetched artist discography. One row per artist; used for TTL
 // checks and can be extended with fetch telemetry (duration, page count, etc.)
 // without touching the release rows.
 model ArtistReleasesMeta {
-  artistId  String   @id
-  fetchedAt DateTime @default(now()) @updatedAt
+    artistId  String   @id
+    fetchedAt DateTime @default(now()) @updatedAt
 }
 
 // One row per Discogs release per artist. Populated by the Hono layer on cache
 // miss (Python fans out all Discogs pages). Filtering, sorting, and pagination
 // are handled by Prisma; TTL is tracked separately in ArtistReleasesMeta.
 model ArtistRelease {
-  id          String  @id @default(cuid())
-  artistId    String
-  releaseId   String
-  title       String
-  artist      String?
-  year        Int?
-  type        String?
-  role        String?
-  format      String?
-  label       String?
-  thumb       String?
-  resourceUrl String?
+    id          String  @id @default(cuid())
+    artistId    String
+    releaseId   String
+    title       String
+    artist      String?
+    year        Int?
+    type        String?
+    role        String?
+    format      String?
+    label       String?
+    thumb       String?
+    resourceUrl String?
 
-  @@unique([artistId, releaseId])
-  @@index([artistId, role, year(sort: Desc)])
+    @@unique([artistId, releaseId])
+    @@index([artistId, role, year(sort: Desc)])
 }
 
 model LastfmArtistSimilars {
-  id String @id @default(cuid())
+    id String @id @default(cuid())
 
-  // Lowercased, trimmed seed artist name. Mirrors the _normalize convention
-  // used by the trackid co-occurrence cache in app/core/db.py.
-  seedArtist String @unique
+    // Lowercased, trimmed seed artist name. Mirrors the _normalize convention
+    // used by the trackid co-occurrence cache in app/core/db.py.
+    seedArtist String @unique
 
-  // JSON list of {name, match, url} objects from Last.fm artist.getSimilar.
-  // Stored as Json (not relational rows) because reads are always all-at-once
-  // for a seed, refreshes are atomic (replace whole row), and Last.fm's
-  // response is naturally a list.
-  similars Json
+    // JSON list of {name, match, url} objects from Last.fm artist.getSimilar.
+    // Stored as Json (not relational rows) because reads are always all-at-once
+    // for a seed, refreshes are atomic (replace whole row), and Last.fm's
+    // response is naturally a list.
+    similars Json
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@index([updatedAt])
+    @@index([updatedAt])
+}
+
+model SimilarityFeedback {
+    id        String   @id @default(cuid())
+    isSimilar Boolean
+    createdAt DateTime @default(now())
+
+    userId        String
+    user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+    searchQueryId String
+    searchQuery   SearchQuery @relation(fields: [searchQueryId], references: [id], onDelete: Cascade)
+    trackId       String
+    track         Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, searchQueryId, trackId])
+    @@index([userId])
+    @@index([searchQueryId])
+}
+
+model ModelWeights {
+    id                String         @id @default(cuid())
+    version           Int            @unique
+    trainedAt         DateTime
+    sampleSize        Int
+    rankDecayK        Float
+    cosineScoreWeight Float
+    numSourcesWeight  Float
+    sourceWeights     SourceWeight[]
+}
+
+model SourceWeight {
+    id             String           @id @default(cuid())
+    source         SimilaritySource
+    weight         Float
+    modelWeightsId String
+    modelWeights   ModelWeights     @relation(fields: [modelWeightsId], references: [id], onDelete: Cascade)
+
+    @@unique([modelWeightsId, source])
 }

@@ -397,6 +397,44 @@
         }
       }
     },
+    "/train": {
+      "post": {
+        "summary": "Train Weights",
+        "operationId": "train_weights",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -771,6 +809,49 @@
         ],
         "title": "LabelReleasesResponse"
       },
+      "SampleFeatures": {
+        "properties": {
+          "appearances": {
+            "items": {
+              "$ref": "#/components/schemas/SourceAppearance"
+            },
+            "type": "array",
+            "title": "Appearances"
+          },
+          "numSources": {
+            "type": "integer",
+            "title": "Numsources"
+          },
+          "minSourceRank": {
+            "type": "integer",
+            "title": "Minsourcerank"
+          },
+          "cosineScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cosinescore"
+          },
+          "rrfScore": {
+            "type": "number",
+            "title": "Rrfscore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appearances",
+          "numSources",
+          "minSourceRank",
+          "cosineScore",
+          "rrfScore"
+        ],
+        "title": "SampleFeatures"
+      },
       "SimilarRequest": {
         "properties": {
           "input": {
@@ -831,6 +912,24 @@
           "source_lists"
         ],
         "title": "SimilarResponse"
+      },
+      "SourceAppearance": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "rank"
+        ],
+        "title": "SourceAppearance"
       },
       "SourceList": {
         "properties": {
@@ -999,6 +1098,75 @@
           "artists"
         ],
         "title": "TracklistItem"
+      },
+      "TrainingRequest": {
+        "properties": {
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingSample"
+            },
+            "type": "array",
+            "title": "Samples"
+          }
+        },
+        "type": "object",
+        "required": [
+          "samples"
+        ],
+        "title": "TrainingRequest"
+      },
+      "TrainingResult": {
+        "properties": {
+          "source_weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Source Weights"
+          },
+          "cosine_score_weight": {
+            "type": "number",
+            "title": "Cosine Score Weight"
+          },
+          "num_sources_weight": {
+            "type": "number",
+            "title": "Num Sources Weight"
+          },
+          "rank_decay_k": {
+            "type": "number",
+            "title": "Rank Decay K"
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_weights",
+          "cosine_score_weight",
+          "num_sources_weight",
+          "rank_decay_k",
+          "sample_size"
+        ],
+        "title": "TrainingResult"
+      },
+      "TrainingSample": {
+        "properties": {
+          "features": {
+            "$ref": "#/components/schemas/SampleFeatures"
+          },
+          "is_similar": {
+            "type": "boolean",
+            "title": "Is Similar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "features",
+          "is_similar"
+        ],
+        "title": "TrainingSample"
       },
       "ValidationError": {
         "properties": {

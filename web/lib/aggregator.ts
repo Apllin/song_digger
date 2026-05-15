@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
@@ -7,8 +9,39 @@ import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 // sharper.
 const RRF_K = 60;
 
+// ── Weight config ─────────────────────────────────────────────────────────────
+// Loaded from ModelWeights (latest DB row) at search time; falls back to
+// DEFAULT_WEIGHTS when no trained model exists yet.
+export type WeightConfig = {
+  rankDecayK: number;
+  cosineScoreWeight: number;
+  numSourcesWeight: number;
+  sourceWeights: Partial<Record<string, number>>;
+};
+
+export const DEFAULT_WEIGHTS: WeightConfig = {
+  rankDecayK: RRF_K,
+  cosineScoreWeight: 0,
+  numSourcesWeight: 0,
+  sourceWeights: {},
+};
+
+// ── Feature snapshot ──────────────────────────────────────────────────────────
+// Written to SearchResult.features at aggregation time; used as ML input.
+// Zod schema is the source of truth so the DB JSON can be validated at read time.
+export const TrackFeaturesSchema = z.object({
+  appearances: z.array(z.object({ source: z.string(), rank: z.number() })),
+  numSources: z.number(),
+  minSourceRank: z.number(),
+  cosineScore: z.number().nullable(),
+  rrfScore: z.number(),
+});
+
+export type TrackFeatures = z.infer<typeof TrackFeaturesSchema>;
+
 export interface FusedCandidate extends TrackMeta {
   rrfScore: number;
+  cosineScore: number | null;
   appearances: { source: string; rank: number }[];
 }
 
@@ -62,27 +95,32 @@ function mergeMetadata(dest: FusedCandidate, src: TrackMeta): void {
 
 // ── Reciprocal Rank Fusion ───────────────────────────────────────────────────
 // Each source produces its own ranked list. A candidate's fused score is
-// Σ 1/(k + rankᵢ) over the sources it appears in. Candidates appearing in
-// multiple sources naturally outrank single-source candidates, even when no
-// single source ranks them at the top.
-export function rrfFuse(sourceLists: SourceList[], k: number = RRF_K): FusedCandidate[] {
+// Σ sourceWeight / (k + rankᵢ) over the sources it appears in. Candidates
+// appearing in multiple sources naturally outrank single-source candidates.
+// sourceWeights default to 1.0; k defaults to RRF_K (60).
+export function rrfFuse(sourceLists: SourceList[], weights: WeightConfig = DEFAULT_WEIGHTS): FusedCandidate[] {
   const byIdentity = new Map<string, FusedCandidate>();
 
   for (const list of sourceLists) {
+    const sw = weights.sourceWeights[list.source] ?? 1.0;
     list.tracks.forEach((track, index) => {
       const rank = index + 1; // 1-indexed for the formula
       const id = identityKey(track);
-      const contribution = 1 / (k + rank);
+      const contribution = sw / (weights.rankDecayK + rank);
 
       const existing = byIdentity.get(id);
       if (existing) {
         existing.rrfScore += contribution;
         existing.appearances.push({ source: list.source, rank });
         mergeMetadata(existing, track);
+        if (list.source === "cosine_club" && existing.cosineScore == null) {
+          existing.cosineScore = track.score ?? null;
+        }
       } else {
         byIdentity.set(id, {
           ...track,
           rrfScore: contribution,
+          cosineScore: list.source === "cosine_club" ? (track.score ?? null) : null,
           appearances: [{ source: list.source, rank }],
         });
       }
@@ -90,6 +128,16 @@ export function rrfFuse(sourceLists: SourceList[], k: number = RRF_K): FusedCand
   }
 
   return [...byIdentity.values()].sort((a, b) => b.rrfScore - a.rrfScore);
+}
+
+export function buildFeatures(t: FusedCandidate): TrackFeatures {
+  return {
+    appearances: t.appearances,
+    numSources: t.appearances.length,
+    minSourceRank: Math.min(...t.appearances.map((a) => a.rank)),
+    cosineScore: t.cosineScore,
+    rrfScore: t.rrfScore,
+  };
 }
 
 // ── Artist diversity post-processing ─────────────────────────────────────────
@@ -118,9 +166,9 @@ function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCa
 }
 
 // ── Main aggregation ─────────────────────────────────────────────────────────
-export function aggregateTracks(sourceLists: SourceList[]): FusedCandidate[] {
+export function aggregateTracks(sourceLists: SourceList[], weights: WeightConfig = DEFAULT_WEIGHTS): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
-  const fused = rrfFuse(sourceLists);
+  const fused = rrfFuse(sourceLists, weights);
 
   // 2. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
   //    keep working.

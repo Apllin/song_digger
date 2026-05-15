@@ -93,3 +93,35 @@ class TracklistItem(BaseModel):
     title: str
     duration: str
     artists: list[str]
+
+
+# ── Weight training ───────────────────────────────────────────────────────────
+
+class SourceAppearance(BaseModel):
+    source: str
+    rank: int
+
+
+class SampleFeatures(BaseModel):
+    appearances: list[SourceAppearance]
+    numSources: int
+    minSourceRank: int
+    cosineScore: float | None
+    rrfScore: float
+
+
+class TrainingSample(BaseModel):
+    features: SampleFeatures
+    is_similar: bool
+
+
+class TrainingRequest(BaseModel):
+    samples: list[TrainingSample]
+
+
+class TrainingResult(BaseModel):
+    source_weights: dict[str, float]
+    cosine_score_weight: float
+    num_sources_weight: float
+    rank_decay_k: float
+    sample_size: int
