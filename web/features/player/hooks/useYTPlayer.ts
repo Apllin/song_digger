@@ -45,6 +45,18 @@ export function useYTPlayer({ source, sourceUrl, embedUrl, volume, onEnded }: YT
     });
   }, []);
 
+  // The YT singleton lives in document.body outside React's tree, so it
+  // keeps playing after BottomPlayer unmounts on close(). Pause on teardown.
+  useEffect(() => {
+    return () => {
+      try {
+        getYTSingleton()?.pauseVideo();
+      } catch {
+        // singleton may not yet exist
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (source !== "youtube_music") {
       try {
