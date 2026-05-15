@@ -12,37 +12,30 @@ import {
   tracklistQueryKey,
   tracklistTypeOf,
 } from "@/features/discography/playerTracks";
-import { playerAtom, playlistExtenderAtom } from "@/features/player/atoms";
+import { onPlaylistEndAtom, playerAtom } from "@/features/player/atoms";
 import type { PlayerTrack } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
 
-export interface ExtenderRelease {
+export type ExtenderRelease = {
   id: string;
   type: string | null;
   artist: string | null;
   thumb: string | null;
-}
+};
 
-interface Args {
+export type UseAlbumPlaylistExtenderArgs = {
   fallbackArtist: string;
   totalPages: number;
   currentPage: number;
   setPage: (page: number) => void;
   getCachedReleases: (page: number) => ExtenderRelease[] | undefined;
   fetchReleasesPage: (page: number) => Promise<ExtenderRelease[]>;
-}
+};
 
-interface PlayerPosition {
-  page: number;
-  idxInPage: number;
-  release: ExtenderRelease;
-}
-
-// Registers a PlaylistExtender that chains album-by-album when the player
-// finishes the last track of one release. Mirrors `useSearchFlow`'s pattern
-// for search pagination — the cursor tracks the *player*'s last release, not
-// the UI's currentPage, so navigating the UI ahead of playback never makes
-// the player skip releases.
+// Registers an onPlaylistEnd handler that chains album-by-album when the
+// player finishes the last track of one release. The reverse-walk to locate
+// the player's current release runs only when the handler fires (once per
+// album end), not on every render.
 export function useAlbumPlaylistExtender({
   fallbackArtist,
   totalPages,
@@ -50,15 +43,13 @@ export function useAlbumPlaylistExtender({
   setPage,
   getCachedReleases,
   fetchReleasesPage,
-}: Args): void {
+}: UseAlbumPlaylistExtenderArgs): void {
   const qc = useQueryClient();
-  const setExtender = useSetAtom(playlistExtenderAtom);
+  const setEndHandler = useSetAtom(onPlaylistEndAtom);
   const setOpenMap = useSetAtom(discographyOpenAtom);
   const { playlist: playerPlaylist, playingIndex: playerPlayingIndex } = useAtomValue(playerAtom);
 
   // Auto-expand the accordion of the release whose track is currently playing.
-  // Without this, the extender silently advances to the next album and the
-  // user has no visual cue which release they're now hearing.
   useEffect(() => {
     if (playerPlayingIndex === null) return;
     const active = playerPlaylist[playerPlayingIndex];
@@ -68,44 +59,12 @@ export function useAlbumPlaylistExtender({
     setOpenMap((prev) => (prev[rid] ? prev : { ...prev, [rid]: true }));
   }, [playerPlaylist, playerPlayingIndex, setOpenMap]);
 
+  // Detect whether the player is currently playing any discography track.
+  const hasPlayerTracks = playerPlaylist.some((t) => releaseIdFromTrackId(t.id) !== null);
+
   useEffect(() => {
-    // Collect release IDs whose tracks currently live in the player's playlist.
-    const playerReleaseIds = new Set<string>();
-    for (const t of playerPlaylist) {
-      const rid = releaseIdFromTrackId(t.id);
-      if (rid) playerReleaseIds.add(rid);
-    }
-
-    // Walk paged release caches from the back to find the latest release the
-    // player has stepped into. We can only check pages whose data is already
-    // cached — the user has either visited them via pagination or the extender
-    // has fetched them on a prior `loadMore`.
-    let playerPosition: PlayerPosition | null = null;
-    if (playerReleaseIds.size > 0 && totalPages > 0) {
-      outer: for (let page = totalPages; page >= 1; page--) {
-        const cached = getCachedReleases(page);
-        if (!cached) continue;
-        for (let i = cached.length - 1; i >= 0; i--) {
-          const r = cached[i]!;
-          if (playerReleaseIds.has(r.id)) {
-            playerPosition = { page, idxInPage: i, release: r };
-            break outer;
-          }
-        }
-      }
-    }
-
-    if (!playerPosition) {
-      setExtender(null);
-      return;
-    }
-
-    const releasesOnPage = getCachedReleases(playerPosition.page) ?? [];
-    const hasMoreOnPage = playerPosition.idxInPage < releasesOnPage.length - 1;
-    const hasMoreOnLaterPage = playerPosition.page < totalPages;
-
-    if (!hasMoreOnPage && !hasMoreOnLaterPage) {
-      setExtender(null);
+    if (!hasPlayerTracks || totalPages === 0) {
+      setEndHandler(null);
       return;
     }
 
@@ -115,7 +74,7 @@ export function useAlbumPlaylistExtender({
         queryFn: () =>
           parseResponse(
             api.discography.tracklist.$get({
-              query: { releaseId: String(release.id), type: tracklistTypeOf(release) },
+              query: { releaseId: release.id, type: tracklistTypeOf(release) },
             }),
           ),
         staleTime: Infinity,
@@ -124,35 +83,63 @@ export function useAlbumPlaylistExtender({
       return items.map((item, i) => toPlayerTrack(item, i, release, fallback));
     };
 
-    setExtender({
-      hasMore: true,
-      loadMore: async () => {
-        if (hasMoreOnPage) {
-          const next = releasesOnPage[playerPosition.idxInPage + 1]!;
-          return fetchTracksFor(next);
+    setEndHandler({
+      onEnd: (appendAndAdvance) => {
+        // Reverse-walk runs here — once per album end — not on every render.
+        const playerReleaseIds = new Set(
+          playerPlaylist.map((t) => releaseIdFromTrackId(t.id)).filter((x): x is string => x !== null),
+        );
+
+        let pos: { page: number; idxInPage: number } | null = null;
+        outer: for (let page = totalPages; page >= 1; page--) {
+          const cached = getCachedReleases(page);
+          if (!cached) continue;
+          for (let i = cached.length - 1; i >= 0; i--) {
+            if (playerReleaseIds.has(cached[i]!.id)) {
+              pos = { page, idxInPage: i };
+              break outer;
+            }
+          }
         }
-        const nextPage = playerPosition.page + 1;
-        const nextReleases = await fetchReleasesPage(nextPage);
-        const first = nextReleases[0];
-        if (!first) return [];
-        const tracks = await fetchTracksFor(first);
-        // Pull the UI page along only when the player has caught up — yanking
-        // a user who paginated ahead is more disorienting than helpful.
-        if (nextPage > currentPage) setPage(nextPage);
-        return tracks;
+        if (!pos) return;
+
+        const releasesOnPage = getCachedReleases(pos.page) ?? [];
+
+        void (async () => {
+          let nextRelease: ExtenderRelease;
+          let nextPage = pos.page;
+
+          if (pos.idxInPage < releasesOnPage.length - 1) {
+            nextRelease = releasesOnPage[pos.idxInPage + 1]!;
+          } else if (pos.page < totalPages) {
+            nextPage = pos.page + 1;
+            const nextPageReleases = await fetchReleasesPage(nextPage);
+            const first = nextPageReleases[0];
+            if (!first) return;
+            nextRelease = first;
+            if (nextPage > currentPage) setPage(nextPage);
+          } else {
+            setEndHandler(null);
+            return;
+          }
+
+          const tracks = await fetchTracksFor(nextRelease);
+          appendAndAdvance(tracks);
+        })();
       },
     });
 
-    return () => setExtender(null);
+    return () => setEndHandler(null);
   }, [
-    playerPlaylist,
+    hasPlayerTracks,
     totalPages,
     currentPage,
     setPage,
     fallbackArtist,
     qc,
-    setExtender,
+    setEndHandler,
     getCachedReleases,
     fetchReleasesPage,
+    playerPlaylist,
   ]);
 }

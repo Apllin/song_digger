@@ -31,12 +31,12 @@ export interface PlayerTrack {
   embedUrl?: string | null;
 }
 
-// Registered by paginated playlist owners (e.g. search) so that `playNext`
-// past the end of the current playlist can pull in the next page of tracks
-// instead of stalling on hasNext=false.
-export interface PlaylistExtender {
-  hasMore: boolean;
-  loadMore: () => Promise<PlayerTrack[]>;
+// Registered by paginated playlist owners (e.g. search, discography).
+// When the player reaches the end of its playlist, it calls `onEnd` and passes
+// `appendAndAdvance` — a function the handler invokes with the next batch of
+// tracks. Registering null signals there is nothing more to load.
+export interface PlaylistEndHandler {
+  onEnd(appendAndAdvance: (tracks: PlayerTrack[]) => void): void;
 }
 
 export interface DiscographyTrack {
