@@ -7,12 +7,15 @@ import { TrackRow } from "./TrackRow";
 
 import { useUserId } from "@/features/auth/hooks/useUserId";
 import { discographyOpenAtom } from "@/features/discography/atoms";
+import {
+  toPlayerTrack as toDiscographyPlayerTrack,
+  tracklistQueryKey,
+  tracklistTypeOf,
+} from "@/features/discography/playerTracks";
 import type { DiscographyRelease } from "@/features/discography/types";
 import { useFavoriteSourceUrls, useToggleFavoriteBySource } from "@/features/favorite/hooks/useFavorites";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
-import type { PlayerTrack } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
-import type { TracklistItem } from "@/lib/python-api/generated/types/TracklistItem";
 
 const DISCOGRAPHY_FAVORITE_SOURCE = "discogs";
 
@@ -46,32 +49,20 @@ function releaseTag(release: { role?: string | null; format?: string | null }): 
   return "Release";
 }
 
-function toPlayerTrack(t: TracklistItem, i: number, fallbackArtist: string, coverUrl?: string | null): PlayerTrack {
-  return {
-    id: `discography-${i}-${t.title}`,
-    title: t.title,
-    artist: t.artists.length > 0 ? t.artists.join(", ") : fallbackArtist,
-    source: "discogs",
-    sourceUrl: "",
-    coverUrl: coverUrl ?? null,
-  };
-}
-
 export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   const [openMap, setOpenMap] = useAtom(discographyOpenAtom);
   const open = openMap[release.id] ?? false;
 
-  const releaseType = release.type === "master" ? "master" : "release";
   const {
     data: tracks = [],
     isFetching,
     isFetched,
   } = useQuery({
-    queryKey: ["tracklist", release.id, releaseType],
+    queryKey: tracklistQueryKey(release),
     queryFn: () =>
       parseResponse(
         api.discography.tracklist.$get({
-          query: { releaseId: String(release.id), type: releaseType },
+          query: { releaseId: String(release.id), type: tracklistTypeOf(release) },
         }),
       ),
     enabled: open,
@@ -93,7 +84,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   // For Remix/Appearance releases that headline artist is *not* the artist the
   // user searched for — fall back to the release artist, not `artistName`.
   const fallbackArtist = release.artist?.trim() || artistName;
-  const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, fallbackArtist, release.thumb));
+  const playerTracks = tracks.map((t, i) => toDiscographyPlayerTrack(t, i, release, fallbackArtist));
   const tag = releaseTag(release);
 
   return (
