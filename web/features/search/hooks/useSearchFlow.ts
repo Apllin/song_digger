@@ -3,9 +3,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useHydrateAtoms } from "jotai/utils";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { playerAtom, playlistExtenderAtom } from "@/features/player/atoms";
+import { onPlaylistEndAtom, playerAtom } from "@/features/player/atoms";
 import type { PlayerTrack } from "@/features/player/types";
 import type { SearchQueryId } from "@/features/search/schemas";
 import { SEARCH_PAGE_SIZE } from "@/features/search/schemas";
@@ -65,69 +65,75 @@ export function useSearchFlow(initialQuery = "") {
     placeholderData: keepPreviousData,
   });
 
-  const setExtender = useSetAtom(playlistExtenderAtom);
-  const playerPlaylist = useAtomValue(playerAtom).playlist;
+  const setEndHandler = useSetAtom(onPlaylistEndAtom);
+  const player = useAtomValue(playerAtom);
   const totalPages = pageQuery.data?.pagination.pages ?? 1;
   const currentPage = search.page;
   const searchId = search.id;
 
-  // Highest search page already represented in the player's playlist. The
-  // extender's cursor tracks this, not the UI's `currentPage` — otherwise
-  // the player skips pages when the user paginates the UI ahead of playback
-  // (e.g. user on page 1 last track, clicks UI next → currentPage=2, then
-  // clicks player next → old code would fetch page 3 because it derived the
-  // cursor from currentPage).
+  // Highest search page already represented in the player's playlist. Used to
+  // detect when the player is active in this search session and to seed the
+  // cursor ref. The cursor ref itself is then incremented imperatively in the
+  // handler so re-registration after each page load does not reset it.
   const playerLastPage = useMemo(() => {
-    if (searchId == null || playerPlaylist.length === 0) return 0;
-    const playerIds = new Set(playerPlaylist.map((t) => t.id));
+    if (searchId == null || player.playlist.length === 0) return 0;
+    const playerIds = new Set(player.playlist.map((t) => t.id));
     for (let p = totalPages; p >= 1; p--) {
       const cached = qc.getQueryData<{ tracks: PlayerTrack[] }>(searchPageKey(searchId, p));
       if (!cached) continue;
       if (cached.tracks.some((t) => playerIds.has(t.id))) return p;
     }
     return 0;
-  }, [searchId, playerPlaylist, totalPages, qc]);
+  }, [searchId, player.playlist, totalPages, qc]);
+
+  // Tracks which page the player last consumed. Incremented by the handler
+  // so that effect re-runs (e.g. when UI currentPage changes) do not reset it.
+  const playerPageCursorRef = useRef(0);
+  useEffect(() => {
+    playerPageCursorRef.current = 0;
+  }, [searchId]);
 
   useEffect(() => {
-    if (searchId == null || playerLastPage === 0) {
-      setExtender(null);
+    if (searchId == null || playerLastPage === 0 || playerLastPage >= totalPages) {
+      setEndHandler(null);
       return;
     }
-    const hasMore = playerLastPage < totalPages;
-    if (!hasMore) {
-      setExtender(null);
-      return;
-    }
-    setExtender({
-      hasMore: true,
-      loadMore: async () => {
-        const nextPage = playerLastPage + 1;
-        const data = await qc.fetchQuery({
-          queryKey: searchPageKey(searchId, nextPage),
-          queryFn: ({ signal }) =>
-            fetchApi(
-              api.search[":id"].$get(
-                {
-                  param: { id: searchId },
-                  query: { page: String(nextPage), perPage: String(SEARCH_PAGE_SIZE) },
-                },
-                { init: { signal } },
-              ),
-            ),
-          staleTime: 60_000,
-        });
-        // Advance the UI only when the player is catching up to or past the
-        // user's current view. Yanking the UI back to an earlier page after
-        // the user explicitly navigated ahead is more disorienting than
-        // useful.
-        if (nextPage > currentPage) {
-          setSearch((prev) => ({ ...prev, page: nextPage }));
+
+    playerPageCursorRef.current = Math.max(playerPageCursorRef.current, playerLastPage);
+
+    setEndHandler({
+      onEnd: (appendAndAdvance) => {
+        const nextPage = playerPageCursorRef.current + 1;
+        if (nextPage > totalPages) {
+          setEndHandler(null);
+          return;
         }
-        return data.tracks as PlayerTrack[];
+        playerPageCursorRef.current = nextPage;
+        void qc
+          .fetchQuery({
+            queryKey: searchPageKey(searchId, nextPage),
+            queryFn: ({ signal }) =>
+              fetchApi(
+                api.search[":id"].$get(
+                  { param: { id: searchId }, query: { page: String(nextPage), perPage: String(SEARCH_PAGE_SIZE) } },
+                  { init: { signal } },
+                ),
+              ),
+            staleTime: 60_000,
+          })
+          .then((data) => {
+            appendAndAdvance(data.tracks);
+            // Advance the UI only when the player is catching up to or past
+            // the user's current view.
+            if (nextPage > currentPage) {
+              setSearch((prev) => ({ ...prev, page: nextPage }));
+            }
+            if (nextPage >= totalPages) setEndHandler(null);
+          });
       },
     });
-    return () => setExtender(null);
-  }, [searchId, playerLastPage, currentPage, totalPages, qc, setExtender, setSearch]);
+    return () => setEndHandler(null);
+  }, [searchId, playerLastPage, currentPage, totalPages, qc, setEndHandler, setSearch]);
 
   return {
     search,

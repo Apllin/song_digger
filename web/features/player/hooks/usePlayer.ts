@@ -3,13 +3,13 @@
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useMemo } from "react";
 
-import { playerAtom, playlistExtenderAtom, unplayableTrackIdsAtom } from "@/features/player/atoms";
+import { onPlaylistEndAtom, playerAtom, unplayableTrackIdsAtom } from "@/features/player/atoms";
 import type { PlayerTrack } from "@/features/player/types";
 
 export function usePlayer() {
   const [state, setState] = useAtom(playerAtom);
   const unplayableIds = useAtomValue(unplayableTrackIdsAtom);
-  const extender = useAtomValue(playlistExtenderAtom);
+  const endHandler = useAtomValue(onPlaylistEndAtom);
   const track = state.playingIndex !== null ? (state.playlist[state.playingIndex] ?? null) : null;
 
   const nextPlayableIndex = useMemo(() => {
@@ -62,15 +62,10 @@ export function usePlayer() {
     [setState],
   );
 
-  const playNext = useCallback(() => {
-    if (nextPlayableIndex !== null) {
-      setState((prev) => ({ ...prev, playingIndex: nextPlayableIndex }));
-      return;
-    }
-    if (!extender?.hasMore) return;
-    // Fire-and-forget: load the next page, append new tracks, jump to the
-    // first new index. Concurrent calls dedupe via the existingIds check.
-    void extender.loadMore().then((more) => {
+  // Passed to the registered end-handler so it can inject the next batch
+  // without knowing anything about player internals.
+  const appendAndAdvance = useCallback(
+    (more: PlayerTrack[]) => {
       if (more.length === 0) return;
       setState((prev) => {
         const existingIds = new Set(prev.playlist.map((t) => t.id));
@@ -82,8 +77,17 @@ export function usePlayer() {
           playingIndex: prev.playlist.length,
         };
       });
-    });
-  }, [setState, nextPlayableIndex, extender]);
+    },
+    [setState],
+  );
+
+  const playNext = useCallback(() => {
+    if (nextPlayableIndex !== null) {
+      setState((prev) => ({ ...prev, playingIndex: nextPlayableIndex }));
+      return;
+    }
+    endHandler?.onEnd(appendAndAdvance);
+  }, [setState, nextPlayableIndex, endHandler, appendAndAdvance]);
 
   const playPrev = useCallback(() => {
     if (prevPlayableIndex === null) return;
@@ -98,7 +102,7 @@ export function usePlayer() {
     swapTrack,
     playNext,
     playPrev,
-    hasNext: nextPlayableIndex !== null || (extender?.hasMore ?? false),
+    hasNext: nextPlayableIndex !== null || endHandler !== null,
     hasPrev: prevPlayableIndex !== null,
   };
 }
