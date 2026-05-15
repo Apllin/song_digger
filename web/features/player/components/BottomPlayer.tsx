@@ -44,7 +44,7 @@ function BottomPlayerContent({ track }: { track: PlayerTrack }) {
 
   const audioRef = player.source === "bandcamp" ? player.audioRef : null;
 
-  const resolving = !player.source && !!track.source;
+  const resolving = player.resolving;
 
   useMediaSession({
     track,

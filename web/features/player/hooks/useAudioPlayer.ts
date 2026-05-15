@@ -9,8 +9,8 @@ import { useSoundCloudPlayer } from "./useSoundCloudPlayer";
 import { useYTPlayer } from "./useYTPlayer";
 
 import { unplayableTrackIdsAtom } from "@/features/player/atoms";
-import { PLAYABLE_SOURCES } from "@/features/player/constants";
 import type { PlayerAdapter, PlayerTrack, TrackSource } from "@/features/player/types";
+import { extractVideoId } from "@/features/player/ytApi";
 import { api } from "@/lib/hono/client";
 
 interface Props {
@@ -28,31 +28,39 @@ interface EmbedData {
 
 // Discriminated union: narrowing on `source` gives access to source-specific
 // DOM attachment fields. Add a new variant here when wiring up a new adapter.
-export type YTPlayerReturn = PlayerAdapter &
-  Pick<ReturnType<typeof useYTPlayer>, "videoId"> & {
-    source: "youtube_music";
-    volume: number;
-    setVolume: (v: number) => void;
-  };
-export type BCPlayerReturn = PlayerAdapter &
-  Pick<ReturnType<typeof useBandcampAudio>, "audioRef" | "audioUrl" | "audioEventHandlers"> & {
-    source: "bandcamp";
-    volume: number;
-    setVolume: (v: number) => void;
-  };
-export type SCPlayerReturn = PlayerAdapter &
-  Pick<ReturnType<typeof useSoundCloudPlayer>, "iframeRef" | "embedUrl"> & {
-    source: "soundcloud";
-    volume: number;
-    setVolume: (v: number) => void;
-  };
-export type IdlePlayerReturn = PlayerAdapter & {
-  source: null;
+interface AdapterShared {
   volume: number;
   setVolume: (v: number) => void;
-};
+  resolving: boolean;
+}
+export type YTPlayerReturn = PlayerAdapter &
+  Pick<ReturnType<typeof useYTPlayer>, "videoId"> &
+  AdapterShared & { source: "youtube_music" };
+export type BCPlayerReturn = PlayerAdapter &
+  Pick<ReturnType<typeof useBandcampAudio>, "audioRef" | "audioUrl" | "audioEventHandlers"> &
+  AdapterShared & { source: "bandcamp" };
+export type SCPlayerReturn = PlayerAdapter &
+  Pick<ReturnType<typeof useSoundCloudPlayer>, "iframeRef" | "embedUrl"> &
+  AdapterShared & { source: "soundcloud" };
+export type IdlePlayerReturn = PlayerAdapter & AdapterShared & { source: null };
 
 export type AudioPlayerReturn = YTPlayerReturn | BCPlayerReturn | SCPlayerReturn | IdlePlayerReturn;
+
+// A "playable" source row is only actually playable if the adapter has what it
+// needs. Track rows from older saves or feeds (discography/label tracklists)
+// can miss these fields, and without this guard the adapter spins forever.
+function canAdapterPlay(track: PlayerTrack): boolean {
+  switch (track.source) {
+    case "youtube_music":
+      return !!extractVideoId("youtube_music", track.sourceUrl, track.embedUrl);
+    case "bandcamp":
+      return !!track.sourceUrl;
+    case "soundcloud":
+      return !!track.embedUrl;
+    default:
+      return false;
+  }
+}
 
 export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlayerReturn {
   const [volume, setVolume] = useState(100);
@@ -85,12 +93,19 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     onEnded,
   });
 
-  // Resolve non-playable sources (lastfm, cosine_club, null-coerced, etc.) to a
-  // YTM/Bandcamp embed. Includes source=null so tracks whose original source
-  // fell outside TrackSourceSchema still get a chance — and a route to skip.
-  const shouldResolve = !!track && (track.source === null || !PLAYABLE_SOURCES.has(track.source));
+  // Resolve via /api/embed whenever the current track can't be played as-is:
+  // - source is null (discography/label tracks, or a failed previous resolve)
+  // - source is non-playable (lastfm, cosine_club, yandex, trackidnet)
+  // - source is "playable" but the data the adapter needs is missing
+  //   (e.g. a YTM row without a videoId, a SC row without embedUrl).
+  // Empty title/artist would produce a useless lookup, so guard on those too.
+  const shouldResolve = !!track && !!track.title && !!track.artist && !canAdapterPlay(track);
 
-  const { data: embedData, status: embedStatus } = useQuery<EmbedData | null>({
+  const {
+    data: embedData,
+    status: embedStatus,
+    fetchStatus: embedFetchStatus,
+  } = useQuery<EmbedData | null>({
     queryKey: ["embed", track?.title, track?.artist],
     queryFn: async ({ signal }) => {
       const raw = await parseResponse(
@@ -103,6 +118,8 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     staleTime: Infinity,
     retry: 1,
   });
+
+  const resolving = shouldResolve && embedFetchStatus === "fetching";
 
   useEffect(() => {
     if (!shouldResolve || embedStatus === "pending" || embedStatus === "error") return;
@@ -137,6 +154,24 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldResolve, embedStatus, embedData]);
 
+  const idle: IdlePlayerReturn = {
+    source: null,
+    playing: false,
+    currentTime: 0,
+    duration: 0,
+    isReady: false,
+    toggle: () => {},
+    seekTo: () => {},
+    volume,
+    setVolume,
+    resolving,
+  };
+
+  // While we're resolving a playable embed, show the idle UI ("Finding playable
+  // source…") instead of an adapter UI that can't actually play. Once swapTrack
+  // updates the source, the matching branch below renders the real player.
+  if (shouldResolve) return idle;
+
   if (track?.source === "youtube_music") {
     return {
       source: "youtube_music",
@@ -149,6 +184,7 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
       seekTo: yt.seekTo,
       volume,
       setVolume,
+      resolving,
     };
   }
 
@@ -166,6 +202,7 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
       seekTo: bc.seekTo,
       volume,
       setVolume,
+      resolving,
     };
   }
 
@@ -182,18 +219,9 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
       seekTo: sc.seekTo,
       volume,
       setVolume,
+      resolving,
     };
   }
 
-  return {
-    source: null,
-    playing: false,
-    currentTime: 0,
-    duration: 0,
-    isReady: false,
-    toggle: () => {},
-    seekTo: () => {},
-    volume,
-    setVolume,
-  };
+  return idle;
 }
