@@ -12,12 +12,13 @@ import {
 } from "@/features/search/schemas";
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { FusedCandidate } from "@/lib/aggregator";
-import { aggregateTracks } from "@/lib/aggregator";
+import { aggregateTracks, buildFeatures } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import { HttpError } from "@/lib/hono/httpError";
 import type { AppEnv } from "@/lib/hono/types";
+import { getActiveWeights } from "@/lib/modelWeights";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
@@ -140,6 +141,7 @@ async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Pr
       trackId: urlToRow.get(t.sourceUrl)!.id,
       score: t.score ?? null,
       sources: uniqueSources(t),
+      features: buildFeatures(t),
     })),
     skipDuplicates: true,
   });
@@ -176,7 +178,8 @@ async function runSearch(
   const pythonDurationMs = performance.now() - pythonStart;
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
-  const aggregated = aggregateTracks(pythonResult.source_lists);
+  const weights = await getActiveWeights();
+  const aggregated = aggregateTracks(pythonResult.source_lists, weights);
   const playable = await enrichMissingCovers(aggregated);
   await saveTracks(searchId, playable);
 

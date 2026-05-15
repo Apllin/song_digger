@@ -7,3 +7,4 @@ export { healthHealthGet } from "./healthHealthGet";
 export { searchArtists } from "./searchArtists";
 export { searchExactYtmSearchExactGet } from "./searchExactYtmSearchExactGet";
 export { searchLabels } from "./searchLabels";
+export { trainWeights } from "./trainWeights";

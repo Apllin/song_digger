@@ -28,3 +28,18 @@ export async function requireUser() {
   }
   return user;
 }
+
+export async function requireTrainer() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new HttpError(403, { name: "FORBIDDEN", message: "Trainer role required." });
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, email: true, role: true },
+  });
+  if (!user || user.role !== "TRAINER") {
+    throw new HttpError(403, { name: "FORBIDDEN", message: "Trainer role required." });
+  }
+  return { id: user.id, email: user.email };
+}

@@ -125,12 +125,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        // Fetch role at sign-in time so it's embedded in the JWT and never
+        // requires a DB round-trip on subsequent requests.
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id as string },
+          select: { role: true },
+        });
+        token.role = dbUser?.role ?? "USER";
+      }
       return token;
     },
     async session({ session, token }) {
       if (token?.id && session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role ?? "USER";
       }
       return session;
     },

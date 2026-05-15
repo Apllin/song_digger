@@ -2,17 +2,9 @@
 
 import { useCallback, useState } from "react";
 
+import { SOURCE_LABELS } from "@/features/player/constants";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
-
-const SOURCE_LABELS: Record<string, string> = {
-  youtube_music: "YouTube Music",
-  bandcamp: "Bandcamp",
-  cosine_club: "Cosine.club",
-  yandex_music: "Yandex.Music",
-  lastfm: "Last.fm",
-  trackidnet: "trackid.net",
-};
 
 interface TrackCardProps {
   track: PlayerTrack;
@@ -73,7 +65,9 @@ export function TrackCard({
     window.open(`/discography?artist=${encodeURIComponent(track.artist)}`, "_blank");
   };
 
-  const sourceLabel = track.source ? SOURCE_LABELS[track.source] : "Unavailable";
+  const sourceLabel = track.source ? (SOURCE_LABELS[track.source] ?? track.source) : "Unavailable";
+  const linkHref =
+    track.source === "discogs" ? (discogsReleaseUrl(track.sourceUrl) ?? track.sourceUrl) : track.sourceUrl;
 
   return (
     <div
@@ -244,7 +238,7 @@ export function TrackCard({
           </button>
         </div>
         <a
-          href={track.sourceUrl}
+          href={linkHref}
           target="_blank"
           rel="noopener noreferrer"
           className="font-mono-td text-[10px] text-td-fg-m hover:text-td-accent transition-colors truncate"
@@ -265,4 +259,9 @@ export function TrackCard({
       </div>
     </div>
   );
+}
+
+function discogsReleaseUrl(syntheticSourceUrl: string): string | null {
+  const m = syntheticSourceUrl.match(/^discogs:release\/([^/]+)/);
+  return m ? `https://www.discogs.com/release/${m[1]}` : null;
 }

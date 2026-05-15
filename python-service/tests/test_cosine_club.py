@@ -305,19 +305,69 @@ async def test_bare_title_query_still_picks_bare_seed(monkeypatch):
     assert len(out) == 1
 
 
-async def test_freeform_query_without_dash_skips_validation(monkeypatch):
-    """A query without ' - ' has no parseable artist/title — accept top hit."""
+async def test_bare_artist_query_picks_first_track_by_that_artist(monkeypatch):
+    """A bare-artist query (no ' - ') seeds off the first candidate whose
+    artist matches the query — i.e. the first track by that artist."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
         if url == "/v1/search":
-            return _ok_response({"data": [{
-                "id": "anything", "artist": "Whoever", "track": "Whatever",
-            }]})
-        if url == "/v1/tracks/anything/similar":
-            return _ok_response({"data": {"similar_tracks": []}})
+            return _ok_response({"data": [
+                # Off-artist hit — fuzzy match on title — must be skipped.
+                {"id": "off", "artist": "Some Other Soul", "track": "Oscar's Theme"},
+                # First track actually by Oscar Mulero — the seed we want.
+                {"id": "right", "artist": "Oscar Mulero", "track": "Horses"},
+            ]})
+        if url == "/v1/tracks/right/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "Faceless", "artist": "Reeko", "video_id": "v"}
+            ]}})
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("techno groove") == []
+    out = await adapter.find_similar("Oscar Mulero")
+    assert len(out) == 1
+    assert out[0].artist == "Reeko"
+
+
+async def test_bare_artist_query_returns_empty_when_no_artist_match(
+    monkeypatch, capsys
+):
+    """Bare-artist query with no candidate by that artist → drop the source."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    calls: list[str] = []
+
+    async def _get(url, **_kwargs):
+        calls.append(url)
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                {"id": "x", "artist": "Whoever", "track": "Whatever"},
+            ]})
+        raise AssertionError(f"must not GET {url} — seed rejected")
+
+    _patch_get(adapter, _get)
+    assert await adapter.find_similar("Chontane") == []
+    assert calls == ["/v1/search"]
+    assert "no seed matched" in capsys.readouterr().out
+
+
+async def test_artist_title_query_requires_exact_title_match(monkeypatch, capsys):
+    """"Artist - Title" query with no exact title match → drop the source even
+    if a candidate by the same artist exists."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                # Same artist, different track — no longer a loose match.
+                {"id": "wrong", "artist": "Oscar Mulero", "track": "Horses (VIP Mix)"},
+            ]})
+        raise AssertionError(f"must not GET {url} — seed rejected")
+
+    _patch_get(adapter, _get)
+    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert "no seed matched" in capsys.readouterr().out

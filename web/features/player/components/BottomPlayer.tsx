@@ -7,8 +7,14 @@ import { PlayerProgressBar } from "./PlayerProgressBar";
 import { PlayerTrackInfo } from "./PlayerTrackInfo";
 import { PlayerVolume } from "./PlayerVolume";
 
-import { type BCPlayerReturn, useAudioPlayer, type YTPlayerReturn } from "@/features/player/hooks/useAudioPlayer";
+import {
+  type BCPlayerReturn,
+  type SCPlayerReturn,
+  useAudioPlayer,
+  type YTPlayerReturn,
+} from "@/features/player/hooks/useAudioPlayer";
 import { useMediaSession } from "@/features/player/hooks/useMediaSession";
+import { useNextTrackPreload } from "@/features/player/hooks/useNextTrackPreload";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import { usePlayerKeyboard } from "@/features/player/hooks/usePlayerKeyboard";
 import type { PlayerTrack } from "@/features/player/types";
@@ -31,13 +37,14 @@ interface SharedProps {
 }
 
 function BottomPlayerContent({ track }: { track: PlayerTrack }) {
-  const { playingIndex, playlist, close, playNext, playPrev, swapTrack } = usePlayer();
+  const { playingIndex, playlist, close, playNext, playPrev, swapTrack, hasPrev, hasNext } = usePlayer();
   const player = useAudioPlayer({ track, onEnded: playNext, swapTrack });
 
+  useNextTrackPreload({ playlist, playingIndex });
+
   const audioRef = player.source === "bandcamp" ? player.audioRef : null;
-  const resolving = !player.source && !!track.source;
-  const hasPrev = playingIndex !== null && playingIndex > 0;
-  const hasNext = playingIndex !== null && playingIndex < playlist.length - 1;
+
+  const resolving = player.resolving;
 
   useMediaSession({
     track,
@@ -64,6 +71,8 @@ function BottomPlayerContent({ track }: { track: PlayerTrack }) {
         <YoutubePlayer player={player} {...shared} />
       ) : player.source === "bandcamp" ? (
         <BandcampPlayer player={player} {...shared} />
+      ) : player.source === "soundcloud" ? (
+        <SoundCloudPlayer player={player} {...shared} />
       ) : (
         <PlayerLayout
           track={track}
@@ -175,6 +184,53 @@ function BandcampPlayer({
         track={track}
         coverUrl={coverUrl}
         sourceHref={sourceHref}
+        resolving={resolving}
+        playing={playing}
+        currentTime={currentTime}
+        duration={duration}
+        isReady={isReady}
+        isPlayable
+        volume={volume}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
+        toggle={toggle}
+        seekTo={seekTo}
+        setVolume={setVolume}
+        playPrev={playPrev}
+        playNext={playNext}
+        close={close}
+      />
+    </>
+  );
+}
+
+function SoundCloudPlayer({
+  player,
+  track,
+  resolving,
+  hasPrev,
+  hasNext,
+  playPrev,
+  playNext,
+  close,
+}: SharedProps & { player: SCPlayerReturn }) {
+  const { playing, currentTime, duration, isReady, toggle, seekTo, volume, setVolume, iframeRef, embedUrl } = player;
+
+  return (
+    <>
+      {embedUrl && (
+        <iframe
+          ref={iframeRef}
+          src={embedUrl}
+          allow="autoplay"
+          title="SoundCloud player"
+          style={{ position: "fixed", left: "-1px", top: 0, width: "1px", height: "1px", opacity: 0 }}
+        />
+      )}
+      <PlayerLayout
+        track={track}
+        coverUrl={track.coverUrl ?? null}
+        sourceHref={track.sourceUrl ?? "#"}
         resolving={resolving}
         playing={playing}
         currentTime={currentTime}

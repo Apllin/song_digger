@@ -214,19 +214,50 @@ async def test_seed_scans_at_most_first_five_candidates():
     fake.tracks_similar.assert_not_called()
 
 
-async def test_freeform_query_without_dash_skips_validation():
-    """A query without ' - ' has no parseable artist/title — accept top hit."""
+async def test_bare_artist_query_picks_first_track_by_that_artist():
+    """A bare-artist query (no ' - ') seeds off the first candidate whose
+    artist matches — i.e. the first track by that artist in the search hits."""
     adapter = YandexMusicAdapter()
-    seed = _track("anything", "Whatever", artist="Whoever")
-    sim = _track("rec", "Some Track", artist="Some Artist")
-    _patch_client(
+    off = _track("off", "Oscar's Theme", artist="Some Other Soul")
+    right = _track("right", "Horses", artist="Oscar Mulero")
+    sim = _track("rec", "Faceless", artist="Reeko")
+    fake = _patch_client(
         adapter,
-        search=_search_response([seed]),
+        search=_search_response([off, right]),
         tracks_similar=_similar_response([sim]),
     )
-    out = await adapter.find_similar("techno groove")
+    out = await adapter.find_similar("Oscar Mulero")
     assert len(out) == 1
-    assert out[0].title == "Some Track"
+    assert out[0].artist == "Reeko"
+    fake.tracks_similar.assert_awaited_once_with("right")
+
+
+async def test_bare_artist_query_returns_empty_when_no_artist_match(capsys):
+    """Bare-artist query with no candidate by that artist → drop the source."""
+    adapter = YandexMusicAdapter()
+    fake = _patch_client(
+        adapter,
+        search=_search_response([_track("x", "Whatever", artist="Whoever")]),
+        tracks_similar=AssertionError("must not call"),
+    )
+    assert await adapter.find_similar("Chontane") == []
+    fake.tracks_similar.assert_not_called()
+    assert "no seed matched" in capsys.readouterr().out
+
+
+async def test_artist_title_query_requires_exact_title_match(capsys):
+    """"Artist - Title" query with no exact title match → drop the source."""
+    adapter = YandexMusicAdapter()
+    # Same artist, different track — under the new rules this is no longer
+    # a loose match.
+    fake = _patch_client(
+        adapter,
+        search=_search_response([_track("wrong", "Horses (VIP Mix)", artist="Oscar Mulero")]),
+        tracks_similar=AssertionError("must not call"),
+    )
+    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    fake.tracks_similar.assert_not_called()
+    assert "no seed matched" in capsys.readouterr().out
 
 
 async def test_seed_match_tolerates_diacritics_and_collaborators():

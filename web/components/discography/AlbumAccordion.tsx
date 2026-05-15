@@ -5,12 +5,23 @@ import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { TrackRow } from "./TrackRow";
 
+import { useUserId } from "@/features/auth/hooks/useUserId";
 import { discographyOpenAtom } from "@/features/discography/atoms";
+import {
+  toPlayerTrack as toDiscographyPlayerTrack,
+  tracklistQueryKey,
+  tracklistTypeOf,
+} from "@/features/discography/playerTracks";
 import type { DiscographyRelease } from "@/features/discography/types";
+import { useFavoriteSourceUrls, useToggleFavoriteBySource } from "@/features/favorite/hooks/useFavorites";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
-import type { PlayerTrack } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
-import type { TracklistItem } from "@/lib/python-api/generated/types/TracklistItem";
+
+const DISCOGRAPHY_FAVORITE_SOURCE = "discogs";
+
+function discographySourceUrl(releaseId: number | string, position: string, title: string): string {
+  return `discogs:release/${releaseId}/${encodeURIComponent(position || "_")}/${encodeURIComponent(title)}`;
+}
 
 interface AlbumAccordionProps {
   release: DiscographyRelease;
@@ -38,32 +49,20 @@ function releaseTag(release: { role?: string | null; format?: string | null }): 
   return "Release";
 }
 
-function toPlayerTrack(t: TracklistItem, i: number, fallbackArtist: string, coverUrl?: string | null): PlayerTrack {
-  return {
-    id: `discography-${i}-${t.title}`,
-    title: t.title,
-    artist: t.artists.length > 0 ? t.artists.join(", ") : fallbackArtist,
-    source: null,
-    sourceUrl: "",
-    coverUrl: coverUrl ?? null,
-  };
-}
-
 export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   const [openMap, setOpenMap] = useAtom(discographyOpenAtom);
   const open = openMap[release.id] ?? false;
 
-  const releaseType = release.type === "master" ? "master" : "release";
   const {
     data: tracks = [],
     isFetching,
     isFetched,
   } = useQuery({
-    queryKey: ["tracklist", release.id, releaseType],
+    queryKey: tracklistQueryKey(release),
     queryFn: () =>
       parseResponse(
         api.discography.tracklist.$get({
-          query: { releaseId: String(release.id), type: releaseType },
+          query: { releaseId: String(release.id), type: tracklistTypeOf(release) },
         }),
       ),
     enabled: open,
@@ -71,6 +70,10 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   });
 
   const { track: currentTrack, play } = usePlayer();
+
+  const userId = useUserId();
+  const favoriteUrls = useFavoriteSourceUrls(userId);
+  const { mutate: toggleFavorite } = useToggleFavoriteBySource(userId);
 
   function handleToggle() {
     setOpenMap((prev) => ({ ...prev, [release.id]: !open }));
@@ -81,7 +84,7 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
   // For Remix/Appearance releases that headline artist is *not* the artist the
   // user searched for — fall back to the release artist, not `artistName`.
   const fallbackArtist = release.artist?.trim() || artistName;
-  const playerTracks = tracks.map((t, i) => toPlayerTrack(t, i, fallbackArtist, release.thumb));
+  const playerTracks = tracks.map((t, i) => toDiscographyPlayerTrack(t, i, release, fallbackArtist));
   const tag = releaseTag(release);
 
   return (
@@ -168,14 +171,33 @@ export function AlbumAccordion({ release, artistName }: AlbumAccordionProps) {
           {!isFetching && isFetched && tracks.length === 0 && (
             <p className="text-xs text-td-fg-m py-4 text-center">No tracks found</p>
           )}
-          {playerTracks.map((pt, i) => (
-            <TrackRow
-              key={`${tracks[i]!.position}-${i}`}
-              track={{ ...tracks[i]!, albumArtist: fallbackArtist, albumCover: release.thumb ?? null }}
-              isPlaying={currentTrack?.title === pt.title && currentTrack?.artist === pt.artist}
-              onPlay={() => play(pt, playerTracks, i)}
-            />
-          ))}
+          {playerTracks.map((pt, i) => {
+            const t = tracks[i]!;
+            const sourceUrl = discographySourceUrl(release.id, t.position, t.title);
+            const isFav = favoriteUrls.has(sourceUrl);
+            return (
+              <TrackRow
+                key={`${t.position}-${i}`}
+                track={{ ...t, albumArtist: fallbackArtist, albumCover: release.thumb ?? null }}
+                isPlaying={currentTrack?.title === pt.title && currentTrack?.artist === pt.artist}
+                onPlay={() => play(pt, playerTracks, i)}
+                isFavorite={isFav}
+                onFavoriteToggle={
+                  userId
+                    ? () =>
+                        toggleFavorite({
+                          source: DISCOGRAPHY_FAVORITE_SOURCE,
+                          sourceUrl,
+                          title: t.title,
+                          artist: pt.artist,
+                          coverUrl: release.thumb ?? null,
+                          isFav,
+                        })
+                    : undefined
+                }
+              />
+            );
+          })}
         </div>
       )}
     </div>

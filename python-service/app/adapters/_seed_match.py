@@ -6,14 +6,19 @@ query like "Ignez - Aventurine" to a track id and then ask the upstream for
 search still returns *something* — often an unrelated record — and the
 similarity recommendations are then wildly off-genre.
 
-`query_matches()` validates a candidate against the query's "Artist - Title"
-form so callers can scan the top N hits and reject phantom seeds.
+`query_match_score()` enforces two regimes:
 
-`query_match_score()` returns a 0/1/3 score so callers can prefer the *most
-specific* match among accepted candidates — without it, "Bailando (NK & David
-Löhlein Version)" and "Bailando" both validate against the long query (one by
-exact match, one by substring) and the upstream's own ranking decides which
-seed wins, so alternate versions silently collapse onto the original.
+- "Artist - Title" queries require an **exact** title-signature match against
+  a candidate whose artist tokens overlap with the query's artist. Anything
+  short of an exact title match is rejected, and the caller falls back to
+  dropping the source's contribution entirely.
+
+- Bare-artist queries (no ` - ` separator) accept any candidate whose artist
+  tokens overlap with the query — the intent is "pick the first track by this
+  artist as a seed". Candidates whose artist doesn't match are rejected.
+
+`query_matches()` is the boolean wrapper kept for callers that only need a
+yes/no answer.
 """
 
 import re
@@ -30,8 +35,8 @@ SEED_CANDIDATES = 5
 # Match scores returned by query_match_score(). Callers pick the candidate
 # with the highest score among the top SEED_CANDIDATES hits.
 MATCH_NONE = 0
-MATCH_LOOSE = 1   # one title signature is a substring of the other
-MATCH_EXACT = 3   # title signatures equal after normalisation
+MATCH_ARTIST = 1  # bare-artist query: artist tokens overlap with the candidate
+MATCH_EXACT = 3   # "Artist - Title" query: title signatures equal after normalisation
 
 
 def _normalize(s: str) -> str:
@@ -68,31 +73,28 @@ def _artists_match(query_artist: str, cand_artist: str) -> bool:
 
 
 def query_match_score(query: str, cand_artist: str, cand_title: str) -> int:
-    """Score a candidate against an "Artist - Title" query.
+    """Score a candidate against the query.
 
     Returns:
-        MATCH_EXACT — title signatures equal (best).
-        MATCH_LOOSE — one title signature is a substring of the other
-                      (tolerates extra unstripped parens like "[Vinyl Edit]").
-        MATCH_NONE  — artist mismatch or unrelated title.
-
-    Free-form queries (no ' - ' separator) get MATCH_LOOSE for any candidate —
-    we have no way to validate them and the typeahead-driven UI almost always
-    sends the canonical form anyway.
+        MATCH_EXACT  — "Artist - Title" query: artist tokens overlap *and* title
+                       signatures are equal after normalisation. The only score
+                       that makes an "Artist - Title" query accept a candidate.
+        MATCH_ARTIST — bare-artist query (no ' - '): artist tokens overlap with
+                       the candidate. Caller uses the first such candidate as
+                       the seed track for that artist.
+        MATCH_NONE   — neither rule matched. Caller should reject this
+                       candidate and, if no candidate scores higher than
+                       MATCH_NONE, drop the source from the response entirely.
     """
     if " - " not in query:
-        return MATCH_LOOSE
+        return MATCH_ARTIST if _artists_match(query, cand_artist) else MATCH_NONE
     q_artist, q_title = (p.strip() for p in query.split(" - ", 1))
     if not _artists_match(q_artist, cand_artist):
         return MATCH_NONE
     qt, ct = _title_signature(q_title), _title_signature(cand_title)
     if not qt or not ct:
         return MATCH_NONE
-    if qt == ct:
-        return MATCH_EXACT
-    if qt in ct or ct in qt:
-        return MATCH_LOOSE
-    return MATCH_NONE
+    return MATCH_EXACT if qt == ct else MATCH_NONE
 
 
 def query_matches(query: str, cand_artist: str, cand_title: str) -> bool:

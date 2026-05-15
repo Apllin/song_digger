@@ -1,13 +1,14 @@
 import { ReleaseTagLegend } from "./ReleaseTagLegend";
 
+import type { ReleaseRoleFilter } from "@/features/discography/schemas";
 import type { DiscogsArtist } from "@/lib/python-api/generated/types/DiscogsArtist";
 
 interface ArtistHeroProps {
   selectedArtist: DiscogsArtist;
   totalItems: number;
   loadingReleases: boolean;
-  roleFilter: "main" | "all";
-  onRoleFilterChange: (filter: "main" | "all") => void;
+  roleFilter: ReleaseRoleFilter;
+  onRoleFilterChange: (filter: ReleaseRoleFilter) => void;
 }
 
 export function ArtistHero({
@@ -81,7 +82,7 @@ export function ArtistHero({
       </div>
 
       <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-        {(["main", "all"] as const).map((f) => {
+        {(["Main", "all"] as const).map((f) => {
           const active = roleFilter === f;
           return (
             <button
@@ -94,7 +95,7 @@ export function ArtistHero({
                 background: active ? "var(--td-accent-soft)" : "rgba(0, 0, 0, 0.30)",
               }}
             >
-              {f === "main" ? "Main releases" : "All"}
+              {f === "Main" ? "Main releases" : "All"}
             </button>
           );
         })}

@@ -4,6 +4,7 @@ import { useCallback } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
 import { Spinner } from "@/components/Spinner";
+import type { PlayerTrack } from "@/features/player/types";
 import { ResultsGrid } from "@/features/search/components/ResultsGrid";
 import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
 
@@ -67,6 +68,7 @@ export function SearchSection({ initialQuery }: SearchSectionProps) {
           totalPages={pagination.pages}
           totalItems={pagination.items}
           isLoading={isFetchingPage}
+          searchQueryId={search.id}
           onPrev={() => setSearch((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
           onNext={() => setSearch((prev) => ({ ...prev, page: Math.min(pagination.pages, prev.page + 1) }))}
         />

@@ -3,13 +3,14 @@
 import Link from "next/link";
 
 import { useFavoritesFlow } from "@/features/favorite/hooks/useFavorites";
+import type { PlayerTrack } from "@/features/player/types";
 import { ResultsGrid } from "@/features/search/components/ResultsGrid";
 
 const favoritesLabel = (n: number) => `${n} saved track${n === 1 ? "" : "s"}`;
 
 export function FavoritesSection() {
   const { userId, sessionStatus, page, setPage, data, isLoading, isFetchingPage, totalPages } = useFavoritesFlow();
-  const tracks = data?.tracks ?? [];
+  const tracks = (data?.tracks ?? []) as unknown as PlayerTrack[];
   const totalItems = data?.pagination.items ?? 0;
 
   if (sessionStatus === "loading" || isLoading) {
@@ -61,6 +62,7 @@ export function FavoritesSection() {
       summaryLabel={favoritesLabel}
       onPrev={() => setPage((p) => Math.max(1, p - 1))}
       onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      showDislike={false}
     />
   );
 }
