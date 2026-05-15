@@ -1,7 +1,11 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
+import { useCallback } from "react";
+import { type ExtenderRelease, useAlbumPlaylistExtender } from "../hooks/useAlbumPlaylistExtender";
 import { useAllArtistReleases } from "../hooks/useAllArtistReleases";
 import { ArtistHero } from "./ArtistHero";
 import { DiscographyHero } from "./DiscographyHero";
@@ -30,12 +34,62 @@ export function DiscographyPage() {
     onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
   });
 
+  const role = s.roleFilter === "main" ? "Main" : "all";
+  const sort = "year_desc";
+  const artistId = search.selectedItem?.id;
+
   const { releases, totalItems, totalPages, loadingReleases } = useAllArtistReleases({
-    artistId: search.selectedItem?.id,
-    role: s.roleFilter === "main" ? "Main" : "all",
+    artistId,
+    role,
     page: s.page,
     perPage: PAGE_SIZE,
-    sort: "year_desc",
+    sort,
+  });
+
+  const qc = useQueryClient();
+  const releasesQueryKey = useCallback(
+    (page: number) => ["artist-releases", artistId, role, page, PAGE_SIZE, sort] as const,
+    [artistId, role, sort],
+  );
+  const getCachedReleases = useCallback(
+    (page: number) => qc.getQueryData<{ releases: ExtenderRelease[] }>(releasesQueryKey(page))?.releases,
+    [qc, releasesQueryKey],
+  );
+  const fetchReleasesPage = useCallback(
+    async (page: number) => {
+      if (artistId == null) return [];
+      const data = await qc.fetchQuery({
+        queryKey: releasesQueryKey(page),
+        queryFn: ({ signal }) =>
+          parseResponse(
+            api.discography.releases.$get(
+              {
+                query: {
+                  artistId: String(artistId),
+                  role,
+                  page: String(page),
+                  perPage: String(PAGE_SIZE),
+                  sort,
+                },
+              },
+              { init: { signal } },
+            ),
+          ),
+      });
+      return data.releases;
+    },
+    [artistId, role, qc, releasesQueryKey],
+  );
+
+  const setPage = useCallback((p: number) => setS((prev) => ({ ...prev, page: p })), [setS]);
+
+  useAlbumPlaylistExtender({
+    fallbackArtist: search.selectedItem?.name ?? "",
+    totalPages,
+    currentPage: s.page,
+    setPage,
+    getCachedReleases,
+    fetchReleasesPage,
   });
 
   return (
