@@ -2,12 +2,14 @@
 
 import { atom } from "jotai";
 
+import type { ReleaseRoleFilter } from "@/features/discography/schemas";
+
 interface DiscographyState {
   page: number;
-  roleFilter: "all" | "main";
+  roleFilter: ReleaseRoleFilter;
 }
 
 export const discographyAtom = atom<DiscographyState>({
   page: 1,
-  roleFilter: "main",
+  roleFilter: "Main",
 });

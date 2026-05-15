@@ -1,7 +1,6 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { parseResponse } from "hono/client";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { useCallback } from "react";
@@ -14,6 +13,7 @@ import { ReleaseTimeline } from "./ReleaseTimeline";
 import { EntitySearchBar } from "@/components/EntitySearchBar";
 import { Pagination } from "@/components/Pagination";
 import { Spinner } from "@/components/Spinner";
+import { releasesQueryOptions } from "@/features/discography/releasesQuery";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
@@ -34,51 +34,36 @@ export function DiscographyPage() {
     onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
   });
 
-  const role = s.roleFilter === "main" ? "Main" : "all";
   const sort = "year_desc";
   const artistId = search.selectedItem?.id;
 
   const { releases, totalItems, totalPages, loadingReleases } = useAllArtistReleases({
     artistId,
-    role,
+    role: s.roleFilter,
     page: s.page,
     perPage: PAGE_SIZE,
     sort,
   });
 
   const qc = useQueryClient();
-  const releasesQueryKey = useCallback(
-    (page: number) => ["artist-releases", artistId, role, page, PAGE_SIZE, sort] as const,
-    [artistId, role, sort],
-  );
   const getCachedReleases = useCallback(
-    (page: number) => qc.getQueryData<{ releases: ExtenderRelease[] }>(releasesQueryKey(page))?.releases,
-    [qc, releasesQueryKey],
+    (page: number) => {
+      if (artistId == null) return undefined;
+      return qc.getQueryData<{ releases: ExtenderRelease[] }>(
+        releasesQueryOptions({ artistId, role: s.roleFilter, page, perPage: PAGE_SIZE, sort }).queryKey,
+      )?.releases;
+    },
+    [qc, artistId, s.roleFilter, sort],
   );
   const fetchReleasesPage = useCallback(
     async (page: number) => {
       if (artistId == null) return [];
-      const data = await qc.fetchQuery({
-        queryKey: releasesQueryKey(page),
-        queryFn: ({ signal }) =>
-          parseResponse(
-            api.discography.releases.$get(
-              {
-                query: {
-                  artistId: String(artistId),
-                  role,
-                  page: String(page),
-                  perPage: String(PAGE_SIZE),
-                  sort,
-                },
-              },
-              { init: { signal } },
-            ),
-          ),
-      });
+      const data = await qc.fetchQuery(
+        releasesQueryOptions({ artistId, role: s.roleFilter, page, perPage: PAGE_SIZE, sort }),
+      );
       return data.releases;
     },
-    [artistId, role, qc, releasesQueryKey],
+    [artistId, s.roleFilter, qc, sort],
   );
 
   const setPage = useCallback((p: number) => setS((prev) => ({ ...prev, page: p })), [setS]);
