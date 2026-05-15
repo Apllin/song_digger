@@ -1,5 +1,18 @@
 # @trackdigger/python-service
 
+## 0.2.0
+
+### Minor Changes
+
+- f6d8047: Add trainer feedback system and ML-based per-source RRF weight learning
+- d880932: Player gains a paginated playlist extender so the search queue continues across page boundaries; unplayable tracks now auto-skip via onEnded. Seed search in cosine/yandex/ytm now requires an exact title match for "Artist - Title" queries and falls back to artist-only matching for bare-artist queries, dropping the source when no candidate qualifies.
+- 7a1234f: Add SoundCloud as a similarity source with in-player playback support
+
+### Patch Changes
+
+- 1568bbb: Fix SoundCloud title noise (PREMIERE/FREE DL prefixes, catalog and label suffixes) and add artist-only query support
+- 3603750: Fix SoundCloud results leaking the queried track itself — the `/recommended` page links back to the seed via its player widget, so the seed is now excluded from the parsed results.
+
 ## 0.2.0-rc.0
 
 ### Minor Changes
