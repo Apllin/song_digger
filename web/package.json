@@ -17,6 +17,7 @@
     "test:smoke": "pnpm run with-env vitest run --config vitest.smoke.config.ts",
     "test:speed": "pnpm run with-env vitest run --config vitest.speed.config.ts",
     "test:watch": "vitest",
+    "ml:train": "pnpm run with-env jiti scripts/train-once.ts",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -e ../.env --"
   },
