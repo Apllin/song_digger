@@ -10,7 +10,7 @@ export function LabelReleaseGrid({ releases }: LabelReleaseGridProps) {
     <div className="flex flex-col gap-2">
       {releases.map((r) => (
         <AlbumAccordion
-          key={r.id}
+          key={`${r.source ?? "discogs"}-${r.id}`}
           release={{
             id: String(r.id),
             title: r.title,
@@ -22,6 +22,8 @@ export function LabelReleaseGrid({ releases }: LabelReleaseGridProps) {
             label: r.catno && r.catno !== "none" ? r.catno : null,
             thumb: r.thumb ?? null,
             resourceUrl: null,
+            source: r.source === "bandcamp" ? "bandcamp" : r.source === "discogs" ? "discogs" : null,
+            sourceUrl: r.sourceUrl ?? null,
           }}
           artistName={r.artist ?? "Various"}
         />

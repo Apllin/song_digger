@@ -9,4 +9,6 @@ export interface DiscographyRelease {
   label: string | null;
   thumb: string | null;
   resourceUrl: string | null;
+  source?: "discogs" | "bandcamp" | null;
+  sourceUrl?: string | null;
 }

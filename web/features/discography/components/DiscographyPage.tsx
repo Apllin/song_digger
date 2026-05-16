@@ -26,12 +26,22 @@ export function DiscographyPage() {
   const defaultArtist = useSearchParams().get("artist") ?? undefined;
   const [s, setS] = useAtom(discographyAtom);
 
+  const onSelectArtist = useCallback(
+    (item: DiscogsArtist) => setS((prev) => ({ ...prev, page: 1, selectedName: item.name })),
+    [setS],
+  );
+
+  const fetchArtists = useCallback(
+    (q: string, signal: AbortSignal) => fetchApi(api.discography.search.$get({ query: { q } }, { init: { signal } })),
+    [],
+  );
+
   const search = useEntitySearch<DiscogsArtist>({
     historyKey: "discography-history",
     queryKeyPrefix: "artist-suggestions",
-    fetchFn: (q, signal) => fetchApi(api.discography.search.$get({ query: { q } }, { init: { signal } })),
-    defaultValue: defaultArtist,
-    onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
+    fetchFn: fetchArtists,
+    defaultValue: s.selectedName ?? defaultArtist,
+    onSelect: onSelectArtist,
   });
 
   const sort = "year_desc";

@@ -1,6 +1,9 @@
+export { bandcampReleaseTracklist } from "./bandcampReleaseTracklist";
+export { bandcampSearchLabel } from "./bandcampSearchLabel";
 export { findSimilar } from "./findSimilar";
 export { getArtistReleases } from "./getArtistReleases";
 export { getLabelReleases } from "./getLabelReleases";
+export { getLabelReleasesCombined } from "./getLabelReleasesCombined";
 export { getReleaseTracklist } from "./getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./getSuggestionsSuggestionsGet";
 export { healthHealthGet } from "./healthHealthGet";

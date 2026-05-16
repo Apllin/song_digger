@@ -5,20 +5,21 @@ import { parseResponse } from "hono/client";
 
 import { api } from "@/lib/hono/client";
 
-// One page per request. Python materializes the full sorted list on first
-// call and caches it for 30 days; every subsequent page request against the
-// same label is a cheap slice from `ExternalApiCache`. React Query caches
-// each (labelId, page) tuple separately so Prev/Next within a session is
-// instant after the first visit to each page.
-export function useLabelReleases(labelId: number | undefined, page: number, perPage: number) {
+export function useLabelReleases(
+  labelId: number | undefined,
+  labelName: string | undefined,
+  page: number,
+  perPage: number,
+) {
   const query = useQuery({
-    queryKey: ["label-releases", labelId, page, perPage] as const,
+    queryKey: ["label-releases", labelId, labelName, page, perPage] as const,
     queryFn: ({ signal }) =>
       parseResponse(
         api.discography.label.releases.$get(
           {
             query: {
               labelId: String(labelId),
+              labelName: String(labelName),
               page: String(page),
               perPage: String(perPage),
             },
@@ -26,7 +27,7 @@ export function useLabelReleases(labelId: number | undefined, page: number, perP
           { init: { signal } },
         ),
       ),
-    enabled: labelId != null,
+    enabled: labelId != null && !!labelName,
   });
 
   return {

@@ -37,21 +37,33 @@ export function LabelsPage() {
   const defaultLabel = useSearchParams().get("label") ?? undefined;
   const [s, setS] = useAtom(labelsAtom);
 
+  const onSelectLabel = useCallback(
+    (item: DiscogsLabel) => setS((prev) => ({ ...prev, page: 1, selectedName: item.name })),
+    [setS],
+  );
+
+  const fetchLabels = useCallback(
+    (q: string, signal: AbortSignal) =>
+      fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } })),
+    [],
+  );
+
   const search = useEntitySearch<DiscogsLabel>({
     historyKey: "labels-history",
     queryKeyPrefix: "label-suggestions",
-    fetchFn: (q, signal) => fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } })),
-    defaultValue: defaultLabel,
-    onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
+    fetchFn: fetchLabels,
+    defaultValue: s.selectedName ?? defaultLabel,
+    onSelect: onSelectLabel,
   });
 
   const labelId = search.selectedItem?.id;
-  const { releases, totalItems, totalPages, loadingReleases } = useLabelReleases(labelId, s.page, PAGE_SIZE);
+  const labelName = search.selectedItem?.name;
+  const { releases, totalItems, totalPages, loadingReleases } = useLabelReleases(labelId, labelName, s.page, PAGE_SIZE);
 
   const qc = useQueryClient();
   const releasesQueryKey = useCallback(
-    (page: number) => ["label-releases", labelId, page, PAGE_SIZE] as const,
-    [labelId],
+    (page: number) => ["label-releases", labelId, labelName, page, PAGE_SIZE] as const,
+    [labelId, labelName],
   );
   const getCachedReleases = useCallback(
     (page: number) =>
@@ -60,14 +72,14 @@ export function LabelsPage() {
   );
   const fetchReleasesPage = useCallback(
     async (page: number) => {
-      if (labelId == null) return [];
+      if (labelId == null || !labelName) return [];
       const data = await qc.fetchQuery({
         queryKey: releasesQueryKey(page),
         queryFn: ({ signal }) =>
           parseResponse(
             api.discography.label.releases.$get(
               {
-                query: { labelId: String(labelId), page: String(page), perPage: String(PAGE_SIZE) },
+                query: { labelId: String(labelId), labelName, page: String(page), perPage: String(PAGE_SIZE) },
               },
               { init: { signal } },
             ),
@@ -75,7 +87,7 @@ export function LabelsPage() {
       });
       return data.releases.map(toExtenderRelease);
     },
-    [labelId, qc, releasesQueryKey],
+    [labelId, labelName, qc, releasesQueryKey],
   );
 
   const setPage = useCallback((p: number) => setS((prev) => ({ ...prev, page: p })), [setS]);

@@ -1,6 +1,9 @@
+export { bandcampReleaseTracklist } from "./clients/bandcampReleaseTracklist";
+export { bandcampSearchLabel } from "./clients/bandcampSearchLabel";
 export { findSimilar } from "./clients/findSimilar";
 export { getArtistReleases } from "./clients/getArtistReleases";
 export { getLabelReleases } from "./clients/getLabelReleases";
+export { getLabelReleasesCombined } from "./clients/getLabelReleasesCombined";
 export { getReleaseTracklist } from "./clients/getReleaseTracklist";
 export { getSuggestionsSuggestionsGet } from "./clients/getSuggestionsSuggestionsGet";
 export { healthHealthGet } from "./clients/healthHealthGet";
@@ -10,6 +13,21 @@ export { searchLabels } from "./clients/searchLabels";
 export { trainWeights } from "./clients/trainWeights";
 export type { ArtistRelease } from "./types/ArtistRelease";
 export type { ArtistReleasesResponse } from "./types/ArtistReleasesResponse";
+export type { BandcampLabel } from "./types/BandcampLabel";
+export type {
+  BandcampReleaseTracklist200,
+  BandcampReleaseTracklist422,
+  BandcampReleaseTracklistQuery,
+  BandcampReleaseTracklistQueryParams,
+  BandcampReleaseTracklistQueryResponse,
+} from "./types/BandcampReleaseTracklist";
+export type {
+  BandcampSearchLabel200,
+  BandcampSearchLabel422,
+  BandcampSearchLabelQuery,
+  BandcampSearchLabelQueryParams,
+  BandcampSearchLabelQueryResponse,
+} from "./types/BandcampSearchLabel";
 export type { DiscogsArtist } from "./types/DiscogsArtist";
 export type { DiscogsLabel } from "./types/DiscogsLabel";
 export type {
@@ -35,6 +53,14 @@ export type {
   GetLabelReleasesQueryParams,
   GetLabelReleasesQueryResponse,
 } from "./types/GetLabelReleases";
+export type {
+  GetLabelReleasesCombined200,
+  GetLabelReleasesCombined422,
+  GetLabelReleasesCombinedPathParams,
+  GetLabelReleasesCombinedQuery,
+  GetLabelReleasesCombinedQueryParams,
+  GetLabelReleasesCombinedQueryResponse,
+} from "./types/GetLabelReleasesCombined";
 export type {
   GetReleaseTracklist200,
   GetReleaseTracklist422,
@@ -96,6 +122,19 @@ export type {
 export type { ValidationError } from "./types/ValidationError";
 export { artistReleaseSchema } from "./zod/artistReleaseSchema";
 export { artistReleasesResponseSchema } from "./zod/artistReleasesResponseSchema";
+export { bandcampLabelSchema } from "./zod/bandcampLabelSchema";
+export {
+  bandcampReleaseTracklist200Schema,
+  bandcampReleaseTracklist422Schema,
+  bandcampReleaseTracklistQueryParamsSchema,
+  bandcampReleaseTracklistQueryResponseSchema,
+} from "./zod/bandcampReleaseTracklistSchema";
+export {
+  bandcampSearchLabel200Schema,
+  bandcampSearchLabel422Schema,
+  bandcampSearchLabelQueryParamsSchema,
+  bandcampSearchLabelQueryResponseSchema,
+} from "./zod/bandcampSearchLabelSchema";
 export { discogsArtistSchema } from "./zod/discogsArtistSchema";
 export { discogsLabelSchema } from "./zod/discogsLabelSchema";
 export {
@@ -111,6 +150,13 @@ export {
   getArtistReleasesQueryParamsSchema,
   getArtistReleasesQueryResponseSchema,
 } from "./zod/getArtistReleasesSchema";
+export {
+  getLabelReleasesCombined200Schema,
+  getLabelReleasesCombined422Schema,
+  getLabelReleasesCombinedPathParamsSchema,
+  getLabelReleasesCombinedQueryParamsSchema,
+  getLabelReleasesCombinedQueryResponseSchema,
+} from "./zod/getLabelReleasesCombinedSchema";
 export {
   getLabelReleases200Schema,
   getLabelReleases422Schema,
