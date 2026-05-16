@@ -1,6 +1,7 @@
 import process from "node:process";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../app/generated/prisma/client.ts";
+import { PrismaClient, SimilaritySource } from "../app/generated/prisma/client.ts";
+import { type TrackFeatures, TrackFeaturesSchema } from "../lib/aggregator.ts";
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 const MIN_SAMPLES = 20;
@@ -8,15 +9,17 @@ const MIN_SAMPLES = 20;
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-function isValidFeatures(raw) {
-  if (!raw || typeof raw !== "object") return false;
-  if (!Array.isArray(raw.appearances)) return false;
-  if (!raw.appearances.every((a) => typeof a?.source === "string" && typeof a?.rank === "number")) return false;
-  if (typeof raw.numSources !== "number") return false;
-  if (typeof raw.minSourceRank !== "number") return false;
-  if (raw.cosineScore !== null && typeof raw.cosineScore !== "number") return false;
-  if (typeof raw.rrfScore !== "number") return false;
-  return true;
+interface TrainSample {
+  features: TrackFeatures;
+  is_similar: boolean;
+}
+
+interface TrainResult {
+  sample_size: number;
+  rank_decay_k: number;
+  cosine_score_weight: number;
+  num_sources_weight: number;
+  source_weights: Record<SimilaritySource, number>;
 }
 
 async function main() {
@@ -36,10 +39,10 @@ async function main() {
 
   const featuresByKey = new Map(results.map((r) => [`${r.searchQueryId}:${r.trackId}`, r.features]));
 
-  const samples = feedback.flatMap((f) => {
-    const raw = featuresByKey.get(`${f.searchQueryId}:${f.trackId}`);
-    if (!isValidFeatures(raw)) return [];
-    return [{ features: raw, is_similar: f.isSimilar }];
+  const samples = feedback.flatMap<TrainSample>((f) => {
+    const parsed = TrackFeaturesSchema.safeParse(featuresByKey.get(`${f.searchQueryId}:${f.trackId}`));
+    if (!parsed.success) return [];
+    return [{ features: parsed.data, is_similar: f.isSimilar }];
   });
 
   console.log(`samples with valid features: ${samples.length}`);
@@ -58,7 +61,7 @@ async function main() {
     throw new Error(`python /train failed ${res.status}: ${body}`);
   }
 
-  const result = await res.json();
+  const result = (await res.json()) as TrainResult;
   console.log("python /train ok:", result);
 
   const latest = await prisma.modelWeights.findFirst({
@@ -76,7 +79,10 @@ async function main() {
       cosineScoreWeight: result.cosine_score_weight,
       numSourcesWeight: result.num_sources_weight,
       sourceWeights: {
-        create: Object.entries(result.source_weights).map(([source, weight]) => ({ source, weight })),
+        create: Object.entries(result.source_weights).map(([source, weight]) => ({
+          source: source as SimilaritySource,
+          weight,
+        })),
       },
     },
     include: { sourceWeights: true },
