@@ -37,12 +37,19 @@ export function LabelsPage() {
   const defaultLabel = useSearchParams().get("label") ?? undefined;
   const [s, setS] = useAtom(labelsAtom);
 
+  const setQuery = useCallback((q: string) => setS((prev) => ({ ...prev, query: q })), [setS]);
+  const setSelectedItem = useCallback(
+    (item: DiscogsLabel | null) => setS((prev) => ({ ...prev, selectedItem: item })),
+    [setS],
+  );
+
   const search = useEntitySearch<DiscogsLabel>({
     historyKey: "labels-history",
     queryKeyPrefix: "label-suggestions",
     fetchFn: (q, signal) => fetchApi(api.discography.label.search.$get({ query: { q } }, { init: { signal } })),
     defaultValue: defaultLabel,
     onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
+    externalState: { query: s.query, setQuery, selectedItem: s.selectedItem, setSelectedItem },
   });
 
   const labelId = search.selectedItem?.id;

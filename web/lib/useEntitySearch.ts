@@ -9,12 +9,22 @@ import { useInputList } from "@/lib/useInputList";
 
 export type SearchableEntity = { id: number; name: string; imageUrl?: string | null };
 
+interface ExternalEntitySearchState<T extends SearchableEntity> {
+  query: string;
+  setQuery: (q: string) => void;
+  selectedItem: T | null;
+  setSelectedItem: (item: T | null) => void;
+}
+
 interface UseEntitySearchOptions<T extends SearchableEntity> {
   historyKey: string;
   queryKeyPrefix: string;
   fetchFn: (q: string, signal: AbortSignal) => Promise<T[]>;
   defaultValue?: string;
   onSelect?: (item: T) => void;
+  // When provided, hoists query+selectedItem to a caller-owned store
+  // (e.g. a Jotai atom) so they survive route navigation.
+  externalState?: ExternalEntitySearchState<T>;
 }
 
 export function useEntitySearch<T extends SearchableEntity>({
@@ -23,12 +33,17 @@ export function useEntitySearch<T extends SearchableEntity>({
   fetchFn,
   defaultValue,
   onSelect,
+  externalState,
 }: UseEntitySearchOptions<T>) {
   const qc = useQueryClient();
-  const [query, setQuery] = useState("");
+  const [internalQuery, setInternalQuery] = useState("");
+  const [internalSelectedItem, setInternalSelectedItem] = useState<T | null>(null);
+  const query = externalState ? externalState.query : internalQuery;
+  const setQuery = externalState ? externalState.setQuery : setInternalQuery;
+  const selectedItem = externalState ? externalState.selectedItem : internalSelectedItem;
+  const setSelectedItem = externalState ? externalState.setSelectedItem : setInternalSelectedItem;
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<T | null>(null);
   const [picking, setPicking] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(query, 300);
@@ -60,7 +75,7 @@ export function useEntitySearch<T extends SearchableEntity>({
       setShowHistory(false);
       onSelect?.(item);
     },
-    [resetActiveIndex, onSelect],
+    [resetActiveIndex, onSelect, setQuery, setSelectedItem],
   );
 
   // Cache-hit resolves synchronously. Cache-miss dedups with autocomplete via shared queryKey.
@@ -122,15 +137,18 @@ export function useEntitySearch<T extends SearchableEntity>({
   const dropdownOpen = inHistory || inSuggestions;
   const itemCount = inHistory ? history.length : suggestions.length;
 
-  const handleQueryChange = useCallback((value: string) => {
-    setQuery(value);
-    setSelectedItem(null);
-    if (value.length === 0) {
-      setShowSuggestions(false);
-    } else {
-      setShowHistory(false);
-    }
-  }, []);
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      setSelectedItem(null);
+      if (value.length === 0) {
+        setShowSuggestions(false);
+      } else {
+        setShowHistory(false);
+      }
+    },
+    [setQuery, setSelectedItem],
+  );
 
   const handleInputFocus = useCallback(() => {
     if (query.length < 2 && history.length > 0) {
