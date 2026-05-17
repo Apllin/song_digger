@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 export const ANON_LIMIT = 5;
+export const ANON_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Reads x-forwarded-for / x-real-ip set by Vercel / nginx / Cloudflare.
 // In bare local dev there is no proxy, so we fall back to "unknown" — a
@@ -17,6 +18,10 @@ export async function getRequestIp(): Promise<string> {
   return "unknown";
 }
 
+function isWindowExpired(firstAt: Date, now: number = Date.now()): boolean {
+  return now - firstAt.getTime() >= ANON_WINDOW_MS;
+}
+
 export async function checkAnonymousLimit(ip: string): Promise<{
   overLimit: boolean;
   count: number;
@@ -24,9 +29,9 @@ export async function checkAnonymousLimit(ip: string): Promise<{
 }> {
   const row = await prisma.anonymousRequest.findUnique({
     where: { ip },
-    select: { count: true },
+    select: { count: true, firstAt: true },
   });
-  const count = row?.count ?? 0;
+  const count = !row || isWindowExpired(row.firstAt) ? 0 : row.count;
   return {
     overLimit: count >= ANON_LIMIT,
     count,
@@ -35,10 +40,24 @@ export async function checkAnonymousLimit(ip: string): Promise<{
 }
 
 export async function incrementAnonymousCounter(ip: string): Promise<void> {
-  await prisma.anonymousRequest.upsert({
+  const row = await prisma.anonymousRequest.findUnique({
     where: { ip },
-    create: { ip, count: 1 },
-    update: { count: { increment: 1 }, lastAt: new Date() },
+    select: { firstAt: true },
+  });
+  const now = new Date();
+  const expired = !row || isWindowExpired(row.firstAt, now.getTime());
+
+  if (expired) {
+    await prisma.anonymousRequest.upsert({
+      where: { ip },
+      create: { ip, count: 1 },
+      update: { count: 1, firstAt: now, lastAt: now },
+    });
+    return;
+  }
+  await prisma.anonymousRequest.update({
+    where: { ip },
+    data: { count: { increment: 1 }, lastAt: now },
   });
 }
 
