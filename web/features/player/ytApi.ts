@@ -63,14 +63,18 @@ const _handlers = {
 };
 
 let _singleton: YTPlayer | null = null;
+let _singletonReady = false;
 let _holderEl: HTMLDivElement | null = null;
 
 export function registerYTHandlers(h: Partial<typeof _handlers>): void {
   Object.assign(_handlers, h);
 }
 
+// Returns the player only after YT fires onReady. The YT.Player constructor
+// returns synchronously but its methods (seekTo, playVideo, …) are bound only
+// after the iframe loads — calling them earlier throws "is not a function".
 export function getYTSingleton(): YTPlayer | null {
-  return _singleton;
+  return _singletonReady ? _singleton : null;
 }
 
 export async function ensureYTSingleton(videoId: string): Promise<void> {
@@ -97,7 +101,10 @@ export async function ensureYTSingleton(videoId: string): Promise<void> {
     height: 1,
     playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1 },
     events: {
-      onReady: (e: { target: YTPlayer }) => _handlers.onReady(e.target.getDuration()),
+      onReady: (e: { target: YTPlayer }) => {
+        _singletonReady = true;
+        _handlers.onReady(e.target.getDuration());
+      },
       onStateChange: (e: { data: number }) => {
         _handlers.onStateChange(e.data);
         if (e.data === 0) _handlers.onEnded();
