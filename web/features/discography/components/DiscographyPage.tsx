@@ -34,6 +34,11 @@ export function DiscographyPage() {
     [],
   );
   const handleArtistSelect = useCallback(() => setS((prev) => ({ ...prev, page: 1 })), [setS]);
+  const setQuery = useCallback((q: string) => setS((prev) => ({ ...prev, query: q })), [setS]);
+  const setSelectedItem = useCallback(
+    (item: DiscogsArtist | null) => setS((prev) => ({ ...prev, selectedItem: item })),
+    [setS],
+  );
 
   const search = useEntitySearch<DiscogsArtist>({
     historyKey: "discography-history",
@@ -41,6 +46,7 @@ export function DiscographyPage() {
     fetchFn: fetchSuggestions,
     defaultValue: defaultArtist,
     onSelect: handleArtistSelect,
+    externalState: { query: s.query, setQuery, selectedItem: s.selectedItem, setSelectedItem },
   });
 
   const sort = "year_desc";
