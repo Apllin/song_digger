@@ -40,6 +40,27 @@ describe("normalizeTitle", () => {
     expect(normalizeTitle("Track (feat. Someone)")).toBe("track");
     expect(normalizeTitle("Track (ft. Someone)")).toBe("track");
   });
+
+  it("strips hyphen-trailing same-recording suffixes (Spotify/Apple/Yandex form)", () => {
+    expect(normalizeTitle("Lunfardo - Original Mix")).toBe("lunfardo");
+    expect(normalizeTitle("Track - Extended Mix")).toBe("track");
+    expect(normalizeTitle("Track - Radio Edit")).toBe("track");
+    expect(normalizeTitle("Track - Remastered")).toBe("track");
+    expect(normalizeTitle("Track - Remastered 2019")).toBe("track");
+    expect(normalizeTitle("Track – Original Mix")).toBe("track"); // en dash
+  });
+
+  it("strips bare feat./ft./featuring without brackets", () => {
+    expect(normalizeTitle("Track feat. Someone")).toBe("track");
+    expect(normalizeTitle("Track ft. A & B")).toBe("track");
+    expect(normalizeTitle("Track featuring X")).toBe("track");
+  });
+
+  it("preserves Remix / Live / Version in hyphen form (distinct recordings)", () => {
+    expect(normalizeTitle("Track - Remix")).toBe("track - remix");
+    expect(normalizeTitle("Track - Live")).toBe("track - live");
+    expect(normalizeTitle("Track - Acoustic Version")).toBe("track - acoustic version");
+  });
 });
 
 describe("rrfFuse", () => {
