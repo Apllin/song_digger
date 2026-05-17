@@ -51,6 +51,9 @@ export interface FusedCandidate extends TrackMeta {
 // Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped. Anything not in the
 // whitelist (Remix, Dub, Live, VIP, Instrumental, …) survives — those identify
 // distinct recordings.
+// Two surface forms: bracketed ("Track (Original Mix)") and hyphen-trailed
+// ("Track - Original Mix"). Last.fm/Discogs emit the latter; without it,
+// the same recording from different sources doesn't fuse in RRF.
 const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([]original mix[)\]]/gi,
   /\s*[([]extended(?:\s+mix)?[)\]]/gi,
@@ -60,12 +63,17 @@ const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
   /\s*[([](?:clean|explicit)[)\]]/gi,
   /\s*[([]bonus\s+track[)\]]/gi,
+  /\s+[-–—]\s+original mix\s*$/gi,
+  /\s+[-–—]\s+extended(?:\s+mix)?\s*$/gi,
+  /\s+[-–—]\s+radio\s+(?:edit|mix)\s*$/gi,
+  /\s+[-–—]\s+(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)\s*$/gi,
+  /\s+(?:feat\.|ft\.|featuring)\s+.*$/gi,
 ];
 
 export function normalizeTitle(s: string): string {
   let out = s.toLowerCase().trim();
   for (const pat of TITLE_STRIP_PATTERNS) out = out.replace(pat, "");
-  return out.trim();
+  return out.replace(/\s+/g, " ").trim();
 }
 
 export function normalizeArtist(artist: string): string {
