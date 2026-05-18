@@ -9,6 +9,7 @@ from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.soundcloud import SoundCloudAdapter
+from app.services.lastfm_hop import expand_via_similar_artists
 
 router = APIRouter()
 
@@ -26,6 +27,15 @@ _soundcloud = SoundCloudAdapter()
 # don't silently drop trackid contributions on every fresh search, but still
 # bounded so one slow seed doesn't stall the /similar fan-out.
 TRACKIDNET_TIMEOUT = 25.0
+
+# Hop runs serially after the main gather (depends on trackid output for
+# seed artists). Cold path ~1s; cap at 5s so a slow Last.fm doesn't stall
+# /similar on its longest critical path.
+LASTFM_HOP_TIMEOUT = 5.0
+# Top-N artists from trackid output used as additional hop seeds, alongside
+# the query artist. Keeps the hop batch small (~6 seeds × 3 similars = 18
+# candidates) — designed to be the size of one infinite-scroll page.
+LASTFM_HOP_TRACKID_SEED_COUNT = 5
 
 
 async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
@@ -111,6 +121,42 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     return out
 
 
+def _top_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
+    """First `n` unique artists from `tracks` in input order, deduped by
+    normalized form. Empty artists are skipped."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in tracks:
+        key = _normalize(t.artist)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(t.artist)
+        if len(out) >= n:
+            break
+    return out
+
+
+async def _lastfm_hop_safe(
+    seed_artists: list[str], exclude_artists: list[str]
+) -> list[TrackMeta]:
+    """Run the lastfm hop with a hard timeout — caps the tail-latency cost
+    of a slow Last.fm without blocking the rest of /similar."""
+    try:
+        return await asyncio.wait_for(
+            expand_via_similar_artists(
+                seed_artists, exclude_artists=exclude_artists
+            ),
+            timeout=LASTFM_HOP_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        print(f"[LastfmHop] timed out after {LASTFM_HOP_TIMEOUT}s, skipping")
+        return []
+    except Exception as e:
+        print(f"[LastfmHop] error: {e}")
+        return []
+
+
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
@@ -194,6 +240,18 @@ async def _find_by_artist_and_track(
             return ts
         return [t for t in ts if not _same_artist(t.artist, source_artist)]
 
+    # Phase 3: lastfm hop — fan out from query artist + top trackid artists
+    # to surface tracks one similarity-hop away. Runs serially after gather
+    # because seed-artist selection depends on trackid output. Excludes
+    # artists already present in trackid's contribution so the hop doesn't
+    # double up on the same lateral cluster.
+    trackid_top_artists = _top_unique_artists(
+        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
+    )
+    hop_seed_pool = [artist] + trackid_top_artists
+    hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
+    lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
+
     source_lists = [
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
@@ -201,6 +259,7 @@ async def _find_by_artist_and_track(
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 
     return source_lists, source_artist
