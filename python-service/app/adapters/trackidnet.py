@@ -187,9 +187,12 @@ async def _find_seed_track(
 ) -> dict | None:
     """Pick the best catalogue entry for (artist, track) from /musictracks.
 
-    Picker: exact artist match (case-insensitive) with highest playCount;
-    fall back to the first entry that has any plays at all. Tracks with
-    playCount=0 carry no co-occurrence signal and are skipped.
+    Picker: exact artist match (case-insensitive), tie-broken by playCount.
+    `playCount` on /musictracks is NOT the count of detected sets — it
+    reflects something else (player listens or favourites) and is often 0
+    for tracks that have plenty of real detections. We verify presence in
+    DJ sets at the next step via _list_playlists() instead of filtering
+    here, so niche tracks with playCount=0 are not silently dropped.
 
     Returns the full record so callers can read both `id` (used to list
     playlists) and `slug` (used to anchor the window inside each tracklist).
@@ -225,16 +228,11 @@ async def _find_seed_track(
     with_artist = [
         r for r in results
         if (r.get("artist") or "").lower() == artist_lc
-        and (r.get("playCount") or 0) > 0
     ]
     if with_artist:
         return max(with_artist, key=lambda r: r.get("playCount") or 0)
 
-    nonzero = [r for r in results if (r.get("playCount") or 0) > 0]
-    if nonzero:
-        return nonzero[0]
-
-    return None
+    return results[0]
 
 
 async def _list_playlists(

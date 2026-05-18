@@ -232,7 +232,11 @@ async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled)
     assert any(c[1].get("musicTrackId") == 1 for c in list_calls)
 
 
-async def test_search_all_zero_playcount_returns_empty(_enabled):
+async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
+    """playCount=0 on /musictracks is unreliable — niche tracks can have 17+
+    detected playlists despite playCount=0. The adapter must NOT filter on
+    that field; it should proceed to /audiostreams which is the source of
+    truth for set membership."""
     adapter = TrackidnetAdapter()
     search = {
         "result": {
@@ -243,11 +247,18 @@ async def test_search_all_zero_playcount_returns_empty(_enabled):
             ]
         }
     }
-    client = _ScriptedClient([(_is_search, _resp(search))])
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp({"result": {"audiostreams": []}})),
+    ]
+    client = _ScriptedClient(rules)
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
-    # No playlists call made
-    assert all(not c[0].endswith("/audiostreams") for c in client.calls)
+    # Playlists call IS made — playCount=0 must not short-circuit
+    assert any(
+        c[0].endswith("/audiostreams") and c[1].get("musicTrackId") == 1
+        for c in client.calls
+    )
 
 
 async def test_search_empty_results_returns_empty(_enabled):
