@@ -63,6 +63,36 @@ _SKIP_FIRST_SEGMENTS = frozenset({
     "search", "discover", "you", "upload", "settings",
     "mobile", "pages", "legal", "press", "jobs", "imprint",
 })
+
+# Titles that indicate a DJ set / radio show / podcast / live mix rather than
+# an individual track. These uploads share the /<user>/<slug> URL pattern
+# with real tracks, so the path-based filter can't catch them.
+# Matched patterns from real SoundCloud output for queries like "Anfisa Letyago":
+#   - "Sam Paganini @ FVTVR Paris (April 4th 2026)"   — @ venue + month-year
+#   - "Anfisa Letyago Rinse FM - December 2025"        — show name + month-year
+#   - "Awakenings Podcast S381 - Andy Martin"          — show keyword
+#   - "BCCO Mix Series 811: Alan Fitzpatrick"          — mix-series keyword
+#   - "Carmen Lisa @ Lofi Amsterdam ... (Live) 31.01.26"
+_DJ_SET_TITLE_RE = re.compile(
+    r"\b(?:"
+    r"podcast|mix\s*series|festival|live\s+(?:at|from|in)|b2b|"
+    r"rinse\s*fm|boiler\s*room|awakenings|hor\s+\d|"
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+    r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?)\s+\d{4}"
+    r")\b"
+    r"|@\s+\w+"  # "Artist @ Venue" pattern
+    r"|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b",  # DD.MM.YY date suffix
+    re.IGNORECASE,
+)
+
+# Seed-page duration: SoundCloud's noscript HTML embeds the seed track's
+# duration as `"duration": <ms>` (the first match is the seed itself).
+_DURATION_RE = re.compile(r'"duration":\s*(\d+)')
+# Above this seed-track duration, the recommended page tends to surface more
+# DJ sets/podcasts of the same shape — skip SoundCloud entirely rather than
+# pollute results.
+_DJ_SET_DURATION_MS_THRESHOLD = 20 * 60 * 1000
 # Profile sub-pages that appear as the second path segment.
 _SKIP_SECOND_SEGMENTS = frozenset({
     "sets", "likes", "following", "followers",
@@ -129,6 +159,19 @@ def _noscript_soup(html: str) -> BeautifulSoup | None:
     return BeautifulSoup(content, "html.parser")
 
 
+def _parse_seed_duration_ms(html: str) -> int | None:
+    """Extract the seed track's duration from the recommended page HTML.
+    SoundCloud's noscript-adjacent JSON inlines the seed's metadata; the first
+    `"duration": N` match is the seed itself. Returns ms or None on miss."""
+    m = _DURATION_RE.search(html)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
 def _first_track_url(html: str) -> str | None:
     inner = _noscript_soup(html)
     if not inner:
@@ -164,6 +207,12 @@ def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
         artist_slug, track_slug = path.strip("/").split("/", 1)
 
         title = _clean_title(a.get_text(strip=True)) or _slug_to_name(track_slug)
+        # Filter DJ-set / podcast / radio-show uploads — same URL shape as
+        # individual tracks but useless as recommendations. The seed-duration
+        # check in _fetch_recommended catches the common case where the seed
+        # itself is long, this catches the per-candidate stragglers.
+        if _DJ_SET_TITLE_RE.search(title):
+            continue
         artist_name = _slug_to_name(artist_slug)
 
         # Look for a sibling <a> whose href matches the artist slug exactly.
@@ -228,6 +277,15 @@ class SoundCloudAdapter(AbstractAdapter):
                 resp.raise_for_status()
         except Exception as e:
             print(f"[SoundCloud] recommended error: {e}")
+            return []
+        # If the seed track is a DJ set / podcast (>20min), the recommended
+        # page clusters more of the same. Bail entirely — better to contribute
+        # nothing than to pollute the result list with hour-long mixes.
+        seed_duration_ms = _parse_seed_duration_ms(resp.text)
+        if seed_duration_ms is not None and seed_duration_ms > _DJ_SET_DURATION_MS_THRESHOLD:
+            print(
+                f"[SoundCloud] seed too long ({seed_duration_ms // 60000}min), skipping"
+            )
             return []
         # The page links back to the seed (player widget at the top), so without
         # this exclusion the queried track itself leaks into the results.
