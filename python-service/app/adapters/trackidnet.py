@@ -28,7 +28,7 @@ Flow per seed:
   4. For each playlist: pick the most recent NON-EMPTY detection process
      by endDate (sets get reprocessed; empty reprocesses can mask older
      real data). Find the seed track in the tracklist by slug; take the
-     ±WINDOW tracks around the first occurrence (5 before, 5 after),
+     ±WINDOW tracks around the first occurrence (2 before, 2 after),
      excluding every instance of the seed slug.
   5. Aggregate every non-seed track across all extracted windows by slug.
      Co-occurrence count = number of playlists the candidate appears in.
@@ -245,9 +245,8 @@ async def _list_playlists(
 
     The /audiostreams?musicTrackId= endpoint returns lightweight metadata
     only (no tracklists in the payload), so this call is cheap. We don't
-    paginate — the first page (pageSize=20) is enough; if a track has more
-    than 20 known sets, the freshest 20 are sufficient context for
-    co-occurrence and we cap at 15 of those anyway.
+    paginate — the first page (pageSize=20) is enough; we cap at
+    MAX_PLAYLISTS of those, taking the freshest by addedOn.
     """
     try:
         resp = await client.get(
