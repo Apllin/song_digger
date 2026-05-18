@@ -19,6 +19,7 @@ enum SimilaritySource {
     lastfm
     trackidnet
     soundcloud
+    lastfm_hop
 }
 
 model Track {
