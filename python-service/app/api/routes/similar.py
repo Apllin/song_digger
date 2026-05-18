@@ -269,14 +269,28 @@ async def _find_by_artist_only(
     artist: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
     """
-    Artist-only mode: Cosine + YTM artist playlist + Yandex similar, all in parallel.
-    If Cosine returns few results, seeds a second query with the artist's top track.
+    Artist-only mode: same six adapters as track mode, plus the lastfm hop.
+    Lastfm's `find_similar` recognizes a track-less query and routes to its
+    own artist-level fallback (artist.getSimilar → top tracks per similar).
+    Trackid's `find_similar` routes to its keyword flow (/audiostreams?
+    keywords=<artist>) when no track is supplied. If Cosine returns few
+    results, seeds a second query with the artist's top track.
     """
-    cosine_artist, ytm_artist, yandex_artist, soundcloud_artist, top_songs = await asyncio.gather(
+    (
+        cosine_artist,
+        ytm_artist,
+        yandex_artist,
+        soundcloud_artist,
+        lastfm_artist,
+        trackidnet_artist,
+        top_songs,
+    ) = await asyncio.gather(
         _cosine.find_similar(artist, limit),
         _ytm.find_similar_by_artist(artist, limit),
         _yandex.find_similar(artist, limit),
         _soundcloud.find_similar(artist, limit),
+        _lastfm.find_similar(artist, limit),
+        _trackidnet_safe(artist, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
@@ -285,6 +299,8 @@ async def _find_by_artist_only(
     ytm_tracks: list[TrackMeta] = ytm_artist if isinstance(ytm_artist, list) else []
     yandex_tracks: list[TrackMeta] = yandex_artist if isinstance(yandex_artist, list) else []
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
+    lastfm_tracks: list[TrackMeta] = lastfm_artist if isinstance(lastfm_artist, list) else []
+    trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
 
     # If the artist-only Cosine query returned few results, seed with a specific track
     if isinstance(top_songs, list) and top_songs and len(cosine_tracks) < 8:
@@ -294,6 +310,16 @@ async def _find_by_artist_only(
             if isinstance(seeded, list) and len(seeded) > len(cosine_tracks):
                 cosine_tracks = seeded
 
+    # Lastfm hop — fan out from query artist + top trackid artists, same logic
+    # as the track-mode path so artist-only queries also surface lateral
+    # similars one hop deeper.
+    trackid_top_artists = _top_unique_artists(
+        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
+    )
+    hop_seed_pool = [artist] + trackid_top_artists
+    hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
+    lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
+
     def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
         return [t for t in ts if not _same_artist(t.artist, artist)]
 
@@ -301,7 +327,10 @@ async def _find_by_artist_only(
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
+        SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
+        SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 
     return source_lists, artist

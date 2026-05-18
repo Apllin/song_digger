@@ -91,6 +91,13 @@ def _is_playlists_list(url, params=None):
     return params is not None and "musicTrackId" in params
 
 
+def _is_keyword_search(url, params=None):
+    # /audiostreams with keywords param — artist-only keyword flow
+    if not url.endswith("/audiostreams"):
+        return False
+    return params is not None and "keywords" in params
+
+
 def _is_audiostream_detail(url, params=None):
     return "/audiostreams/" in url
 
@@ -167,12 +174,20 @@ async def test_disabled_flag_short_circuits_without_network(monkeypatch):
     assert client.calls == []
 
 
-async def test_query_without_dash_returns_empty_without_network(_enabled):
+async def test_query_without_dash_uses_keyword_flow(_enabled):
+    """Bare-artist queries now route to the /audiostreams?keywords= flow
+    instead of returning empty. An empty keyword result still soft-degrades
+    to []."""
     adapter = TrackidnetAdapter()
-    client = _ScriptedClient([])
+    client = _ScriptedClient([
+        (_is_keyword_search, _resp({"result": {"audiostreams": []}})),
+    ])
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz") == []
-    assert client.calls == []
+    assert any(
+        c[0].endswith("/audiostreams") and c[1].get("keywords") == "Nina Kraviz"
+        for c in client.calls
+    )
 
 
 # ── seed picker (/musictracks) ────────────────────────────────────────────
