@@ -10,8 +10,9 @@ own ordering and do not apply score floors on our side.
 The artist-level path runs `artist.getSimilar(seed_artist)` →
 `artist.getTopTracks(similar_artist)` aggregated over the top-N similar
 artists. Artist similars are cached in Postgres (LastfmArtistSimilars,
-30-day TTL) because artist relationships move slowly; top-tracks are not
-cached because they are cheap and need to reflect new releases.
+30-day TTL) because artist relationships move slowly; top-tracks are
+cached via the generic external_cache table (7-day TTL) — stable
+week-to-week and read repeatedly by the hop expansion in services/lastfm_hop.py.
 """
 import asyncio
 
@@ -20,7 +21,9 @@ import httpx
 from app.adapters.base import AbstractAdapter
 from app.config import settings
 from app.core.db import (
+    fetch_external_cache,
     fetch_lastfm_artist_similars,
+    upsert_external_cache,
     upsert_lastfm_artist_similars,
 )
 from app.core.models import TrackMeta
@@ -34,6 +37,10 @@ LASTFM_FALLBACK_TRACKS_PER_ARTIST = 3  # tracks fetched per similar artist
 LASTFM_FALLBACK_TOTAL_CAP = 30  # final cap on fallback contribution
 LASTFM_FALLBACK_TTL_DAYS = 30  # artist similars are slow-moving
 LASTFM_FALLBACK_CONCURRENCY = 5  # max concurrent artist.getTopTracks calls
+# Top-tracks cache: fetch up to N once, slice per caller. Covers both the
+# artist fallback (uses top 3) and lastfm_hop (picks from positions 1..4).
+_LASTFM_TOP_TRACKS_CACHE_LIMIT = 5
+_LASTFM_TOP_TRACKS_TTL_SECONDS = 7 * 86400
 # Position decay applied to per-artist ranks 1..3. Multiplied by the artist
 # match score so a high-match artist's rank-2 track can still outrank a
 # low-match artist's rank-1 track.
@@ -136,9 +143,10 @@ class LastfmAdapter(AbstractAdapter):
 
         async def _one(sim: dict) -> list[dict]:
             async with sem:
-                return await self._fetch_artist_top_tracks(
-                    api_key, sim.get("name") or "", LASTFM_FALLBACK_TRACKS_PER_ARTIST
+                tracks = await self._get_artist_top_tracks_cached(
+                    api_key, sim.get("name") or ""
                 )
+                return tracks[:LASTFM_FALLBACK_TRACKS_PER_ARTIST]
 
         track_lists = await asyncio.gather(
             *(_one(s) for s in top_similars), return_exceptions=True
@@ -273,6 +281,51 @@ class LastfmAdapter(AbstractAdapter):
             return []
 
         return data.get("toptracks", {}).get("track", []) or []
+
+    async def _get_artist_top_tracks_cached(
+        self, api_key: str, artist: str
+    ) -> list[dict]:
+        """Cached read-through for artist.getTopTracks. Always fetches up to
+        _LASTFM_TOP_TRACKS_CACHE_LIMIT and caches that — callers slice."""
+        if not artist:
+            return []
+        cache_key = artist.lower().strip()
+        cached = await fetch_external_cache(
+            source="lastfm_artist_top_tracks",
+            cache_key=cache_key,
+            ttl_seconds=_LASTFM_TOP_TRACKS_TTL_SECONDS,
+        )
+        if cached is not None:
+            return cached
+        fetched = await self._fetch_artist_top_tracks(
+            api_key, artist, _LASTFM_TOP_TRACKS_CACHE_LIMIT
+        )
+        if fetched:
+            try:
+                await upsert_external_cache(
+                    source="lastfm_artist_top_tracks",
+                    cache_key=cache_key,
+                    payload=fetched,
+                )
+            except Exception as e:
+                print(f"[Lastfm] top-tracks cache write error: {e}")
+        return fetched
+
+    # ── public methods for cross-service reuse (see services/lastfm_hop.py) ──
+
+    async def get_artist_similars(self, artist: str) -> list[dict]:
+        """Public cached read of artist.getSimilar. Returns [] if api key missing."""
+        api_key = settings.lastfm_api_key
+        if not api_key or not artist:
+            return []
+        return await self._get_artist_similars_cached(api_key, artist)
+
+    async def get_artist_top_tracks(self, artist: str) -> list[dict]:
+        """Public cached read of artist.getTopTracks. Returns [] if api key missing."""
+        api_key = settings.lastfm_api_key
+        if not api_key or not artist:
+            return []
+        return await self._get_artist_top_tracks_cached(api_key, artist)
 
 
 def _split_query(query: str) -> tuple[str, str | None]:
