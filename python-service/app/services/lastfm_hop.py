@@ -37,6 +37,12 @@ HOP_TOP_TRACK_CONCURRENCY = 5
 # "one viral hit" failure mode for niche artists.
 HOP_TRACK_PICK_MIN = 1
 HOP_TRACK_PICK_MAX = 4
+# Lower bound for similar-artist pool: skip position 0 strictly. Last.fm's
+# top similar is usually the most-obvious mainstream pairing — exactly the
+# cluster the digging UX wants to step around. Plus random sampling from
+# positions 1..N produces different similars on each request for the same
+# seed, so identical queries surface fresh tracks across sessions.
+HOP_SIMILAR_PICK_MIN = 1
 
 _HOP_SOURCE = "lastfm_hop"
 
@@ -67,21 +73,27 @@ async def expand_via_similar_artists(
     for sims in similars_lists:
         if isinstance(sims, Exception) or not sims:
             continue
-        picked = 0
-        for s in sims:
+        # Strict skip of position 0 then dedup → pool of candidates to sample
+        # from. Random sample (vs. take-first) means the same seed produces
+        # different hop output on repeat requests.
+        pool: list[dict] = []
+        for s in sims[HOP_SIMILAR_PICK_MIN:]:
             name = (s.get("name") or "").strip()
             key = _norm(name)
             if not key or key in seen:
                 continue
-            seen.add(key)
+            pool.append(s)
+        if not pool:
+            continue
+        k = min(HOP_SIMILARS_PER_SEED, len(pool))
+        for s in random.sample(pool, k):
+            name = (s.get("name") or "").strip()
             try:
                 match = float(s.get("match", 0))
             except (TypeError, ValueError):
                 match = 0.0
             selected.append({"name": name, "match": match})
-            picked += 1
-            if picked >= HOP_SIMILARS_PER_SEED:
-                break
+            seen.add(_norm(name))
 
     if not selected:
         return []
