@@ -31,6 +31,9 @@ class YandexMusicAdapter(AbstractAdapter):
     async def _get_client(self) -> Any:
         if self._client is not None or self._init_failed:
             return self._client
+        if not settings.yandex_music_enabled:
+            self._init_failed = True
+            return None
         if ClientAsync is None:
             print("[YandexMusic] yandex-music package not installed; adapter disabled")
             self._init_failed = True
