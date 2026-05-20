@@ -396,30 +396,42 @@ async def _fetch_tracklists(
 def _extract_window(
     audiostream: dict, seed_slug: str, window: int
 ) -> list[dict]:
-    """Return up to `window` tracks before and `window` after the first
-    occurrence of `seed_slug` in this playlist's tracklist, excluding
-    every instance of the seed itself.
+    """Return tracks adjacent to `seed_slug` in this playlist. Two paths:
 
-    Process selection: we pick the latest by endDate among processes
-    THAT CONTAIN THE SEED SLUG. Sets get reprocessed and not all tracks
-    are detected on every pass — the same playlist can have a later
-    non-empty process that simply lost the seed. Picking by "latest
-    non-empty" silently drops these playlists; anchoring on "contains
-    seed" is the only reliable signal that a process is usable for
-    co-occurrence around this seed. If no process contains the seed,
-    the playlist contributes nothing (we cannot place the window).
+    1) Standard window: pick the latest-by-endDate process that contains the
+       seed AND has ≥2 tracks (seed + at least one neighbor). Take ±window
+       around the seed position, exclude the seed.
+
+    2) Solo-seed fallback: if the seed only appears in processes that
+       contain ONLY the seed (no neighbors detected in that pass), use the
+       LARGEST detection process of the playlist as full-playlist context.
+       Rationale: the playlist IS known to contain the seed (per the
+       `/audiostreams?musicTrackId=` lookup that surfaced it), and all
+       processes describe re-detection passes over the SAME audio. The
+       largest process is the most complete tracklist of the same DJ set;
+       even though that pass didn't identify the seed itself, its other
+       tracks are valid neighbors. Without this fallback, playlists where
+       the seed lives in a "solo" reprocess silently contribute nothing
+       and we lose real DJ context.
 
     Edge cases:
       - No process contains the seed → []
+      - Seed-with-neighbors process exists → window path (case 1)
+      - Seed only in solo processes → largest-process path (case 2)
       - Seed at position 0 → only `window` tracks after (no before)
-      - Seed at last position → only `window` tracks before (no after)
       - Seed appears multiple times in chosen process → anchor on first
-        occurrence; all instances of the seed slug are filtered from
-        the returned window
+        occurrence; all instances of the seed slug are filtered out
     """
     processes = audiostream.get("detectionProcesses") or []
-    with_seed = [
+    non_empty = [
         p for p in processes
+        if p.get("detectionProcessMusicTracks")
+    ]
+    if not non_empty:
+        return []
+
+    with_seed = [
+        p for p in non_empty
         if any(
             t.get("slug") == seed_slug
             for t in (p.get("detectionProcessMusicTracks") or [])
@@ -428,15 +440,26 @@ def _extract_window(
     if not with_seed:
         return []
 
-    chosen = max(with_seed, key=lambda p: p.get("endDate") or "")
-    tracks = chosen.get("detectionProcessMusicTracks") or []
-    seed_idx = next(
-        i for i, t in enumerate(tracks) if t.get("slug") == seed_slug
-    )
+    with_seed_substantive = [
+        p for p in with_seed
+        if len(p.get("detectionProcessMusicTracks") or []) >= 2
+    ]
+    if with_seed_substantive:
+        chosen = max(with_seed_substantive, key=lambda p: p.get("endDate") or "")
+        tracks = chosen.get("detectionProcessMusicTracks") or []
+        seed_idx = next(
+            i for i, t in enumerate(tracks) if t.get("slug") == seed_slug
+        )
+        start = max(0, seed_idx - window)
+        end = min(len(tracks), seed_idx + window + 1)
+        return [t for t in tracks[start:end] if t.get("slug") != seed_slug]
 
-    start = max(0, seed_idx - window)
-    end = min(len(tracks), seed_idx + window + 1)
-    return [t for t in tracks[start:end] if t.get("slug") != seed_slug]
+    # Solo-seed fallback — use largest process as full-playlist context.
+    largest = max(
+        non_empty, key=lambda p: len(p.get("detectionProcessMusicTracks") or [])
+    )
+    tracks = largest.get("detectionProcessMusicTracks") or []
+    return [t for t in tracks if t.get("slug") != seed_slug]
 
 
 async def _search_audiostreams_by_keyword(
