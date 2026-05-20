@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # (no auth, no Cloudflare cookie); tests cover the full flow.
     # Enable by default — see ADR-0014.
     trackidnet_enabled: bool = True
+    # Yandex Music API geoblocks non-RU IPs with HTTP 451 since 2024. The
+    # adapter is functional but every request returns []. Default OFF to
+    # save the ~1s gather wait and the log noise; flip to true from .env
+    # when running on a RU-resident proxy or self-hosting in RU.
+    yandex_music_enabled: bool = False
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 
