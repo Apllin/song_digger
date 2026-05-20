@@ -1,4 +1,5 @@
 import asyncio
+import random
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
@@ -32,9 +33,10 @@ TRACKIDNET_TIMEOUT = 25.0
 # seed artists). Cold path ~1s; cap at 5s so a slow Last.fm doesn't stall
 # /similar on its longest critical path.
 LASTFM_HOP_TIMEOUT = 5.0
-# Top-N artists from trackid output used as additional hop seeds, alongside
-# the query artist. Keeps the hop batch small (~6 seeds × 3 similars = 18
-# candidates) — designed to be the size of one infinite-scroll page.
+# N artists randomly sampled from the trackid output to use as additional
+# hop seeds alongside the query artist. Random sampling (rather than top-N
+# by co-occurrence) spreads the hop across the whole trackid cluster, so
+# repeat searches for the same query surface different lateral branches.
 LASTFM_HOP_TRACKID_SEED_COUNT = 5
 
 
@@ -121,20 +123,24 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     return out
 
 
-def _top_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
-    """First `n` unique artists from `tracks` in input order, deduped by
-    normalized form. Empty artists are skipped."""
-    out: list[str] = []
+def _random_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
+    """Random `n` unique artists from `tracks`, deduped by normalized form.
+    Sampling (vs. taking top-N by co-occurrence rank) spreads hop seeds
+    across the whole trackid cluster instead of clustering them on the
+    most-frequent artists — gives the hop more lateral coverage and makes
+    repeat searches surface different similar-artist branches."""
     seen: set[str] = set()
+    pool: list[str] = []
     for t in tracks:
         key = _normalize(t.artist)
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append(t.artist)
-        if len(out) >= n:
-            break
-    return out
+        pool.append(t.artist)
+    if not pool:
+        return []
+    k = min(n, len(pool))
+    return random.sample(pool, k)
 
 
 async def _lastfm_hop_safe(
@@ -245,10 +251,10 @@ async def _find_by_artist_and_track(
     # because seed-artist selection depends on trackid output. Excludes
     # artists already present in trackid's contribution so the hop doesn't
     # double up on the same lateral cluster.
-    trackid_top_artists = _top_unique_artists(
+    trackid_seed_artists = _random_unique_artists(
         trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
     )
-    hop_seed_pool = [artist] + trackid_top_artists
+    hop_seed_pool = [artist] + trackid_seed_artists
     hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
     lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
 
@@ -313,10 +319,10 @@ async def _find_by_artist_only(
     # Lastfm hop — fan out from query artist + top trackid artists, same logic
     # as the track-mode path so artist-only queries also surface lateral
     # similars one hop deeper.
-    trackid_top_artists = _top_unique_artists(
+    trackid_seed_artists = _random_unique_artists(
         trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
     )
-    hop_seed_pool = [artist] + trackid_top_artists
+    hop_seed_pool = [artist] + trackid_seed_artists
     hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
     lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
 
