@@ -72,7 +72,7 @@ TIMEOUT_SECONDS = 8.0
 SEARCH_PAGE_SIZE = 20
 PLAYLISTS_PAGE_SIZE = 20
 WINDOW = 2
-MAX_PLAYLISTS = 15
+MAX_PLAYLISTS = 10
 DETAIL_CONCURRENCY = 5
 DEFAULT_LIMIT = 50
 # Artist-only (keyword) flow: query audiostreams by keyword to find playlists

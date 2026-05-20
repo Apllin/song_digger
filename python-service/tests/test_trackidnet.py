@@ -303,7 +303,7 @@ async def test_search_500_returns_empty(_enabled, capsys):
 # ── playlists list (/audiostreams?musicTrackId=) ─────────────────────────
 
 async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
-    """14 playlists in fixture → all 14 detail fetches happen."""
+    """10 playlists from the (capped) fixture → all 10 detail fetches happen."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     playlists = _load("playlists_list_nina_kraviz_tarde_2026-05-04.json")
@@ -316,11 +316,12 @@ async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
-    assert len(detail_calls) == 14
+    # Fixture has 14 playlists; MAX_PLAYLISTS = 10 caps the fetch.
+    assert len(detail_calls) == 10
 
 
-async def test_playlists_list_capped_at_15(_enabled):
-    """20 playlists returned (page max) → only top 15 (by addedOn desc) fetched."""
+async def test_playlists_list_capped_at_max(_enabled):
+    """20 playlists returned (page max) → only top MAX_PLAYLISTS (by addedOn desc) fetched."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     pairs = [(f"slug-{i}", f"2026-01-{i+1:02d}T00:00:00Z") for i in range(20)]
@@ -334,12 +335,12 @@ async def test_playlists_list_capped_at_15(_enabled):
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
-    assert len(detail_calls) == 15
+    assert len(detail_calls) == 10
     fetched_slugs = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
-    # Top 15 by addedOn desc → slug-19 down to slug-5
+    # Top 10 by addedOn desc → slug-19 down to slug-10
     assert "slug-19" in fetched_slugs
-    assert "slug-5" in fetched_slugs
-    assert "slug-4" not in fetched_slugs
+    assert "slug-10" in fetched_slugs
+    assert "slug-9" not in fetched_slugs
 
 
 async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):
