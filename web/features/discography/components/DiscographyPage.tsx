@@ -26,12 +26,21 @@ export function DiscographyPage() {
   const defaultArtist = useSearchParams().get("artist") ?? undefined;
   const [s, setS] = useAtom(discographyAtom);
 
+  // Inline fetchFn/onSelect would get fresh identities every render, making
+  // useEntitySearch's pickItem unstable and re-firing its defaultValue effect
+  // on every history setState → infinite "Maximum update depth exceeded".
+  const fetchSuggestions = useCallback(
+    (q: string, signal: AbortSignal) => fetchApi(api.discography.search.$get({ query: { q } }, { init: { signal } })),
+    [],
+  );
+  const handleArtistSelect = useCallback(() => setS((prev) => ({ ...prev, page: 1 })), [setS]);
+
   const search = useEntitySearch<DiscogsArtist>({
     historyKey: "discography-history",
     queryKeyPrefix: "artist-suggestions",
-    fetchFn: (q, signal) => fetchApi(api.discography.search.$get({ query: { q } }, { init: { signal } })),
+    fetchFn: fetchSuggestions,
     defaultValue: defaultArtist,
-    onSelect: () => setS((prev) => ({ ...prev, page: 1 })),
+    onSelect: handleArtistSelect,
   });
 
   const sort = "year_desc";
