@@ -13,6 +13,8 @@ artists. Artist similars are cached in Postgres (LastfmArtistSimilars,
 30-day TTL) because artist relationships move slowly; top-tracks are
 cached via the generic external_cache table (7-day TTL) — stable
 week-to-week and read repeatedly by the hop expansion in services/lastfm_hop.py.
+The primary track.getSimilar path is cached the same way (7-day TTL) —
+collaborative-filtering similarity is equally slow-moving.
 """
 import asyncio
 
@@ -41,6 +43,10 @@ LASTFM_FALLBACK_CONCURRENCY = 5  # max concurrent artist.getTopTracks calls
 # artist fallback (uses top 3) and lastfm_hop (picks from positions 1..4).
 _LASTFM_TOP_TRACKS_CACHE_LIMIT = 5
 _LASTFM_TOP_TRACKS_TTL_SECONDS = 7 * 86400
+# track.getSimilar cache: same week-to-week stability as top-tracks. Fetch a
+# fixed N once and cache the raw track dicts — callers slice to their limit.
+_LASTFM_TRACK_SIMILAR_CACHE_LIMIT = 50
+_LASTFM_TRACK_SIMILAR_TTL_SECONDS = 7 * 86400
 # Position decay applied to per-artist ranks 1..3. Multiplied by the artist
 # match score so a high-match artist's rank-2 track can still outrank a
 # low-match artist's rank-1 track.
@@ -73,13 +79,75 @@ class LastfmAdapter(AbstractAdapter):
     async def _fetch_track_similar(
         self, api_key: str, artist: str, track: str, limit: int
     ) -> list[TrackMeta]:
+        raw = await self._get_track_similar_cached(api_key, artist, track)
+        results = [tm for t in raw if (tm := self._parse_similar_track(t))]
+        return results[:limit]
+
+    def _parse_similar_track(self, t: dict) -> TrackMeta | None:
+        """Map one track.getSimilar entry to TrackMeta. Drops entries missing
+        title/artist/url."""
+        title = (t.get("name") or "").strip()
+        artist_obj = t.get("artist") or {}
+        artist_name = (artist_obj.get("name") or "").strip()
+        url = (t.get("url") or "").strip()
+        if not title or not artist_name or not url:
+            return None
+        try:
+            match = float(t.get("match", 0))
+        except (TypeError, ValueError):
+            match = 0.0
+        cover_url: str | None = None
+        for img in t.get("image") or []:
+            if img.get("size") == "extralarge":
+                cover_url = img.get("#text") or None
+                break
+        return TrackMeta(
+            title=title,
+            artist=artist_name,
+            source=self.SOURCE,
+            sourceUrl=url,
+            coverUrl=cover_url,
+            score=match,
+        )
+
+    async def _get_track_similar_cached(
+        self, api_key: str, artist: str, track: str
+    ) -> list[dict]:
+        """Cached read-through for track.getSimilar. Fetches up to
+        _LASTFM_TRACK_SIMILAR_CACHE_LIMIT once and caches the raw track dicts —
+        callers slice. An empty result is not cached: the track may gain
+        similars later, and an empty list routes to the artist-level fallback."""
+        cache_key = f"{artist.lower().strip()}|{track.lower().strip()}"
+        cached = await fetch_external_cache(
+            source="lastfm_track_similar",
+            cache_key=cache_key,
+            ttl_seconds=_LASTFM_TRACK_SIMILAR_TTL_SECONDS,
+        )
+        if cached is not None:
+            return cached
+        fetched = await self._fetch_track_similar_raw(api_key, artist, track)
+        if fetched:
+            try:
+                await upsert_external_cache(
+                    source="lastfm_track_similar",
+                    cache_key=cache_key,
+                    payload=fetched,
+                )
+            except Exception as e:
+                print(f"[Lastfm] track-similar cache write error: {e}")
+        return fetched
+
+    async def _fetch_track_similar_raw(
+        self, api_key: str, artist: str, track: str
+    ) -> list[dict]:
+        """track.getSimilar HTTP call — returns raw API track dicts. Soft-degrades to []."""
         params = {
             "method": "track.getsimilar",
             "artist": artist,
             "track": track,
             "api_key": api_key,
             "format": "json",
-            "limit": limit,
+            "limit": _LASTFM_TRACK_SIMILAR_CACHE_LIMIT,
             "autocorrect": 1,  # let Last.fm fix "Mulero" -> "Oscar Mulero"
         }
         try:
@@ -90,40 +158,7 @@ class LastfmAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[Lastfm] find_similar error: {e}")
             return []
-
-        tracks_data = data.get("similartracks", {}).get("track", []) or []
-        results: list[TrackMeta] = []
-        for t in tracks_data:
-            try:
-                match = float(t.get("match", 0))
-            except (TypeError, ValueError):
-                match = 0.0
-
-            title = (t.get("name") or "").strip()
-            artist_obj = t.get("artist") or {}
-            artist_name = (artist_obj.get("name") or "").strip()
-            url = (t.get("url") or "").strip()
-            if not title or not artist_name or not url:
-                continue
-
-            cover_url: str | None = None
-            for img in t.get("image") or []:
-                if img.get("size") == "extralarge":
-                    cover_url = img.get("#text") or None
-                    break
-
-            results.append(
-                TrackMeta(
-                    title=title,
-                    artist=artist_name,
-                    source=self.SOURCE,
-                    sourceUrl=url,
-                    coverUrl=cover_url,
-                    score=match,
-                )
-            )
-
-        return results
+        return data.get("similartracks", {}).get("track", []) or []
 
     # ── artist-level fallback (Stage B) ───────────────────────────────────────
 
