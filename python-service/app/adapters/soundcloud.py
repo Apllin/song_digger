@@ -6,7 +6,7 @@ plain httpx GET is enough — no headless browser, no API key required.
 
 Flow per query:
   1. GET soundcloud.com/search?q=<artist track>
-     → parse <noscript> for the first matching track URL
+     → score <noscript> hits, pick the best query-match as seed
   2. GET soundcloud.com/<artist>/<track>/recommended
      → parse <noscript> for recommended track links / metadata
 
@@ -18,6 +18,7 @@ import urllib.parse
 import httpx
 from bs4 import BeautifulSoup
 
+from app.adapters._seed_match import MATCH_NONE, query_match_score
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
 from app.core.title_norm import strip_recording_suffixes
@@ -25,6 +26,7 @@ from app.core.title_norm import strip_recording_suffixes
 SC_BASE = "https://soundcloud.com"
 SC_EMBED_BASE = "https://w.soundcloud.com/player/"
 DEFAULT_LIMIT = 30
+_SEED_SCAN_LIMIT = 20
 TIMEOUT_SECONDS = 4.0
 
 _HEADERS = {
@@ -172,15 +174,30 @@ def _parse_seed_duration_ms(html: str) -> int | None:
         return None
 
 
-def _first_track_url(html: str) -> str | None:
-    inner = _noscript_soup(html)
-    if not inner:
-        return None
-    for a in inner.find_all("a", href=True):
-        path = _resolve_path(a["href"])
-        if path and _is_track_path(path):
-            return f"{SC_BASE}{path}"
-    return None
+def _seed_match_score(query: str, uploader: str, title: str) -> int:
+    """Best seed-match score for a hit — tries the title's embedded "Artist - Title"."""
+    score = query_match_score(query, uploader, title)
+    if " - " in title:
+        embedded_artist, _, embedded_title = title.partition(" - ")
+        score = max(
+            score,
+            query_match_score(query, embedded_artist.strip(), embedded_title.strip()),
+        )
+    return score
+
+
+def _pick_seed(query: str, html: str) -> str | None:
+    """Return the best query-matching track URL from a search page, or None."""
+    best_url: str | None = None
+    best_score = MATCH_NONE
+    for cand in _parse_tracks(html, _SEED_SCAN_LIMIT):
+        score = _seed_match_score(query, cand.artist, cand.title)
+        if score > best_score:
+            best_score = score
+            best_url = cand.sourceUrl
+    if best_url is None:
+        print(f"[SoundCloud] no seed matched query {query!r}")
+    return best_url
 
 
 def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
@@ -248,26 +265,23 @@ class SoundCloudAdapter(AbstractAdapter):
     name = "soundcloud"
 
     async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
-        artist, track = _split_query(query)
-        # Artist-only: search by name — _first_track_url skips the artist profile
-        # page (single-segment path) and picks the first track result as seed.
-        search_query = f"{artist} {track}" if track else artist
-
-        seed_url = await self._search_seed(search_query)
+        seed_url = await self._search_seed(query)
         if not seed_url:
             return []
-
         return await self._fetch_recommended(seed_url, limit)
 
     async def _search_seed(self, query: str) -> str | None:
+        """Search SoundCloud and return a validated seed track URL, or None."""
+        artist, track = _split_query(query)
+        search_query = f"{artist} {track}" if track else artist
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, headers=_HEADERS) as client:
-                resp = await client.get(f"{SC_BASE}/search", params={"q": query})
+                resp = await client.get(f"{SC_BASE}/search", params={"q": search_query})
                 resp.raise_for_status()
         except Exception as e:
             print(f"[SoundCloud] search error: {e}")
             return None
-        return _first_track_url(resp.text)
+        return _pick_seed(query, resp.text)
 
     async def _fetch_recommended(self, seed_url: str, limit: int) -> list[TrackMeta]:
         rec_url = seed_url.rstrip("/") + "/recommended"
