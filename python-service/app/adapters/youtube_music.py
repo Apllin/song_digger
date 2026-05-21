@@ -136,30 +136,28 @@ class YouTubeMusicAdapter(AbstractAdapter):
             return []
 
     def _find_by_artist_sync(self, artist: str, limit: int) -> list[TrackMeta]:
-        # Search for the artist
         results = _ytm.search(artist, filter="artists", limit=1)
         if not results:
-            # Fallback: search as song query
             return self._find_similar_sync(artist, limit)
 
         artist_id = results[0].get("browseId")
         if not artist_id:
             return self._find_similar_sync(artist, limit)
 
-        # Get artist page → pick a popular track → get watch playlist
         artist_data = _ytm.get_artist(artist_id)
-        songs = artist_data.get("songs", {}).get("results", [])
-        if not songs:
-            return self._find_similar_sync(artist, limit)
 
-        # Use first popular track as seed
-        seed_vid = songs[0].get("videoId")
-        if not seed_vid:
-            return self._find_similar_sync(artist, limit)
+        # Prefer the artist's own radio station; fall back to a popular-track seed.
+        radio_id = artist_data.get("radioId")
+        if radio_id:
+            watch = _ytm.get_watch_playlist(playlistId=radio_id, radio=True, limit=limit + 5)
+        else:
+            songs = artist_data.get("songs", {}).get("results", [])
+            seed_vid = songs[0].get("videoId") if songs else None
+            if not seed_vid:
+                return self._find_similar_sync(artist, limit)
+            watch = _ytm.get_watch_playlist(videoId=seed_vid, limit=limit + 5)
 
-        watch = _ytm.get_watch_playlist(videoId=seed_vid, limit=limit + 5)
         tracks_raw = watch.get("tracks", [])
-
         parsed = [m for t in tracks_raw if (m := _parse_ytm_track(t))]
         return parsed[:limit]
 
