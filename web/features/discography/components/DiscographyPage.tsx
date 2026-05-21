@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { useSearchParams } from "next/navigation";
 import { useCallback } from "react";
@@ -14,6 +14,7 @@ import { EntitySearchBar } from "@/components/EntitySearchBar";
 import { Pagination } from "@/components/Pagination";
 import { Spinner } from "@/components/Spinner";
 import { releasesQueryOptions } from "@/features/discography/releasesQuery";
+import { ArtistIdSchema } from "@/features/discography/schemas";
 import { discographyAtom } from "@/lib/atoms/discography";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
@@ -25,6 +26,7 @@ const PAGE_SIZE = 15;
 export function DiscographyPage() {
   const defaultArtist = useSearchParams().get("artist") ?? undefined;
   const [s, setS] = useAtom(discographyAtom);
+  const qc = useQueryClient();
 
   // Inline fetchFn/onSelect would get fresh identities every render, making
   // useEntitySearch's pickItem unstable and re-firing its defaultValue effect
@@ -36,9 +38,24 @@ export function DiscographyPage() {
   const handleArtistSelect = useCallback(() => setS((prev) => ({ ...prev, page: 1 })), [setS]);
   const setQuery = useCallback((q: string) => setS((prev) => ({ ...prev, query: q })), [setS]);
   const setSelectedItem = useCallback(
-    (item: DiscogsArtist | null) => setS((prev) => ({ ...prev, selectedItem: item })),
-    [setS],
+    (item: DiscogsArtist | null) => {
+      const artistId = item ? ArtistIdSchema.parse(String(item.id)) : null;
+      setS((prev) => ({ ...prev, selectedArtistId: artistId }));
+      if (artistId) qc.setQueryData(["artist", artistId], item);
+    },
+    [setS, qc],
   );
+
+  const { data: fetchedArtist } = useQuery<DiscogsArtist>({
+    queryKey: ["artist", s.selectedArtistId],
+    queryFn: ({ signal }) =>
+      fetchApi(api.discography.artists[":id"].$get({ param: { id: s.selectedArtistId! } }, { init: { signal } })),
+    enabled: s.selectedArtistId != null,
+    staleTime: Infinity,
+  });
+
+  const selectedItem: DiscogsArtist | null =
+    fetchedArtist ?? (s.selectedArtistId ? { id: Number(s.selectedArtistId), name: s.query, imageUrl: null } : null);
 
   const search = useEntitySearch<DiscogsArtist>({
     historyKey: "discography-history",
@@ -46,7 +63,7 @@ export function DiscographyPage() {
     fetchFn: fetchSuggestions,
     defaultValue: defaultArtist,
     onSelect: handleArtistSelect,
-    externalState: { query: s.query, setQuery, selectedItem: s.selectedItem, setSelectedItem },
+    externalState: { query: s.query, setQuery, selectedItem, setSelectedItem },
   });
 
   const sort = "year_desc";
@@ -60,7 +77,6 @@ export function DiscographyPage() {
     sort,
   });
 
-  const qc = useQueryClient();
   const getCachedReleases = useCallback(
     (page: number) => {
       if (artistId == null) return undefined;
