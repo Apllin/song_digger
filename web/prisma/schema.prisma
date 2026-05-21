@@ -288,6 +288,18 @@ model RequestMetric {
     @@index([createdAt])
 }
 
+// Discogs artist metadata collected when users search. One row per Discogs artist ID.
+// Populated as a side-effect of /discography/search so the discography page can
+// re-hydrate the selected artist from the DB on navigation without an extra Discogs call.
+model Artist {
+    id          String   @id
+    name        String
+    imageUrl    String?
+    resourceUrl String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
 // Metadata for a fetched artist discography. One row per artist; used for TTL
 // checks and can be extended with fetch telemetry (duration, page count, etc.)
 // without touching the release rows.
