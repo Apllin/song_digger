@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from app.adapters.soundcloud import SoundCloudAdapter, _clean_title, _split_query
+from app.adapters.soundcloud import (
+    SoundCloudAdapter,
+    _clean_title,
+    _pick_seed,
+    _split_query,
+)
 
 
 # ── _split_query ──────────────────────────────────────────────────────────────
@@ -138,3 +143,57 @@ async def test_fetch_recommended_seed_exclusion_ignores_trailing_slash(monkeypat
     results = await adapter._fetch_recommended("https://soundcloud.com/rill/onyx-balls-baile", limit=5)
 
     assert [t.sourceUrl for t in results] == ["https://soundcloud.com/surgeon/vortex"]
+
+
+# ── _pick_seed validation ─────────────────────────────────────────────────────
+
+def test_pick_seed_exact_track_match():
+    html = """
+    <noscript>
+      <a href="/other/random-track">Other - Random Track</a>
+      <a href="/ignez/lightworker">Ignez - Lightworker</a>
+    </noscript>
+    """
+    assert _pick_seed("Ignez - Lightworker", html) == "https://soundcloud.com/ignez/lightworker"
+
+
+def test_pick_seed_no_match_returns_none():
+    html = """
+    <noscript>
+      <a href="/other/unrelated-one">Other - Unrelated One</a>
+      <a href="/label/unrelated-two">Label - Unrelated Two</a>
+    </noscript>
+    """
+    assert _pick_seed("Ignez - Lightworker", html) is None
+
+
+def test_pick_seed_embedded_artist_in_title():
+    # URL/profile is the uploader (a label); the real artist is in the title.
+    html = """
+    <noscript>
+      <a href="/somelabel/ignez-lightworker">Ignez - Lightworker</a>
+    </noscript>
+    """
+    assert _pick_seed("Ignez - Lightworker", html) == "https://soundcloud.com/somelabel/ignez-lightworker"
+
+
+def test_pick_seed_artist_only_query():
+    html = """
+    <noscript>
+      <a href="/other/unrelated">Other - Unrelated</a>
+      <a href="/somelabel/surgeon-vortex">Surgeon - Vortex</a>
+    </noscript>
+    """
+    assert _pick_seed("Surgeon", html) == "https://soundcloud.com/somelabel/surgeon-vortex"
+
+
+async def test_find_similar_returns_empty_when_no_seed_matches(monkeypatch):
+    html = """
+    <noscript>
+      <a href="/label/unrelated-mix">Label - Unrelated Mix</a>
+    </noscript>
+    """
+    _mock_async_client(html, monkeypatch)
+    adapter = SoundCloudAdapter()
+
+    assert await adapter.find_similar("Ignez - Lightworker", limit=5) == []
