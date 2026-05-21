@@ -1,5 +1,16 @@
 # @trackdigger/python-service
 
+## 0.3.0
+
+### Minor Changes
+
+- 3407e7b: Add lastfm_hop SourceList to /similar: multi-seed artist-similarity fan-out from query artist + top trackid artists surfaces ~18 niche tracks per request beyond what streaming recommenders return. Also fixes trackid seed picker to no longer filter out tracks with playCount=0 — that field is unreliable on /musictracks (niche tracks with 15+ real playlists were being dropped). Search cache bumped to v12.
+- c7048d5: Artist-only search now fans out across all 7 sources (lastfm, trackid via new /audiostreams keyword flow, and the lastfm hop are added to the previously-cosine/ytm/yandex/soundcloud-only path). Trackid keyword flow pulls tracks DJs play in their sets — for "Anfisa Letyago" this returns 50 tracks across ~47 unique adjacent artists. SoundCloud now drops DJ-set / podcast / radio-show uploads via title-regex + a seed-duration check (>20 min seed bails the source entirely). Search cache bumped to v13.
+
+### Patch Changes
+
+- 984ff12: Prefer exact-entity artist match over substring for bare-artist queries so "Rill" no longer seeds off "Rill Saionji"; search cache bumped to v11.
+
 ## 0.3.0-rc.0
 
 ### Minor Changes
