@@ -5,5 +5,9 @@
     "@trackdigger/python-service": "0.2.0",
     "@trackdigger/web": "0.3.0"
   },
-  "changesets": []
+  "changesets": [
+    "lastfm-hop-expansion",
+    "search-quality",
+    "sharp-rivers"
+  ]
 }
