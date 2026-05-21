@@ -21,8 +21,8 @@ _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 _soundcloud = SoundCloudAdapter()
 
-# Trackidnet does up to 17 sequential-batched HTTP calls per seed (1 search +
-# 1 playlists-list + up to 15 detail fetches with Semaphore(5) inside the
+# Trackidnet does up to 12 sequential-batched HTTP calls per seed (1 search +
+# 1 playlists-list + up to 10 detail fetches with Semaphore(5) inside the
 # adapter — see ADR-0014). Cold-path wall clock is ~8-15s when trackid is
 # responsive, longer when it's slow. Cap above the realistic cold path so we
 # don't silently drop trackid contributions on every fresh search, but still
