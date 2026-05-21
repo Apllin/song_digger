@@ -7,7 +7,7 @@ from app.core.models import SampleFeatures, TrainingRequest, TrainingResult
 
 router = APIRouter()
 
-SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud"]
+SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud", "lastfm_hop"]
 RANK_DECAY_K = 60.0
 MIN_SAMPLES = 20
 

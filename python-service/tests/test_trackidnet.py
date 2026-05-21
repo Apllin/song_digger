@@ -91,6 +91,13 @@ def _is_playlists_list(url, params=None):
     return params is not None and "musicTrackId" in params
 
 
+def _is_keyword_search(url, params=None):
+    # /audiostreams with keywords param — artist-only keyword flow
+    if not url.endswith("/audiostreams"):
+        return False
+    return params is not None and "keywords" in params
+
+
 def _is_audiostream_detail(url, params=None):
     return "/audiostreams/" in url
 
@@ -167,12 +174,20 @@ async def test_disabled_flag_short_circuits_without_network(monkeypatch):
     assert client.calls == []
 
 
-async def test_query_without_dash_returns_empty_without_network(_enabled):
+async def test_query_without_dash_uses_keyword_flow(_enabled):
+    """Bare-artist queries now route to the /audiostreams?keywords= flow
+    instead of returning empty. An empty keyword result still soft-degrades
+    to []."""
     adapter = TrackidnetAdapter()
-    client = _ScriptedClient([])
+    client = _ScriptedClient([
+        (_is_keyword_search, _resp({"result": {"audiostreams": []}})),
+    ])
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz") == []
-    assert client.calls == []
+    assert any(
+        c[0].endswith("/audiostreams") and c[1].get("keywords") == "Nina Kraviz"
+        for c in client.calls
+    )
 
 
 # ── seed picker (/musictracks) ────────────────────────────────────────────
@@ -232,7 +247,11 @@ async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled)
     assert any(c[1].get("musicTrackId") == 1 for c in list_calls)
 
 
-async def test_search_all_zero_playcount_returns_empty(_enabled):
+async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
+    """playCount=0 on /musictracks is unreliable — niche tracks can have 17+
+    detected playlists despite playCount=0. The adapter must NOT filter on
+    that field; it should proceed to /audiostreams which is the source of
+    truth for set membership."""
     adapter = TrackidnetAdapter()
     search = {
         "result": {
@@ -243,11 +262,18 @@ async def test_search_all_zero_playcount_returns_empty(_enabled):
             ]
         }
     }
-    client = _ScriptedClient([(_is_search, _resp(search))])
+    rules = [
+        (_is_search, _resp(search)),
+        (_is_playlists_list, _resp({"result": {"audiostreams": []}})),
+    ]
+    client = _ScriptedClient(rules)
     with _patch_client(client):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
-    # No playlists call made
-    assert all(not c[0].endswith("/audiostreams") for c in client.calls)
+    # Playlists call IS made — playCount=0 must not short-circuit
+    assert any(
+        c[0].endswith("/audiostreams") and c[1].get("musicTrackId") == 1
+        for c in client.calls
+    )
 
 
 async def test_search_empty_results_returns_empty(_enabled):
@@ -277,7 +303,7 @@ async def test_search_500_returns_empty(_enabled, capsys):
 # ── playlists list (/audiostreams?musicTrackId=) ─────────────────────────
 
 async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
-    """14 playlists in fixture → all 14 detail fetches happen."""
+    """10 playlists from the (capped) fixture → all 10 detail fetches happen."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     playlists = _load("playlists_list_nina_kraviz_tarde_2026-05-04.json")
@@ -290,11 +316,12 @@ async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
-    assert len(detail_calls) == 14
+    # Fixture has 14 playlists; MAX_PLAYLISTS = 10 caps the fetch.
+    assert len(detail_calls) == 10
 
 
-async def test_playlists_list_capped_at_15(_enabled):
-    """20 playlists returned (page max) → only top 15 (by addedOn desc) fetched."""
+async def test_playlists_list_capped_at_max(_enabled):
+    """20 playlists returned (page max) → only top MAX_PLAYLISTS (by addedOn desc) fetched."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     pairs = [(f"slug-{i}", f"2026-01-{i+1:02d}T00:00:00Z") for i in range(20)]
@@ -308,12 +335,12 @@ async def test_playlists_list_capped_at_15(_enabled):
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
-    assert len(detail_calls) == 15
+    assert len(detail_calls) == 10
     fetched_slugs = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
-    # Top 15 by addedOn desc → slug-19 down to slug-5
+    # Top 10 by addedOn desc → slug-19 down to slug-10
     assert "slug-19" in fetched_slugs
-    assert "slug-5" in fetched_slugs
-    assert "slug-4" not in fetched_slugs
+    assert "slug-10" in fetched_slugs
+    assert "slug-9" not in fetched_slugs
 
 
 async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):

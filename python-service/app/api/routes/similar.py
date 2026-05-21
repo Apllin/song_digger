@@ -1,4 +1,5 @@
 import asyncio
+import random
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
@@ -9,6 +10,7 @@ from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.soundcloud import SoundCloudAdapter
+from app.services.lastfm_hop import expand_via_similar_artists
 
 router = APIRouter()
 
@@ -26,6 +28,16 @@ _soundcloud = SoundCloudAdapter()
 # don't silently drop trackid contributions on every fresh search, but still
 # bounded so one slow seed doesn't stall the /similar fan-out.
 TRACKIDNET_TIMEOUT = 25.0
+
+# Hop runs serially after the main gather (depends on trackid output for
+# seed artists). Cold path ~1s; cap at 5s so a slow Last.fm doesn't stall
+# /similar on its longest critical path.
+LASTFM_HOP_TIMEOUT = 5.0
+# N artists randomly sampled from the trackid output to use as additional
+# hop seeds alongside the query artist. Random sampling (rather than top-N
+# by co-occurrence) spreads the hop across the whole trackid cluster, so
+# repeat searches for the same query surface different lateral branches.
+LASTFM_HOP_TRACKID_SEED_COUNT = 5
 
 
 async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
@@ -111,6 +123,46 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     return out
 
 
+def _random_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
+    """Random `n` unique artists from `tracks`, deduped by normalized form.
+    Sampling (vs. taking top-N by co-occurrence rank) spreads hop seeds
+    across the whole trackid cluster instead of clustering them on the
+    most-frequent artists — gives the hop more lateral coverage and makes
+    repeat searches surface different similar-artist branches."""
+    seen: set[str] = set()
+    pool: list[str] = []
+    for t in tracks:
+        key = _normalize(t.artist)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        pool.append(t.artist)
+    if not pool:
+        return []
+    k = min(n, len(pool))
+    return random.sample(pool, k)
+
+
+async def _lastfm_hop_safe(
+    seed_artists: list[str], exclude_artists: list[str]
+) -> list[TrackMeta]:
+    """Run the lastfm hop with a hard timeout — caps the tail-latency cost
+    of a slow Last.fm without blocking the rest of /similar."""
+    try:
+        return await asyncio.wait_for(
+            expand_via_similar_artists(
+                seed_artists, exclude_artists=exclude_artists
+            ),
+            timeout=LASTFM_HOP_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        print(f"[LastfmHop] timed out after {LASTFM_HOP_TIMEOUT}s, skipping")
+        return []
+    except Exception as e:
+        print(f"[LastfmHop] error: {e}")
+        return []
+
+
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
@@ -194,6 +246,18 @@ async def _find_by_artist_and_track(
             return ts
         return [t for t in ts if not _same_artist(t.artist, source_artist)]
 
+    # Phase 3: lastfm hop — fan out from query artist + top trackid artists
+    # to surface tracks one similarity-hop away. Runs serially after gather
+    # because seed-artist selection depends on trackid output. Excludes
+    # artists already present in trackid's contribution so the hop doesn't
+    # double up on the same lateral cluster.
+    trackid_seed_artists = _random_unique_artists(
+        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
+    )
+    hop_seed_pool = [artist] + trackid_seed_artists
+    hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
+    lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
+
     source_lists = [
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
@@ -201,6 +265,7 @@ async def _find_by_artist_and_track(
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 
     return source_lists, source_artist
@@ -210,14 +275,28 @@ async def _find_by_artist_only(
     artist: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
     """
-    Artist-only mode: Cosine + YTM artist playlist + Yandex similar, all in parallel.
-    If Cosine returns few results, seeds a second query with the artist's top track.
+    Artist-only mode: same six adapters as track mode, plus the lastfm hop.
+    Lastfm's `find_similar` recognizes a track-less query and routes to its
+    own artist-level fallback (artist.getSimilar → top tracks per similar).
+    Trackid's `find_similar` routes to its keyword flow (/audiostreams?
+    keywords=<artist>) when no track is supplied. If Cosine returns few
+    results, seeds a second query with the artist's top track.
     """
-    cosine_artist, ytm_artist, yandex_artist, soundcloud_artist, top_songs = await asyncio.gather(
+    (
+        cosine_artist,
+        ytm_artist,
+        yandex_artist,
+        soundcloud_artist,
+        lastfm_artist,
+        trackidnet_artist,
+        top_songs,
+    ) = await asyncio.gather(
         _cosine.find_similar(artist, limit),
         _ytm.find_similar_by_artist(artist, limit),
         _yandex.find_similar(artist, limit),
         _soundcloud.find_similar(artist, limit),
+        _lastfm.find_similar(artist, limit),
+        _trackidnet_safe(artist, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
@@ -226,6 +305,8 @@ async def _find_by_artist_only(
     ytm_tracks: list[TrackMeta] = ytm_artist if isinstance(ytm_artist, list) else []
     yandex_tracks: list[TrackMeta] = yandex_artist if isinstance(yandex_artist, list) else []
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
+    lastfm_tracks: list[TrackMeta] = lastfm_artist if isinstance(lastfm_artist, list) else []
+    trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
 
     # If the artist-only Cosine query returned few results, seed with a specific track
     if isinstance(top_songs, list) and top_songs and len(cosine_tracks) < 8:
@@ -235,6 +316,16 @@ async def _find_by_artist_only(
             if isinstance(seeded, list) and len(seeded) > len(cosine_tracks):
                 cosine_tracks = seeded
 
+    # Lastfm hop — fan out from query artist + top trackid artists, same logic
+    # as the track-mode path so artist-only queries also surface lateral
+    # similars one hop deeper.
+    trackid_seed_artists = _random_unique_artists(
+        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
+    )
+    hop_seed_pool = [artist] + trackid_seed_artists
+    hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
+    lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
+
     def _filter_artist(ts: list[TrackMeta]) -> list[TrackMeta]:
         return [t for t in ts if not _same_artist(t.artist, artist)]
 
@@ -242,7 +333,10 @@ async def _find_by_artist_only(
         SourceList(source="cosine_club", tracks=_dedup_within_source(_filter_artist(cosine_tracks))),
         SourceList(source="youtube_music", tracks=_dedup_within_source(_filter_artist(ytm_tracks))),
         SourceList(source="yandex_music", tracks=_dedup_within_source(_filter_artist(yandex_tracks))),
+        SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
+        SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 
     return source_lists, artist

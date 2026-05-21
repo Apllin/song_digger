@@ -331,6 +331,60 @@ async def test_bare_artist_query_picks_first_track_by_that_artist(monkeypatch):
     assert out[0].artist == "Reeko"
 
 
+async def test_bare_artist_query_prefers_exact_artist_over_substring(monkeypatch):
+    """Bare-artist query "Rill" must seed off an actual `rill` track, not off
+    "Rill Saionji" — a different artist whose name happens to start with
+    "Rill". Subset token-match would tie both at MATCH_ARTIST, so cosine's own
+    ranking would decide. The exact-entity match must win."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                # Cosine returns "Rill Saionji" first — wrong artist, but {"rill"}
+                # is a subset of {"rill", "saionji"} so the old code accepted it.
+                {"id": "wrong", "artist": "Rill Saionji", "track": "Caress"},
+                {"id": "right", "artist": "rill", "track": "friss"},
+                {"id": "also", "artist": "rill", "track": "silky stones"},
+            ]})
+        if url == "/v1/tracks/right/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "X", "artist": "Y", "video_id": "v"}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar("Rill")
+    assert len(out) == 1
+    assert out[0].artist == "Y"
+
+
+async def test_bare_artist_query_accepts_collab_with_exact_entity(monkeypatch):
+    """For bare-artist "Rill", a candidate "rill & somebody" must qualify as
+    MATCH_ARTIST_EXACT — `rill` is one of the collab-split entities. Otherwise
+    legitimate Rill collabs would lose to single-name lookalikes."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [
+                {"id": "wrong", "artist": "Rill Saionji", "track": "Caress"},
+                {"id": "right", "artist": "rill & somebody", "track": "friss"},
+            ]})
+        if url == "/v1/tracks/right/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "X", "artist": "Y", "video_id": "v"}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar("Rill")
+    assert len(out) == 1
+    assert out[0].artist == "Y"
+
+
 async def test_bare_artist_query_returns_empty_when_no_artist_match(
     monkeypatch, capsys
 ):

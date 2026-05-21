@@ -4,7 +4,6 @@ import { useCallback } from "react";
 
 import { SearchBar } from "@/components/SearchBar";
 import { Spinner } from "@/components/Spinner";
-import type { PlayerTrack } from "@/features/player/types";
 import { ResultsGrid } from "@/features/search/components/ResultsGrid";
 import { useSearchFlow } from "@/features/search/hooks/useSearchFlow";
 
