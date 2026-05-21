@@ -8,6 +8,7 @@ import pytest
 from app.adapters.lastfm import (
     LASTFM_FALLBACK_TOTAL_CAP,
     LastfmAdapter,
+    _pick_fallback_tracks,
     _split_query,
 )
 
@@ -424,3 +425,19 @@ async def test_fallback_score_ordering_match_times_decay():
     assert high_rank2_idx < low_rank1_idx, (
         f"Expected HighMatch/rank2 before LowMatch/rank1, got: {ordering}"
     )
+
+
+# ── _pick_fallback_tracks ─────────────────────────────────────────────────────
+
+def test_pick_fallback_tracks_short_list_returns_all():
+    tracks = [{"name": "a"}, {"name": "b"}]
+    assert _pick_fallback_tracks(tracks) == tracks
+
+
+def test_pick_fallback_tracks_keeps_most_popular_plus_two_random():
+    tracks = [{"name": str(i)} for i in range(10)]
+    picked = _pick_fallback_tracks(tracks)
+    assert len(picked) == 3
+    assert picked[0] == {"name": "0"}  # most-popular track preserved at front
+    assert all(t in tracks[1:] for t in picked[1:])
+    assert len({t["name"] for t in picked}) == 3  # no duplicates

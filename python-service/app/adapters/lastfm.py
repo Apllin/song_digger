@@ -17,6 +17,7 @@ The primary track.getSimilar path is cached the same way (7-day TTL) —
 collaborative-filtering similarity is equally slow-moving.
 """
 import asyncio
+import random
 
 import httpx
 
@@ -39,9 +40,9 @@ LASTFM_FALLBACK_TRACKS_PER_ARTIST = 3  # tracks fetched per similar artist
 LASTFM_FALLBACK_TOTAL_CAP = 30  # final cap on fallback contribution
 LASTFM_FALLBACK_TTL_DAYS = 30  # artist similars are slow-moving
 LASTFM_FALLBACK_CONCURRENCY = 5  # max concurrent artist.getTopTracks calls
-# Top-tracks cache: fetch up to N once, slice per caller. Covers both the
-# artist fallback (uses top 3) and lastfm_hop (picks from positions 1..4).
-_LASTFM_TOP_TRACKS_CACHE_LIMIT = 5
+# Top-tracks cache: fetch up to N once, slice per caller. Covers the artist
+# fallback (1 top + 2 random) and lastfm_hop (picks from positions 1..4).
+_LASTFM_TOP_TRACKS_CACHE_LIMIT = 10
 _LASTFM_TOP_TRACKS_TTL_SECONDS = 7 * 86400
 # track.getSimilar cache: same week-to-week stability as top-tracks. Fetch a
 # fixed N once and cache the raw track dicts — callers slice to their limit.
@@ -181,7 +182,7 @@ class LastfmAdapter(AbstractAdapter):
                 tracks = await self._get_artist_top_tracks_cached(
                     api_key, sim.get("name") or ""
                 )
-                return tracks[:LASTFM_FALLBACK_TRACKS_PER_ARTIST]
+                return _pick_fallback_tracks(tracks)
 
         track_lists = await asyncio.gather(
             *(_one(s) for s in top_similars), return_exceptions=True
@@ -361,6 +362,14 @@ class LastfmAdapter(AbstractAdapter):
         if not api_key or not artist:
             return []
         return await self._get_artist_top_tracks_cached(api_key, artist)
+
+
+def _pick_fallback_tracks(tracks: list[dict]) -> list[dict]:
+    """Most-popular top track plus 2 random others, for diversity."""
+    if len(tracks) <= LASTFM_FALLBACK_TRACKS_PER_ARTIST:
+        return tracks
+    extra = random.sample(tracks[1:], LASTFM_FALLBACK_TRACKS_PER_ARTIST - 1)
+    return [tracks[0], *extra]
 
 
 def _split_query(query: str) -> tuple[str, str | None]:
