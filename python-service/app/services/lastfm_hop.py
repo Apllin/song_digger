@@ -19,8 +19,8 @@ Output is a flat list of TrackMeta tagged source="lastfm_hop", scored by
 the seed→similar match value so the web aggregator's RRF treats stronger
 similarity links higher. Soft-degrades to [] on any error.
 
-Latency budget (cold cache): ~6 artist.getSimilar in parallel (~300ms)
-+ ~18 artist.getTopTracks via Semaphore(5), ~4 rounds × 200ms = ~800ms.
+Latency budget (cold cache): ~4 artist.getSimilar in parallel (~300ms)
++ ~8 artist.getTopTracks via Semaphore(5), ~2 rounds × 200ms = ~400ms.
 Warm cache: ~100ms (asyncpg pool reads only).
 """
 import asyncio
@@ -30,7 +30,7 @@ from typing import Iterable
 from app.adapters.lastfm import LastfmAdapter
 from app.core.models import TrackMeta
 
-HOP_SIMILARS_PER_SEED = 3
+HOP_SIMILARS_PER_SEED = 2
 HOP_TOP_TRACK_CONCURRENCY = 5
 # Pick a track at a random position in this 0-indexed range (inclusive),
 # clamped to the actual list length. Skipping position 0 dodges the
