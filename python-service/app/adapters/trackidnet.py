@@ -140,18 +140,23 @@ class TrackidnetAdapter(AbstractAdapter):
             elif seed.get("id") is None:
                 return []
 
+            # Use slug, not id, as the lookup key — trackid.net's
+            # /audiostreams?musicTrackId=… index does not surface every
+            # detected playlist for niche tracks (TRA-19), whereas the
+            # ?musicTrackSlug=… query does. Cache key follows the slug too.
+            seed_slug = seed.get("slug") or ""
             playlist_slugs = await fetch_external_cache(
                 source="trackidnet_playlists",
-                cache_key=str(seed["id"]),
+                cache_key=seed_slug,
                 ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
             )
             if playlist_slugs is None:
-                playlist_slugs = await _list_playlists(client, seed["id"])
+                playlist_slugs = await _list_playlists(client, seed_slug)
                 if not playlist_slugs:
                     return []
                 await upsert_external_cache(
                     source="trackidnet_playlists",
-                    cache_key=str(seed["id"]),
+                    cache_key=seed_slug,
                     payload=playlist_slugs,
                 )
             elif not playlist_slugs:
@@ -292,21 +297,27 @@ async def _find_seed_track(
 
 
 async def _list_playlists(
-    client: httpx.AsyncClient, music_track_id: int
+    client: httpx.AsyncClient, music_track_slug: str
 ) -> list[str]:
     """Return up to MAX_PLAYLISTS audiostream slugs for the given music
-    track id, sorted by addedOn descending (freshest first).
+    track slug, sorted by addedOn descending (freshest first).
 
-    The /audiostreams?musicTrackId= endpoint returns lightweight metadata
+    Uses `musicTrackSlug` (not `musicTrackId`) — empirically, the id-keyed
+    index on trackid.net's public API misses associations for niche tracks
+    that the slug-keyed index does surface (TRA-19).
+
+    The /audiostreams?musicTrackSlug= endpoint returns lightweight metadata
     only (no tracklists in the payload), so this call is cheap. We don't
     paginate — the first page (pageSize=20) is enough; we cap at
     MAX_PLAYLISTS of those, taking the freshest by addedOn.
     """
+    if not music_track_slug:
+        return []
     try:
         resp = await client.get(
             f"{API_BASE}/audiostreams",
             params={
-                "musicTrackId": music_track_id,
+                "musicTrackSlug": music_track_slug,
                 "pageSize": PLAYLISTS_PAGE_SIZE,
                 "currentPage": 0,
                 "sortField": "",
@@ -316,7 +327,7 @@ async def _list_playlists(
         resp.raise_for_status()
         data = resp.json()
     except (httpx.HTTPError, ValueError) as e:
-        print(f"[Trackidnet] playlists list failed for {music_track_id}: {e}")
+        print(f"[Trackidnet] playlists list failed for {music_track_slug!r}: {e}")
         return []
 
     streams = (data.get("result") or {}).get("audiostreams") or []
