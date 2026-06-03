@@ -3,7 +3,7 @@ Tests for the trackid.net JSON API adapter (playlists-list architecture).
 
 The adapter calls three endpoints:
   - GET /api/public/musictracks?keywords=...           → search/seed lookup
-  - GET /api/public/audiostreams?musicTrackId=<id>     → list of playlists
+  - GET /api/public/audiostreams?musicTrackSlug=<id>     → list of playlists
   - GET /api/public/audiostreams/<slug>                → DJ-set tracklist
 
 Captured JSON fixtures live in tests/fixtures/trackidnet/ (filename
@@ -87,10 +87,10 @@ def _is_search(url, params):
 
 
 def _is_playlists_list(url, params=None):
-    # /audiostreams with musicTrackId param (not /audiostreams/<slug>)
+    # /audiostreams with musicTrackSlug param (not /audiostreams/<slug>)
     if not url.endswith("/audiostreams"):
         return False
-    return params is not None and "musicTrackId" in params
+    return params is not None and "musicTrackSlug" in params
 
 
 def _is_keyword_search(url, params=None):
@@ -221,9 +221,9 @@ async def test_search_picks_highest_playcount_artist_match_and_uses_id(_enabled)
     client = _ScriptedClient(rules)
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
-    # Verify musicTrackId=502601 was sent on the playlists call
+    # Verify the picked seed slug was sent on the playlists call
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
-    assert any(c[1].get("musicTrackId") == 502601 for c in list_calls)
+    assert any(c[1].get("musicTrackSlug") == "nina-kraviz-tarde-mix" for c in list_calls)
 
 
 async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled):
@@ -246,7 +246,7 @@ async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled)
     with _patch_client(client):
         await adapter.find_similar("Nina - T")
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
-    assert any(c[1].get("musicTrackId") == 1 for c in list_calls)
+    assert any(c[1].get("musicTrackSlug") == "other-t" for c in list_calls)
 
 
 async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
@@ -273,7 +273,7 @@ async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
     # Playlists call IS made — playCount=0 must not short-circuit
     assert any(
-        c[0].endswith("/audiostreams") and c[1].get("musicTrackId") == 1
+        c[0].endswith("/audiostreams") and c[1].get("musicTrackSlug") == "nina-kraviz-tarde"
         for c in client.calls
     )
 
@@ -302,7 +302,7 @@ async def test_search_500_returns_empty(_enabled, capsys):
     assert "[Trackidnet]" in capsys.readouterr().out
 
 
-# ── playlists list (/audiostreams?musicTrackId=) ─────────────────────────
+# ── playlists list (/audiostreams?musicTrackSlug=) ─────────────────────────
 
 async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
     """10 playlists from the (capped) fixture → all 10 detail fetches happen."""
