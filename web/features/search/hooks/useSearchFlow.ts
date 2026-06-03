@@ -13,6 +13,10 @@ import { searchAtom } from "@/lib/atoms/search";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
+// Beatport BPM/key enrichment is fire-and-forget server-side. Refetch once
+// after this delay so chips appear without a manual reload.
+const ENRICHMENT_REFETCH_DELAY_MS = 25_000;
+
 export function useSearchFlow(initialQuery = "") {
   useHydrateAtoms([[searchAtom, { query: initialQuery, id: null, page: 1 }]]);
 
@@ -29,6 +33,11 @@ export function useSearchFlow(initialQuery = "") {
     onSuccess: (result) => {
       qc.setQueryData(searchPageKey(result.id, 1), result);
       setSearch((prev) => ({ ...prev, id: result.id, page: 1 }));
+      setTimeout(() => {
+        void qc.invalidateQueries({
+          predicate: (q) => q.queryKey[0] === "search-page" && q.queryKey[1] === result.id,
+        });
+      }, ENRICHMENT_REFETCH_DELAY_MS);
     },
   });
 

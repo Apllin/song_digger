@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { enqueueBackgroundEnrich } from "@/features/enrichment/server/enqueueBackgroundEnrich";
 import { TrackSourceSchema } from "@/features/player/types";
 import type { SearchQueryId } from "@/features/search/schemas";
 import {
@@ -80,7 +81,12 @@ async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: n
   };
 }
 
-async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Promise<void> {
+async function saveTracks(
+  searchId: SearchQueryId,
+  tracks: FusedCandidate[],
+  seed: { artist: string; title: string | null },
+  pythonServiceUrl: string,
+): Promise<void> {
   if (!tracks.length) return;
 
   const urls = tracks.map((t) => t.sourceUrl);
@@ -154,6 +160,11 @@ async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Pr
   //    without a live YTM lookup. Best-effort, never blocks the search
   //    response.
   warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
+
+  // 6. Fire-and-forget Beatport BPM/key enrichment for seed + candidates.
+  enqueueBackgroundEnrich(searchId, seed, tracks, pythonServiceUrl).catch((err) =>
+    console.error("[enrichment-queue] dispatch failed:", err),
+  );
 }
 
 async function runSearch(
@@ -181,7 +192,7 @@ async function runSearch(
   const weights = await getActiveWeights();
   const aggregated = aggregateTracks(pythonResult.source_lists, weights);
   const playable = await enrichMissingCovers(aggregated);
-  await saveTracks(searchId, playable);
+  await saveTracks(searchId, playable, { artist, title: track }, pythonServiceUrl);
 
   await prisma.searchQuery.update({
     where: { id: searchId },

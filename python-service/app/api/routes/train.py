@@ -10,6 +10,10 @@ router = APIRouter()
 SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud", "lastfm_hop"]
 RANK_DECAY_K = 60.0
 MIN_SAMPLES = 20
+# Soft cap for bpmDelta normalisation: covers ~half-tempo (±24 BPM) so the
+# feature has dynamic range beyond the strict ±6 compatibility threshold.
+BPM_DELTA_CAP = 24.0
+BPM_COMPATIBLE_MAX = 6.0
 
 
 def _build_feature_vector(f: SampleFeatures) -> list[float]:
@@ -18,10 +22,25 @@ def _build_feature_vector(f: SampleFeatures) -> list[float]:
         1.0 / (RANK_DECAY_K + source_ranks[s]) if s in source_ranks else 0.0
         for s in SOURCES
     ]
+    if f.bpmDelta is None:
+        bpm_delta_norm = 0.0
+        bpm_compatible = 0.0
+        bpm_present = 0.0
+    else:
+        bpm_delta_norm = min(f.bpmDelta / BPM_DELTA_CAP, 1.0)
+        bpm_compatible = 1.0 if f.bpmDelta <= BPM_COMPATIBLE_MAX else 0.0
+        bpm_present = 1.0
+    key_compatible = 1.0 if f.keyCompatible is True else 0.0
+    key_present = 1.0 if f.keyCompatible is not None else 0.0
     return [
         *source_features,
         f.cosineScore or 0.0,
         f.numSources / len(SOURCES),
+        bpm_delta_norm,
+        bpm_compatible,
+        bpm_present,
+        key_compatible,
+        key_present,
     ]
 
 

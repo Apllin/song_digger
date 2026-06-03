@@ -3,13 +3,12 @@
  * Do not edit manually.
  */
 
-import type { SourceList } from "../types/SourceList";
+import type { EnrichResponse } from "../types/EnrichResponse";
 import { trackMetaSchema } from "./trackMetaSchema";
 import { z } from "zod/v4";
 
-export const sourceListSchema = z.object({
-  source: z.string(),
+export const enrichResponseSchema = z.object({
   get tracks() {
     return z.array(trackMetaSchema);
   },
-}) as unknown as z.ZodType<SourceList>;
+}) as unknown as z.ZodType<EnrichResponse>;

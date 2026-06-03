@@ -108,6 +108,8 @@ class SampleFeatures(BaseModel):
     minSourceRank: int
     cosineScore: float | None
     rrfScore: float
+    bpmDelta: float | None = None
+    keyCompatible: bool | None = None
 
 
 class TrainingSample(BaseModel):
