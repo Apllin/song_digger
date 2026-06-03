@@ -19,8 +19,7 @@ collaborative-filtering similarity is equally slow-moving.
 import asyncio
 import random
 
-import httpx
-
+from app.adapters._http import fetch_json_with_retry
 from app.adapters.base import AbstractAdapter
 from app.config import settings
 from app.core.db import (
@@ -127,6 +126,10 @@ class LastfmAdapter(AbstractAdapter):
         if cached is not None:
             return cached
         fetched = await self._fetch_track_similar_raw(api_key, artist, track)
+        if fetched is None:
+            # Transient/permanent fetch failure — do not cache, let the next
+            # query try again.
+            return []
         if fetched:
             try:
                 await upsert_external_cache(
@@ -140,8 +143,9 @@ class LastfmAdapter(AbstractAdapter):
 
     async def _fetch_track_similar_raw(
         self, api_key: str, artist: str, track: str
-    ) -> list[dict]:
-        """track.getSimilar HTTP call — returns raw API track dicts. Soft-degrades to []."""
+    ) -> list[dict] | None:
+        """track.getSimilar HTTP call. Returns the parsed list (possibly empty)
+        on API success, or None on transient/permanent fetch failure."""
         params = {
             "method": "track.getsimilar",
             "artist": artist,
@@ -151,14 +155,11 @@ class LastfmAdapter(AbstractAdapter):
             "limit": _LASTFM_TRACK_SIMILAR_CACHE_LIMIT,
             "autocorrect": 1,  # let Last.fm fix "Mulero" -> "Oscar Mulero"
         }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                resp = await client.get(LASTFM_API_BASE, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            print(f"[Lastfm] find_similar error: {e}")
-            return []
+        data = await fetch_json_with_retry(
+            LASTFM_API_BASE, params=params, timeout=TIMEOUT_SECONDS, label="Lastfm.find_similar"
+        )
+        if data is None:
+            return None
         return data.get("similartracks", {}).get("track", []) or []
 
     # ── artist-level fallback (Stage B) ───────────────────────────────────────
@@ -248,6 +249,12 @@ class LastfmAdapter(AbstractAdapter):
             return cached
 
         fetched = await self._fetch_artist_similar(api_key, artist)
+        if fetched is None:
+            # Transient/permanent fetch failure — return [] WITHOUT writing to
+            # cache. The previous behaviour cached empty here and locked the
+            # artist out of the fallback for the full 30-day TTL on a single
+            # blip (see TRA-19).
+            return []
         # Persist even an empty result — repeated unknown-artist queries should
         # not hammer the API.
         try:
@@ -258,9 +265,10 @@ class LastfmAdapter(AbstractAdapter):
 
     async def _fetch_artist_similar(
         self, api_key: str, artist: str
-    ) -> list[dict]:
+    ) -> list[dict] | None:
         """artist.getSimilar — returns up to LASTFM_FALLBACK_ARTIST_CAP entries
-        of {name, match, url}. Soft-degrades to [] on any error."""
+        of {name, match, url} on API success (possibly []), or None on fetch
+        failure. None must NOT be cached as "no similars"."""
         params = {
             "method": "artist.getsimilar",
             "artist": artist,
@@ -269,14 +277,11 @@ class LastfmAdapter(AbstractAdapter):
             "limit": LASTFM_FALLBACK_ARTIST_CAP,
             "autocorrect": 1,
         }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                resp = await client.get(LASTFM_API_BASE, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            print(f"[Lastfm] artist.getSimilar error: {e}")
-            return []
+        data = await fetch_json_with_retry(
+            LASTFM_API_BASE, params=params, timeout=TIMEOUT_SECONDS, label="Lastfm.artist.getSimilar"
+        )
+        if data is None:
+            return None
 
         artists_data = data.get("similarartists", {}).get("artist", []) or []
         out: list[dict] = []
@@ -294,9 +299,9 @@ class LastfmAdapter(AbstractAdapter):
 
     async def _fetch_artist_top_tracks(
         self, api_key: str, artist: str, limit: int
-    ) -> list[dict]:
+    ) -> list[dict] | None:
         """artist.getTopTracks — returns up to `limit` {name, artist, url}
-        dicts. Soft-degrades to [] on any error."""
+        dicts on API success (possibly []), or None on fetch failure."""
         if not artist:
             return []
         params = {
@@ -307,14 +312,11 @@ class LastfmAdapter(AbstractAdapter):
             "limit": limit,
             "autocorrect": 1,
         }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                resp = await client.get(LASTFM_API_BASE, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            print(f"[Lastfm] artist.getTopTracks error: {e}")
-            return []
+        data = await fetch_json_with_retry(
+            LASTFM_API_BASE, params=params, timeout=TIMEOUT_SECONDS, label="Lastfm.artist.getTopTracks"
+        )
+        if data is None:
+            return None
 
         return data.get("toptracks", {}).get("track", []) or []
 
@@ -336,6 +338,8 @@ class LastfmAdapter(AbstractAdapter):
         fetched = await self._fetch_artist_top_tracks(
             api_key, artist, _LASTFM_TOP_TRACKS_CACHE_LIMIT
         )
+        if fetched is None:
+            return []
         if fetched:
             try:
                 await upsert_external_cache(
