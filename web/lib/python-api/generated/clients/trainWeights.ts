@@ -3,10 +3,10 @@
  * Do not edit manually.
  */
 
-import fetch from "@kubb/plugin-client/clients/axios";
-import type { TrainWeightsMutationRequest, TrainWeightsMutationResponse, TrainWeights422 } from "../types/TrainWeights";
 import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
-import { trainWeightsMutationResponseSchema, trainWeightsMutationRequestSchema } from "../zod/trainWeightsSchema";
+import fetch from "@kubb/plugin-client/clients/axios";
+import type { TrainWeights422, TrainWeightsMutationRequest, TrainWeightsMutationResponse } from "../types/TrainWeights";
+import { trainWeightsMutationRequestSchema, trainWeightsMutationResponseSchema } from "../zod/trainWeightsSchema";
 
 function getTrainWeightsUrl() {
   const res = { method: "POST", url: `/train` as const };

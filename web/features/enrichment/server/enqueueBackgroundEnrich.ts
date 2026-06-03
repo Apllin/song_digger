@@ -18,10 +18,7 @@ export async function enqueueBackgroundEnrich(
   console.log(
     `[enrichment-queue] dispatched: searchId=${searchId} seed="${seed.artist} - ${seed.title}" candidates=${tracks.length} pythonUrl=${pythonServiceUrl}`,
   );
-  await Promise.all([
-    enrichCandidates(tracks, pythonServiceUrl),
-    enrichSeed(searchId, seed, pythonServiceUrl),
-  ]);
+  await Promise.all([enrichCandidates(tracks, pythonServiceUrl), enrichSeed(searchId, seed, pythonServiceUrl)]);
 }
 
 async function enrichCandidates(tracks: TrackMeta[], pythonServiceUrl: string): Promise<void> {
@@ -88,10 +85,7 @@ async function enrichSeed(
   };
 
   try {
-    const resp = await enrichAudioFeatures(
-      { tracks: [seedPseudoTrack] },
-      { baseURL: pythonServiceUrl },
-    );
+    const resp = await enrichAudioFeatures({ tracks: [seedPseudoTrack] }, { baseURL: pythonServiceUrl });
     const enriched = resp.tracks[0];
     if (!enriched) return;
     if (enriched.bpm == null && enriched.key == null) return;

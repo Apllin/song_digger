@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { TrainingRequest } from "../types/TrainingRequest";
 import { trainingSampleSchema } from "./trainingSampleSchema";
-import { z } from "zod/v4";
 
 export const trainingRequestSchema = z.object({
   get samples() {

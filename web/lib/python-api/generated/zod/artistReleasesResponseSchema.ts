@@ -3,10 +3,10 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { ArtistReleasesResponse } from "../types/ArtistReleasesResponse";
 import { artistReleaseSchema } from "./artistReleaseSchema";
 import { labelReleasesPaginationSchema } from "./labelReleasesPaginationSchema";
-import { z } from "zod/v4";
 
 export const artistReleasesResponseSchema = z.object({
   get releases() {

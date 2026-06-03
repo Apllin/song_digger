@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { EnrichRequest } from "../types/EnrichRequest";
 import { trackMetaSchema } from "./trackMetaSchema";
-import { z } from "zod/v4";
 
 export const enrichRequestSchema = z.object({
   get tracks() {

@@ -3,16 +3,16 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   EnrichAudioFeatures200,
   EnrichAudioFeatures422,
   EnrichAudioFeaturesMutationRequest,
   EnrichAudioFeaturesMutationResponse,
 } from "../types/EnrichAudioFeatures";
-import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { enrichRequestSchema } from "./enrichRequestSchema";
 import { enrichResponseSchema } from "./enrichResponseSchema";
-import { z } from "zod/v4";
+import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 
 /**
  * @description Successful Response

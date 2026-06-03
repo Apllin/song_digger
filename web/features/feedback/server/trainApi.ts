@@ -53,8 +53,7 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
 
     const sq = sqById.get(f.searchQueryId);
     const tr = trackById.get(f.trackId);
-    const bpmDelta =
-      sq?.seedBpm != null && tr?.bpm != null ? Math.abs(sq.seedBpm - tr.bpm) : null;
+    const bpmDelta = sq?.seedBpm != null && tr?.bpm != null ? Math.abs(sq.seedBpm - tr.bpm) : null;
     const keyCompatible =
       sq?.seedMusicalKey != null && tr?.musicalKey != null
         ? isCamelotCompatible(sq.seedMusicalKey, tr.musicalKey)
