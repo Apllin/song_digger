@@ -3,14 +3,14 @@
  * Do not edit manually.
  */
 
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  GetLabelReleases422,
+  GetLabelReleasesQueryResponse,
   GetLabelReleasesPathParams,
   GetLabelReleasesQueryParams,
-  GetLabelReleasesQueryResponse,
+  GetLabelReleases422,
 } from "../types/GetLabelReleases";
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { getLabelReleasesQueryResponseSchema } from "../zod/getLabelReleasesSchema";
 
 function getGetLabelReleasesUrl(label_id: GetLabelReleasesPathParams["label_id"]) {

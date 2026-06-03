@@ -3,7 +3,6 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type {
   SearchExactYtmSearchExactGet200,
   SearchExactYtmSearchExactGet422,
@@ -11,6 +10,7 @@ import type {
   SearchExactYtmSearchExactGetQueryResponse,
 } from "../types/SearchExactYtmSearchExactGet";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
+import { z } from "zod/v4";
 
 export const searchExactYtmSearchExactGetQueryParamsSchema = z.object({
   title: z.string(),

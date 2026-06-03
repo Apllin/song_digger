@@ -435,6 +435,45 @@
         }
       }
     },
+    "/enrich": {
+      "post": {
+        "summary": "Enrich",
+        "description": "Background fill of BPM + Camelot key from Beatport for tracks that the\nweb service didn't already have cached. Idempotent; already-complete\ntracks pass through untouched.",
+        "operationId": "enrich_audio_features",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrichRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -664,6 +703,38 @@
         ],
         "title": "DiscogsLabel"
       },
+      "EnrichRequest": {
+        "properties": {
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackMeta"
+            },
+            "type": "array",
+            "title": "Tracks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracks"
+        ],
+        "title": "EnrichRequest"
+      },
+      "EnrichResponse": {
+        "properties": {
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackMeta"
+            },
+            "type": "array",
+            "title": "Tracks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracks"
+        ],
+        "title": "EnrichResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -840,6 +911,28 @@
           "rrfScore": {
             "type": "number",
             "title": "Rrfscore"
+          },
+          "bpmDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bpmdelta"
+          },
+          "keyCompatible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keycompatible"
           }
         },
         "type": "object",

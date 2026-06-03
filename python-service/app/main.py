@@ -4,6 +4,7 @@ from app.api.routes.suggestions import router as suggestions_router
 from app.api.routes.discogs import router as discogs_router
 from app.api.routes.ytm_playlist import router as ytm_playlist_router
 from app.api.routes.train import router as train_router
+from app.api.routes.enrich import router as enrich_router
 from app.core.metrics import MetricsMiddleware
 
 app = FastAPI(title="Track Digger — Python Service", version="0.1.0")
@@ -15,6 +16,7 @@ app.include_router(suggestions_router)
 app.include_router(discogs_router)
 app.include_router(ytm_playlist_router)
 app.include_router(train_router)
+app.include_router(enrich_router)
 
 
 @app.get("/health")

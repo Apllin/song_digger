@@ -23,17 +23,20 @@ enum SimilaritySource {
 }
 
 model Track {
-    id                 String               @id @default(cuid())
-    title              String
-    artist             String
-    source             String
-    sourceUrl          String               @unique
-    coverUrl           String?
-    embedUrl           String?
-    createdAt          DateTime             @default(now())
-    favorites          Favorite[]
-    searchResults      SearchResult[]
-    similarityFeedback SimilarityFeedback[]
+    id                     String               @id @default(cuid())
+    title                  String
+    artist                 String
+    source                 String
+    sourceUrl              String               @unique
+    coverUrl               String?
+    embedUrl               String?
+    bpm                    Float?
+    musicalKey             String?
+    audioFeaturesFetchedAt DateTime?
+    createdAt              DateTime             @default(now())
+    favorites              Favorite[]
+    searchResults          SearchResult[]
+    similarityFeedback     SimilarityFeedback[]
 
     @@index([source])
 }
@@ -116,6 +119,8 @@ model SearchQuery {
     input              String
     cacheKey           String?
     status             String               @default("pending")
+    seedBpm            Float?
+    seedMusicalKey     String?
     createdAt          DateTime             @default(now())
     results            SearchResult[]
     similarityFeedback SimilarityFeedback[]

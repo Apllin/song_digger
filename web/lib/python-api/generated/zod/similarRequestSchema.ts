@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { SimilarRequest } from "../types/SimilarRequest";
+import { z } from "zod/v4";
 
 export const similarRequestSchema = z.object({
   input: z.string(),

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { SimilaritySource } from "@/app/generated/prisma/client";
 import { TrackFeaturesSchema } from "@/lib/aggregator";
 import { requireTrainer } from "@/lib/auth-utils";
+import { isCamelotCompatible } from "@/lib/camelot";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 import { trainWeights } from "@/lib/python-api/generated/clients/trainWeights";
@@ -21,20 +22,50 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
     return c.json({ error: `Need at least ${MIN_SAMPLES} labeled samples, got ${feedback.length}.` } as const, 422);
   }
 
-  const results = await prisma.searchResult.findMany({
-    where: {
-      OR: feedback.map((f) => ({ searchQueryId: f.searchQueryId, trackId: f.trackId })),
-    },
-    select: { searchQueryId: true, trackId: true, features: true },
-  });
+  const searchIds = [...new Set(feedback.map((f) => f.searchQueryId))];
+  const trackIds = [...new Set(feedback.map((f) => f.trackId))];
+
+  const [results, searchQueries, tracks] = await Promise.all([
+    prisma.searchResult.findMany({
+      where: {
+        OR: feedback.map((f) => ({ searchQueryId: f.searchQueryId, trackId: f.trackId })),
+      },
+      select: { searchQueryId: true, trackId: true, features: true },
+    }),
+    prisma.searchQuery.findMany({
+      where: { id: { in: searchIds } },
+      select: { id: true, seedBpm: true, seedMusicalKey: true },
+    }),
+    prisma.track.findMany({
+      where: { id: { in: trackIds } },
+      select: { id: true, bpm: true, musicalKey: true },
+    }),
+  ]);
 
   const featuresByKey = new Map(results.map((r) => [`${r.searchQueryId}:${r.trackId}`, r.features]));
+  const sqById = new Map(searchQueries.map((s) => [s.id, s]));
+  const trackById = new Map(tracks.map((t) => [t.id, t]));
 
   const samples = feedback.flatMap((f) => {
     const raw = featuresByKey.get(`${f.searchQueryId}:${f.trackId}`);
     const parsed = TrackFeaturesSchema.safeParse(raw);
     if (!parsed.success) return [];
-    return [{ features: parsed.data, is_similar: f.isSimilar }];
+
+    const sq = sqById.get(f.searchQueryId);
+    const tr = trackById.get(f.trackId);
+    const bpmDelta =
+      sq?.seedBpm != null && tr?.bpm != null ? Math.abs(sq.seedBpm - tr.bpm) : null;
+    const keyCompatible =
+      sq?.seedMusicalKey != null && tr?.musicalKey != null
+        ? isCamelotCompatible(sq.seedMusicalKey, tr.musicalKey)
+        : null;
+
+    return [
+      {
+        features: { ...parsed.data, bpmDelta, keyCompatible },
+        is_similar: f.isSimilar,
+      },
+    ];
   });
 
   if (samples.length < MIN_SAMPLES) {

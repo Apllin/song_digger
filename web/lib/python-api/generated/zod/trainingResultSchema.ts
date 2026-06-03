@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { TrainingResult } from "../types/TrainingResult";
+import { z } from "zod/v4";
 
 export const trainingResultSchema = z.object({
   source_weights: z.object({}).catchall(z.number()),

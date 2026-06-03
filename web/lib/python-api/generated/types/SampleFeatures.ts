@@ -26,4 +26,6 @@ export type SampleFeatures = {
    * @type number
    */
   rrfScore: number;
+  bpmDelta?: number | null;
+  keyCompatible?: boolean | null;
 };
