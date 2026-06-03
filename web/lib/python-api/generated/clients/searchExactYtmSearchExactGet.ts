@@ -3,13 +3,13 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  SearchExactYtmSearchExactGetQueryResponse,
-  SearchExactYtmSearchExactGetQueryParams,
   SearchExactYtmSearchExactGet422,
+  SearchExactYtmSearchExactGetQueryParams,
+  SearchExactYtmSearchExactGetQueryResponse,
 } from "../types/SearchExactYtmSearchExactGet";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { searchExactYtmSearchExactGetQueryResponseSchema } from "../zod/searchExactYtmSearchExactGetSchema";
 
 function getSearchExactYtmSearchExactGetUrl() {

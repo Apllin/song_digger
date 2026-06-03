@@ -3,16 +3,16 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
+  EnrichAudioFeatures422,
   EnrichAudioFeaturesMutationRequest,
   EnrichAudioFeaturesMutationResponse,
-  EnrichAudioFeatures422,
 } from "../types/EnrichAudioFeatures";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import {
-  enrichAudioFeaturesMutationResponseSchema,
   enrichAudioFeaturesMutationRequestSchema,
+  enrichAudioFeaturesMutationResponseSchema,
 } from "../zod/enrichAudioFeaturesSchema";
 
 function getEnrichAudioFeaturesUrl() {

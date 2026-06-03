@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { TracklistItem } from "../types/TracklistItem";
 import { z } from "zod/v4";
+import type { TracklistItem } from "../types/TracklistItem";
 
 export const tracklistItemSchema = z.object({
   position: z.string(),

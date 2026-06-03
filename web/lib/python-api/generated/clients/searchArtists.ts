@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
-import fetch from "@kubb/plugin-client/clients/axios";
-import type { SearchArtistsQueryResponse, SearchArtistsQueryParams, SearchArtists422 } from "../types/SearchArtists";
 import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
+import fetch from "@kubb/plugin-client/clients/axios";
+import type { SearchArtists422, SearchArtistsQueryParams, SearchArtistsQueryResponse } from "../types/SearchArtists";
 import { searchArtistsQueryResponseSchema } from "../zod/searchArtistsSchema";
 
 function getSearchArtistsUrl() {

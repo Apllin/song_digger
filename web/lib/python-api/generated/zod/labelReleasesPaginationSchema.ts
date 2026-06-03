@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { LabelReleasesPagination } from "../types/LabelReleasesPagination";
 import { z } from "zod/v4";
+import type { LabelReleasesPagination } from "../types/LabelReleasesPagination";
 
 export const labelReleasesPaginationSchema = z.object({
   page: z.int(),

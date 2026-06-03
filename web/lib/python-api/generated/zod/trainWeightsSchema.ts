@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   TrainWeights200,
   TrainWeights422,
@@ -12,7 +13,6 @@ import type {
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { trainingRequestSchema } from "./trainingRequestSchema";
 import { trainingResultSchema } from "./trainingResultSchema";
-import { z } from "zod/v4";
 
 /**
  * @description Successful Response

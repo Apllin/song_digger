@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { DiscogsLabel } from "../types/DiscogsLabel";
 import { z } from "zod/v4";
+import type { DiscogsLabel } from "../types/DiscogsLabel";
 
 export const discogsLabelSchema = z.object({
   id: z.int(),

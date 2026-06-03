@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { HTTPValidationError } from "../types/HTTPValidationError";
 import { validationErrorSchema } from "./validationErrorSchema";
-import { z } from "zod/v4";
 
 export const HTTPValidationErrorSchema = z.object({
   get detail() {

@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { SourceAppearance } from "../types/SourceAppearance";
 import { z } from "zod/v4";
+import type { SourceAppearance } from "../types/SourceAppearance";
 
 export const sourceAppearanceSchema = z.object({
   source: z.string(),
