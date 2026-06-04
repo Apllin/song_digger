@@ -1,7 +1,14 @@
 import { redirect } from "next/navigation";
 
 import { TrainPanel } from "@/features/admin/components/TrainPanel";
+import { TrainStats } from "@/features/admin/components/TrainStats";
 import { countLabeledSamples, loadLatestModel } from "@/features/admin/server/loadLatestModel";
+import {
+  loadFeedbackPerDay,
+  loadFeedbackTotals,
+  loadModelHistory,
+  loadSourceHitRates,
+} from "@/features/admin/server/loadStats";
 import { getCurrentUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 
@@ -22,7 +29,14 @@ export default async function Page() {
     );
   }
 
-  const [latest, labeledCount] = await Promise.all([loadLatestModel(), countLabeledSamples()]);
+  const [latest, labeledCount, totals, perDay, sources, history] = await Promise.all([
+    loadLatestModel(),
+    countLabeledSamples(),
+    loadFeedbackTotals(),
+    loadFeedbackPerDay(14),
+    loadSourceHitRates(),
+    loadModelHistory(5),
+  ]);
 
   return (
     <div className="min-h-screen text-td-fg">
@@ -39,6 +53,9 @@ export default async function Page() {
           Train ranking model
         </h1>
         <TrainPanel latest={latest} labeledCount={labeledCount} />
+        <div className="mt-8">
+          <TrainStats totals={totals} perDay={perDay} sources={sources} history={history} />
+        </div>
       </div>
     </div>
   );
