@@ -76,11 +76,18 @@ async def train_weights(req: TrainingRequest) -> TrainingResult:
         source: float(np.clip(coef[i], 0.1, 10.0))
         for i, source in enumerate(SOURCES)
     }
-
+    # Index map for the 7 audio/aggregate coefficients that follow source_weights.
+    # Order MUST match the appends in _build_feature_vector.
+    n = len(SOURCES)
     return TrainingResult(
         source_weights=source_weights,
-        cosine_score_weight=float(coef[len(SOURCES)]),
-        num_sources_weight=float(coef[len(SOURCES) + 1]),
+        cosine_score_weight=float(coef[n]),
+        num_sources_weight=float(coef[n + 1]),
+        bpm_delta_weight=float(coef[n + 2]),
+        bpm_compatible_weight=float(coef[n + 3]),
+        bpm_present_weight=float(coef[n + 4]),
+        key_compatible_weight=float(coef[n + 5]),
+        key_present_weight=float(coef[n + 6]),
         rank_decay_k=RANK_DECAY_K,
         sample_size=len(req.samples),
     )

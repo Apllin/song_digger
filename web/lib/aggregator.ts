@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isCamelotCompatible } from "@/lib/camelot";
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
@@ -8,6 +9,17 @@ import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 // curve (rank-1 vs rank-2 contribute more equally); smaller k makes the head
 // sharper.
 const RRF_K = 60;
+// Mirrors python-service: features used as training input.
+const SOURCE_COUNT = 7;
+const BPM_DELTA_CAP_BPM = 24;
+const BPM_COMPATIBLE_MAX_BPM = 6;
+// Per-feature absolute cap on the bonus a single learned weight can add to a
+// candidate's rrfScore. A top-rank single-source contribution is ~1/61 ≈ 0.0164;
+// at this cap, the strongest possible audio signal is roughly 30% of one source
+// hit — enough to break ties between equally-ranked candidates, never enough
+// to override multi-source consensus. Tune up if BPM/key empirically deserve
+// more weight; tune down if learned coefficients dominate the head of the list.
+const AUDIO_BONUS_CAP = 0.005;
 
 // ── Weight config ─────────────────────────────────────────────────────────────
 // Loaded from ModelWeights (latest DB row) at search time; falls back to
@@ -16,6 +28,11 @@ export type WeightConfig = {
   rankDecayK: number;
   cosineScoreWeight: number;
   numSourcesWeight: number;
+  bpmDeltaWeight: number;
+  bpmCompatibleWeight: number;
+  bpmPresentWeight: number;
+  keyCompatibleWeight: number;
+  keyPresentWeight: number;
   sourceWeights: Partial<Record<string, number>>;
 };
 
@@ -23,7 +40,27 @@ export const DEFAULT_WEIGHTS: WeightConfig = {
   rankDecayK: RRF_K,
   cosineScoreWeight: 0,
   numSourcesWeight: 0,
+  bpmDeltaWeight: 0,
+  bpmCompatibleWeight: 0,
+  bpmPresentWeight: 0,
+  keyCompatibleWeight: 0,
+  keyPresentWeight: 0,
   sourceWeights: {},
+};
+
+// ── Audio features pulled from DB for bonus application ──────────────────────
+export type AudioFeatures = {
+  seedBpm: number | null;
+  seedMusicalKey: string | null;
+  candidateBpm: Map<string, number | null>;
+  candidateMusicalKey: Map<string, string | null>;
+};
+
+export const EMPTY_AUDIO_FEATURES: AudioFeatures = {
+  seedBpm: null,
+  seedMusicalKey: null,
+  candidateBpm: new Map(),
+  candidateMusicalKey: new Map(),
 };
 
 // ── Feature snapshot ──────────────────────────────────────────────────────────
@@ -173,17 +210,68 @@ function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCa
   return result;
 }
 
+// ── Audio bonus decoration ────────────────────────────────────────────────────
+// Adds per-candidate bonuses for cosineScore, numSources, and BPM/key signals.
+// Each contribution is clipped to ±AUDIO_BONUS_CAP so the learned coefficients
+// nudge ordering without overriding what the per-source RRF already says.
+function clipBonus(weight: number, value: number): number {
+  const raw = weight * value;
+  if (raw > AUDIO_BONUS_CAP) return AUDIO_BONUS_CAP;
+  if (raw < -AUDIO_BONUS_CAP) return -AUDIO_BONUS_CAP;
+  return raw;
+}
+
+function decorateWithAudioBonus(candidates: FusedCandidate[], weights: WeightConfig, audio: AudioFeatures): void {
+  for (const c of candidates) {
+    // Aggregate signals (always known after rrfFuse).
+    c.rrfScore += clipBonus(weights.numSourcesWeight, c.appearances.length / SOURCE_COUNT);
+    if (c.cosineScore != null) {
+      c.rrfScore += clipBonus(weights.cosineScoreWeight, c.cosineScore);
+    }
+
+    // BPM bonus requires both seed and candidate to have a value.
+    const candBpm = audio.candidateBpm.get(c.sourceUrl) ?? null;
+    if (audio.seedBpm != null && candBpm != null) {
+      const bpmDelta = Math.abs(audio.seedBpm - candBpm);
+      const bpmDeltaNorm = Math.min(bpmDelta / BPM_DELTA_CAP_BPM, 1);
+      const bpmCompatible = bpmDelta <= BPM_COMPATIBLE_MAX_BPM ? 1 : 0;
+      c.rrfScore += clipBonus(weights.bpmDeltaWeight, bpmDeltaNorm);
+      c.rrfScore += clipBonus(weights.bpmCompatibleWeight, bpmCompatible);
+      c.rrfScore += clipBonus(weights.bpmPresentWeight, 1);
+    }
+
+    // Camelot key bonus likewise requires both sides.
+    const candKey = audio.candidateMusicalKey.get(c.sourceUrl) ?? null;
+    if (audio.seedMusicalKey != null && candKey != null) {
+      const keyCompat = isCamelotCompatible(audio.seedMusicalKey, candKey) ? 1 : 0;
+      c.rrfScore += clipBonus(weights.keyCompatibleWeight, keyCompat);
+      c.rrfScore += clipBonus(weights.keyPresentWeight, 1);
+    }
+  }
+}
+
 // ── Main aggregation ─────────────────────────────────────────────────────────
-export function aggregateTracks(sourceLists: SourceList[], weights: WeightConfig = DEFAULT_WEIGHTS): FusedCandidate[] {
+export function aggregateTracks(
+  sourceLists: SourceList[],
+  weights: WeightConfig = DEFAULT_WEIGHTS,
+  audio: AudioFeatures = EMPTY_AUDIO_FEATURES,
+): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists, weights);
 
-  // 2. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
+  // 2. Apply learned bonuses for aggregate (cosineScore, numSources) and audio
+  //    (BPM/key) features. With DEFAULT_WEIGHTS all weights are 0 → no-op.
+  decorateWithAudioBonus(fused, weights, audio);
+
+  // 3. Re-sort after bonus application — fused was sorted only by RRF.
+  fused.sort((a, b) => b.rrfScore - a.rrfScore);
+
+  // 4. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
   //    keep working.
   for (const t of fused) {
     t.score = t.rrfScore;
   }
 
-  // 3. Artist diversification — stops 3+ consecutive same-artist tracks.
+  // 5. Artist diversification — stops 3+ consecutive same-artist tracks.
   return diversifyArtists(fused);
 }

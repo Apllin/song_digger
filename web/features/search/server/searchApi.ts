@@ -12,7 +12,7 @@ import {
   SearchQueryIdSchema,
 } from "@/features/search/schemas";
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
-import type { FusedCandidate } from "@/lib/aggregator";
+import type { AudioFeatures, FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks, buildFeatures } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
@@ -167,6 +167,41 @@ async function saveTracks(
   );
 }
 
+function cacheKeyFor(artist: string, track: string | null): string {
+  return searchCacheKey(artist, track);
+}
+
+async function loadAudioFeatures(
+  cacheKey: string,
+  sourceLists: { tracks: { sourceUrl: string }[] }[],
+): Promise<AudioFeatures> {
+  // Seed BPM/key from the most recent prior SearchQuery for the same
+  // (artist, track) pair that already had its seed enriched. First-ever search
+  // of a seed has none; later searches reuse what Beatport scraped earlier.
+  const seedPromise = prisma.searchQuery.findFirst({
+    where: { cacheKey, seedBpm: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { seedBpm: true, seedMusicalKey: true },
+  });
+
+  const urls = sourceLists.flatMap((l) => l.tracks.map((t) => t.sourceUrl));
+  const tracksPromise = urls.length
+    ? prisma.track.findMany({
+        where: { sourceUrl: { in: urls } },
+        select: { sourceUrl: true, bpm: true, musicalKey: true },
+      })
+    : Promise.resolve([]);
+
+  const [seed, tracks] = await Promise.all([seedPromise, tracksPromise]);
+
+  return {
+    seedBpm: seed?.seedBpm ?? null,
+    seedMusicalKey: seed?.seedMusicalKey ?? null,
+    candidateBpm: new Map(tracks.map((t) => [t.sourceUrl, t.bpm])),
+    candidateMusicalKey: new Map(tracks.map((t) => [t.sourceUrl, t.musicalKey])),
+  };
+}
+
 async function runSearch(
   searchId: SearchQueryId,
   input: string,
@@ -190,7 +225,8 @@ async function runSearch(
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
   const weights = await getActiveWeights();
-  const aggregated = aggregateTracks(pythonResult.source_lists, weights);
+  const audio = await loadAudioFeatures(cacheKeyFor(artist, track), pythonResult.source_lists);
+  const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
   const playable = await enrichMissingCovers(aggregated);
   await saveTracks(searchId, playable, { artist, title: track }, pythonServiceUrl);
 

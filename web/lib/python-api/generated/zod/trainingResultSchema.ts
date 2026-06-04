@@ -10,6 +10,11 @@ export const trainingResultSchema = z.object({
   source_weights: z.object({}).catchall(z.number()),
   cosine_score_weight: z.number(),
   num_sources_weight: z.number(),
+  bpm_delta_weight: z.number(),
+  bpm_compatible_weight: z.number(),
+  bpm_present_weight: z.number(),
+  key_compatible_weight: z.number(),
+  key_present_weight: z.number(),
   rank_decay_k: z.number(),
   sample_size: z.int(),
 }) as unknown as z.ZodType<TrainingResult>;

@@ -88,6 +88,11 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
       rankDecayK: result.rank_decay_k,
       cosineScoreWeight: result.cosine_score_weight,
       numSourcesWeight: result.num_sources_weight,
+      bpmDeltaWeight: result.bpm_delta_weight,
+      bpmCompatibleWeight: result.bpm_compatible_weight,
+      bpmPresentWeight: result.bpm_present_weight,
+      keyCompatibleWeight: result.key_compatible_weight,
+      keyPresentWeight: result.key_present_weight,
       sourceWeights: {
         create: Object.entries(result.source_weights).map(([source, weight]) => ({
           source: source as SimilaritySource,
@@ -102,5 +107,12 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
     version: nextVersion,
     sampleSize: result.sample_size,
     sourceWeights: result.source_weights,
+    cosineScoreWeight: result.cosine_score_weight,
+    numSourcesWeight: result.num_sources_weight,
+    bpmDeltaWeight: result.bpm_delta_weight,
+    bpmCompatibleWeight: result.bpm_compatible_weight,
+    bpmPresentWeight: result.bpm_present_weight,
+    keyCompatibleWeight: result.key_compatible_weight,
+    keyPresentWeight: result.key_present_weight,
   } as const);
 });
