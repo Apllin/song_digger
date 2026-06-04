@@ -15,6 +15,7 @@ import { NetworkErrorHost } from "@/components/NetworkErrorHost";
 import { QueryProvider } from "@/components/QueryProvider";
 import { PlayerProvider } from "@/features/player/components/PlayerProvider";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -55,6 +56,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth();
+  let isTrainer = false;
+  if (session?.user?.id) {
+    const u = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true },
+    });
+    isTrainer = u?.role === "TRAINER";
+  }
   return (
     <html
       lang="en"
@@ -67,7 +76,7 @@ export default async function RootLayout({
             <QueryProvider>
               <JotaiProvider>
                 <PlayerProvider>
-                  <Nav rightSlot={<NavAuthSection />} />
+                  <Nav rightSlot={<NavAuthSection />} isTrainer={isTrainer} />
                   {children}
                   <AnonymousLimitModalHost />
                   <NetworkErrorHost />
