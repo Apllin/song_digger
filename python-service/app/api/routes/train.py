@@ -14,6 +14,25 @@ MIN_SAMPLES = 20
 # feature has dynamic range beyond the strict ±6 compatibility threshold.
 BPM_DELTA_CAP = 24.0
 BPM_COMPATIBLE_MAX = 6.0
+# Inverse L2 regularisation strength. Smaller = stronger penalty. Source
+# features are highly collinear with numSources and with each other, so weak
+# regularisation (C≥1.0) lets LR push coefficients to clip boundaries even when
+# the underlying class separation is modest. C=0.1 keeps coefficients close to
+# what the data actually warrants (~±1.5 for a 30%→60% hit-rate spread).
+LR_C = 0.1
+# Per-source weight clipping range. Applied as a multiplier in
+# rrfFuse: sw / (k + rank). The previous [0.1, 10] range encoded a 100x ratio
+# between best and worst source, which produced search results visibly skewed
+# toward whichever sources had the most positive feedback. [0.3, 3.0] caps the
+# ratio at 10x — still strong enough to prefer good sources, never enough to
+# bury an entire source's contributions.
+SOURCE_WEIGHT_CLIP = (0.3, 3.0)
+# Aggregate/audio weight clipping. The application layer already caps each
+# per-candidate bonus at AUDIO_BONUS_CAP (see aggregator.ts), so even an
+# uncapped numSourcesWeight of 30+ doesn't break ranking — but it does alarm
+# anyone reading the admin dashboard. Symmetric clip aligns the displayed
+# coefficient with the actually-applied bonus magnitude.
+AUDIO_WEIGHT_CLIP = (-2.0, 2.0)
 
 
 def _build_feature_vector(f: SampleFeatures) -> list[float]:
@@ -64,7 +83,7 @@ async def train_weights(req: TrainingRequest) -> TrainingResult:
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    model = LogisticRegression(C=1.0, max_iter=1000, solver="lbfgs")
+    model = LogisticRegression(C=LR_C, max_iter=1000, solver="lbfgs")
     model.fit(X_scaled, y)
 
     # Recover unscaled coefficients: β_raw = β_scaled / σ
@@ -72,22 +91,24 @@ async def train_weights(req: TrainingRequest) -> TrainingResult:
     # directly usable as multipliers in Σ sw / (k + rank).
     coef = model.coef_[0] / scaler.scale_
 
+    src_lo, src_hi = SOURCE_WEIGHT_CLIP
     source_weights = {
-        source: float(np.clip(coef[i], 0.1, 10.0))
+        source: float(np.clip(coef[i], src_lo, src_hi))
         for i, source in enumerate(SOURCES)
     }
     # Index map for the 7 audio/aggregate coefficients that follow source_weights.
     # Order MUST match the appends in _build_feature_vector.
     n = len(SOURCES)
+    aud_lo, aud_hi = AUDIO_WEIGHT_CLIP
     return TrainingResult(
         source_weights=source_weights,
-        cosine_score_weight=float(coef[n]),
-        num_sources_weight=float(coef[n + 1]),
-        bpm_delta_weight=float(coef[n + 2]),
-        bpm_compatible_weight=float(coef[n + 3]),
-        bpm_present_weight=float(coef[n + 4]),
-        key_compatible_weight=float(coef[n + 5]),
-        key_present_weight=float(coef[n + 6]),
+        cosine_score_weight=float(np.clip(coef[n], aud_lo, aud_hi)),
+        num_sources_weight=float(np.clip(coef[n + 1], aud_lo, aud_hi)),
+        bpm_delta_weight=float(np.clip(coef[n + 2], aud_lo, aud_hi)),
+        bpm_compatible_weight=float(np.clip(coef[n + 3], aud_lo, aud_hi)),
+        bpm_present_weight=float(np.clip(coef[n + 4], aud_lo, aud_hi)),
+        key_compatible_weight=float(np.clip(coef[n + 5], aud_lo, aud_hi)),
+        key_present_weight=float(np.clip(coef[n + 6], aud_lo, aud_hi)),
         rank_decay_k=RANK_DECAY_K,
         sample_size=len(req.samples),
     )
