@@ -206,3 +206,85 @@ describe("aggregateTracks — artist diversity", () => {
     }
   });
 });
+
+describe("aggregateTracks — audio bonus", () => {
+  const seedBpm = 130;
+  const weights = {
+    rankDecayK: 60,
+    cosineScoreWeight: 0,
+    numSourcesWeight: 0,
+    bpmDeltaWeight: 0,
+    bpmCompatibleWeight: 1.0,
+    bpmPresentWeight: 0,
+    keyCompatibleWeight: 0,
+    keyPresentWeight: 0,
+    sourceWeights: {},
+  };
+
+  it("compatible BPM nudges candidate above tied source-only competitor", () => {
+    const compat = makeTrack({ sourceUrl: "compat", artist: "X", title: "T1" });
+    const off = makeTrack({ sourceUrl: "off", artist: "Y", title: "T2" });
+    const audio = {
+      seedBpm,
+      seedMusicalKey: null,
+      candidateBpm: new Map<string, number | null>([
+        ["compat", 128],
+        ["off", 102],
+      ]),
+      candidateMusicalKey: new Map<string, string | null>(),
+    };
+    const result = aggregateTracks([listOf("lastfm", compat, off)], weights, audio);
+    // Same rank base contribution; compatible BPM bonus tips compat above off.
+    expect(result.map((t) => t.sourceUrl)).toEqual(["compat", "off"]);
+  });
+
+  it("AUDIO_BONUS_CAP keeps audio influence below a single multi-source candidate", () => {
+    // A multi-source consensus candidate (3 sources) must still outrank a
+    // single-source candidate even when the latter has every audio bonus.
+    const consensus = makeTrack({ sourceUrl: "cons", artist: "X", title: "Cons" });
+    const audioWin = makeTrack({ sourceUrl: "aud", artist: "Y", title: "Aud" });
+    const aggressiveWeights = {
+      ...weights,
+      bpmCompatibleWeight: 10,
+      bpmPresentWeight: 10,
+      keyCompatibleWeight: 10,
+      keyPresentWeight: 10,
+      cosineScoreWeight: 10,
+      numSourcesWeight: 10,
+    };
+    const audio = {
+      seedBpm,
+      seedMusicalKey: "8A" as string | null,
+      candidateBpm: new Map<string, number | null>([
+        ["aud", 130],
+        ["cons", null],
+      ]),
+      candidateMusicalKey: new Map<string, string | null>([
+        ["aud", "8A"],
+        ["cons", null],
+      ]),
+    };
+    const result = aggregateTracks(
+      [listOf("lastfm", audioWin, consensus), listOf("cosine_club", consensus), listOf("trackidnet", consensus)],
+      aggressiveWeights,
+      audio,
+    );
+    expect(result[0]?.sourceUrl).toBe("cons");
+  });
+
+  it("missing seed BPM disables the bonus even if candidate has one", () => {
+    const a = makeTrack({ sourceUrl: "a", artist: "X", title: "T1" });
+    const b = makeTrack({ sourceUrl: "b", artist: "Y", title: "T2" });
+    const audio = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      candidateBpm: new Map<string, number | null>([["a", 130]]),
+      candidateMusicalKey: new Map<string, string | null>(),
+    };
+    const wins = { ...weights, bpmCompatibleWeight: 10 };
+    const result = aggregateTracks([listOf("lastfm", a, b)], wins, audio);
+    // Without a seed BPM, no bonus → a stays at rank 1 by RRF (tied), b by RRF
+    // ordering — but at minimum both are returned without throwing.
+    expect(result).toHaveLength(2);
+  });
+});

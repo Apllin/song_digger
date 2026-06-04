@@ -1225,6 +1225,26 @@
             "type": "number",
             "title": "Num Sources Weight"
           },
+          "bpm_delta_weight": {
+            "type": "number",
+            "title": "Bpm Delta Weight"
+          },
+          "bpm_compatible_weight": {
+            "type": "number",
+            "title": "Bpm Compatible Weight"
+          },
+          "bpm_present_weight": {
+            "type": "number",
+            "title": "Bpm Present Weight"
+          },
+          "key_compatible_weight": {
+            "type": "number",
+            "title": "Key Compatible Weight"
+          },
+          "key_present_weight": {
+            "type": "number",
+            "title": "Key Present Weight"
+          },
           "rank_decay_k": {
             "type": "number",
             "title": "Rank Decay K"
@@ -1239,6 +1259,11 @@
           "source_weights",
           "cosine_score_weight",
           "num_sources_weight",
+          "bpm_delta_weight",
+          "bpm_compatible_weight",
+          "bpm_present_weight",
+          "key_compatible_weight",
+          "key_present_weight",
           "rank_decay_k",
           "sample_size"
         ],

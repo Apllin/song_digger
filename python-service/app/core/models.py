@@ -125,5 +125,10 @@ class TrainingResult(BaseModel):
     source_weights: dict[str, float]
     cosine_score_weight: float
     num_sources_weight: float
+    bpm_delta_weight: float
+    bpm_compatible_weight: float
+    bpm_present_weight: float
+    key_compatible_weight: float
+    key_present_weight: float
     rank_decay_k: float
     sample_size: int

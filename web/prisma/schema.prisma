@@ -371,14 +371,19 @@ model SimilarityFeedback {
 }
 
 model ModelWeights {
-    id                String         @id @default(cuid())
-    version           Int            @unique
-    trainedAt         DateTime
-    sampleSize        Int
-    rankDecayK        Float
-    cosineScoreWeight Float
-    numSourcesWeight  Float
-    sourceWeights     SourceWeight[]
+    id                  String         @id @default(cuid())
+    version             Int            @unique
+    trainedAt           DateTime
+    sampleSize          Int
+    rankDecayK          Float
+    cosineScoreWeight   Float
+    numSourcesWeight    Float
+    bpmDeltaWeight      Float?
+    bpmCompatibleWeight Float?
+    bpmPresentWeight    Float?
+    keyCompatibleWeight Float?
+    keyPresentWeight    Float?
+    sourceWeights       SourceWeight[]
 }
 
 model SourceWeight {

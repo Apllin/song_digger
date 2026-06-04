@@ -24,6 +24,26 @@ export type TrainingResult = {
   /**
    * @type number
    */
+  bpm_delta_weight: number;
+  /**
+   * @type number
+   */
+  bpm_compatible_weight: number;
+  /**
+   * @type number
+   */
+  bpm_present_weight: number;
+  /**
+   * @type number
+   */
+  key_compatible_weight: number;
+  /**
+   * @type number
+   */
+  key_present_weight: number;
+  /**
+   * @type number
+   */
   rank_decay_k: number;
   /**
    * @type integer
