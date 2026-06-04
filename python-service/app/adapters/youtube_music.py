@@ -1,7 +1,9 @@
 import asyncio
+import re
+
 from ytmusicapi import YTMusic
 from app.adapters.base import AbstractAdapter
-from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
+from app.adapters._seed_match import SEED_CANDIDATES, _normalize, query_match_score
 from app.core.models import TrackMeta
 from app.config import settings
 
@@ -45,6 +47,38 @@ def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
         for c in results
     )
     print(f"[YouTubeMusic] no seed matched query {query!r}; rejected: {rejected}")
+    return None
+
+
+def _pick_seed_video_id_from_videos(query: str, results: list[dict]) -> str | None:
+    """Strict video-fallback seed matcher.
+
+    Niche label releases (e.g. ND002 uploads on `the29nov`) live on YouTube
+    Music as videos but are not indexed in the songs catalogue. For these the
+    standard matcher rejects every songs hit because the artist appears with a
+    different track. Videos search surfaces the actual upload — but the
+    candidate's `artists` field carries the uploader channel name, not the
+    real artist, so we cannot use `query_match_score`.
+
+    Instead we treat the raw video title as one bag and require that **every**
+    token of the query (both artist and title sides) appear in it. Token-set
+    subset, no order, no stop-word stripping. Only used for "Artist - Title"
+    queries — bare-artist queries should never videos-fall-back, since the
+    matcher would be far too permissive (a single token in any random video
+    title would qualify).
+    """
+    if " - " not in query:
+        return None
+    q_tokens = {t for t in re.findall(r"[a-z0-9]+", _normalize(query.replace(" - ", " "))) if t}
+    if not q_tokens:
+        return None
+    for cand in results:
+        vid = cand.get("videoId")
+        if not vid:
+            continue
+        title_tokens = set(re.findall(r"[a-z0-9]+", _normalize(cand.get("title") or "")))
+        if q_tokens.issubset(title_tokens):
+            return vid
     return None
 
 
@@ -92,10 +126,20 @@ class YouTubeMusicAdapter(AbstractAdapter):
         # Without validation a query like "Ignez - Aventurine" can resolve to
         # an unrelated record and the radio playlist will be off-genre.
         results = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
-        if not results:
-            return []
+        video_id = _pick_seed_video_id(query, results) if results else None
 
-        video_id = _pick_seed_video_id(query, results)
+        # Step 1b: videos fallback for label releases not indexed as songs.
+        # YouTube Music's songs catalogue misses many user-uploaded releases
+        # (small techno labels, etc.); the same track often surfaces under
+        # `filter=videos`. The strict token-subset matcher only accepts a
+        # video whose title contains every word of the query, so off-target
+        # videos don't bleed in.
+        if not video_id and " - " in query:
+            video_results = _ytm.search(query, filter="videos", limit=SEED_CANDIDATES)
+            video_id = _pick_seed_video_id_from_videos(query, video_results)
+            if video_id:
+                print(f"[YouTubeMusic] seed from videos for {query!r}")
+
         if not video_id:
             return []
 
