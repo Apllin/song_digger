@@ -126,10 +126,6 @@ class LastfmAdapter(AbstractAdapter):
         if cached is not None:
             return cached
         fetched = await self._fetch_track_similar_raw(api_key, artist, track)
-        if fetched is None:
-            # Transient/permanent fetch failure — do not cache, let the next
-            # query try again.
-            return []
         if fetched:
             try:
                 await upsert_external_cache(
@@ -143,9 +139,8 @@ class LastfmAdapter(AbstractAdapter):
 
     async def _fetch_track_similar_raw(
         self, api_key: str, artist: str, track: str
-    ) -> list[dict] | None:
-        """track.getSimilar HTTP call. Returns the parsed list (possibly empty)
-        on API success, or None on transient/permanent fetch failure."""
+    ) -> list[dict]:
+        """track.getSimilar HTTP call — returns raw API track dicts. Soft-degrades to []."""
         params = {
             "method": "track.getsimilar",
             "artist": artist,
@@ -155,11 +150,14 @@ class LastfmAdapter(AbstractAdapter):
             "limit": _LASTFM_TRACK_SIMILAR_CACHE_LIMIT,
             "autocorrect": 1,  # let Last.fm fix "Mulero" -> "Oscar Mulero"
         }
-        data = await fetch_json_with_retry(
-            LASTFM_API_BASE, params=params, timeout=TIMEOUT_SECONDS, label="Lastfm.find_similar"
-        )
-        if data is None:
-            return None
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.get(LASTFM_API_BASE, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            print(f"[Lastfm] find_similar error: {e}")
+            return []
         return data.get("similartracks", {}).get("track", []) or []
 
     # ── artist-level fallback (Stage B) ───────────────────────────────────────
