@@ -1,5 +1,11 @@
 # @trackdigger/python-service
 
+## 0.3.1
+
+### Patch Changes
+
+- f395dea: Validate the SoundCloud search seed with the shared query-match scorer before fetching recommendations — a fuzzy hit like a label-uploaded DJ mix no longer becomes the seed, and an unvalidated query contributes nothing. Also cache Last.fm track.getSimilar (7-day TTL), the last uncached Last.fm path. Search cache bumped to v14.
+
 ## 0.3.1-rc.0
 
 ### Patch Changes
