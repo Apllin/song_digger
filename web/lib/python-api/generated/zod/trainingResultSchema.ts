@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { TrainingResult } from "../types/TrainingResult";
+import { z } from "zod/v4";
 
 export const trainingResultSchema = z.object({
   source_weights: z.object({}).catchall(z.number()),
@@ -17,4 +17,6 @@ export const trainingResultSchema = z.object({
   key_present_weight: z.number(),
   rank_decay_k: z.number(),
   sample_size: z.int(),
+  genre_adjustments: z.object({}).catchall(z.object({}).catchall(z.number())),
+  bpm_range_adjustments: z.object({}).catchall(z.object({}).catchall(z.number())),
 }) as unknown as z.ZodType<TrainingResult>;

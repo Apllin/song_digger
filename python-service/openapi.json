@@ -933,6 +933,28 @@
               }
             ],
             "title": "Keycompatible"
+          },
+          "seedGenre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seedgenre"
+          },
+          "seedBpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seedbpm"
           }
         },
         "type": "object",
@@ -1252,6 +1274,26 @@
           "sample_size": {
             "type": "integer",
             "title": "Sample Size"
+          },
+          "genre_adjustments": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Genre Adjustments"
+          },
+          "bpm_range_adjustments": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Bpm Range Adjustments"
           }
         },
         "type": "object",
@@ -1265,7 +1307,9 @@
           "key_compatible_weight",
           "key_present_weight",
           "rank_decay_k",
-          "sample_size"
+          "sample_size",
+          "genre_adjustments",
+          "bpm_range_adjustments"
         ],
         "title": "TrainingResult"
       },

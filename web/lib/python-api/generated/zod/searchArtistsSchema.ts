@@ -3,15 +3,15 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type {
   SearchArtists200,
   SearchArtists422,
   SearchArtistsQueryParams,
   SearchArtistsQueryResponse,
 } from "../types/SearchArtists";
-import { discogsArtistSchema } from "./discogsArtistSchema";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
+import { discogsArtistSchema } from "./discogsArtistSchema";
+import { z } from "zod/v4";
 
 export const searchArtistsQueryParamsSchema = z.object({
   q: z.string().min(1),

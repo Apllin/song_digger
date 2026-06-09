@@ -3,7 +3,6 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type {
   GetReleaseTracklist200,
   GetReleaseTracklist422,
@@ -13,6 +12,7 @@ import type {
 } from "../types/GetReleaseTracklist";
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { tracklistItemSchema } from "./tracklistItemSchema";
+import { z } from "zod/v4";
 
 export const getReleaseTracklistPathParamsSchema = z.object({
   release_id: z.coerce.number().int(),
