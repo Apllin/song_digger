@@ -220,6 +220,8 @@ describe("aggregateTracks — audio bonus", () => {
     keyCompatibleWeight: 0,
     keyPresentWeight: 0,
     sourceWeights: {},
+    genreAdjustments: {},
+    bpmRangeAdjustments: {},
   };
 
   it("compatible BPM nudges candidate above tied source-only competitor", () => {
@@ -228,6 +230,7 @@ describe("aggregateTracks — audio bonus", () => {
     const audio = {
       seedBpm,
       seedMusicalKey: null,
+      seedGenre: null,
       candidateBpm: new Map<string, number | null>([
         ["compat", 128],
         ["off", 102],
@@ -256,6 +259,7 @@ describe("aggregateTracks — audio bonus", () => {
     const audio = {
       seedBpm,
       seedMusicalKey: "8A" as string | null,
+      seedGenre: null,
       candidateBpm: new Map<string, number | null>([
         ["aud", 130],
         ["cons", null],
@@ -279,6 +283,7 @@ describe("aggregateTracks — audio bonus", () => {
     const audio = {
       seedBpm: null,
       seedMusicalKey: null,
+      seedGenre: null,
       candidateBpm: new Map<string, number | null>([["a", 130]]),
       candidateMusicalKey: new Map<string, string | null>(),
     };
