@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { SampleFeatures } from "../types/SampleFeatures";
 import { sourceAppearanceSchema } from "./sourceAppearanceSchema";
+import { z } from "zod/v4";
 
 export const sampleFeaturesSchema = z.object({
   get appearances() {
@@ -17,4 +17,6 @@ export const sampleFeaturesSchema = z.object({
   rrfScore: z.number(),
   bpmDelta: z.optional(z.union([z.number(), z.null()])),
   keyCompatible: z.optional(z.union([z.boolean(), z.null()])),
+  seedGenre: z.optional(z.union([z.string(), z.null()])),
+  seedBpm: z.optional(z.union([z.number(), z.null()])),
 }) as unknown as z.ZodType<SampleFeatures>;

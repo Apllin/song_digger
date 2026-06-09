@@ -3,14 +3,14 @@
  * Do not edit manually.
  */
 
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  GetArtistReleases422,
+  GetArtistReleasesQueryResponse,
   GetArtistReleasesPathParams,
   GetArtistReleasesQueryParams,
-  GetArtistReleasesQueryResponse,
+  GetArtistReleases422,
 } from "../types/GetArtistReleases";
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { getArtistReleasesQueryResponseSchema } from "../zod/getArtistReleasesSchema";
 
 function getGetArtistReleasesUrl(artist_id: GetArtistReleasesPathParams["artist_id"]) {

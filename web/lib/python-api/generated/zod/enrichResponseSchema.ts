@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
-import { z } from "zod/v4";
 import type { EnrichResponse } from "../types/EnrichResponse";
 import { trackMetaSchema } from "./trackMetaSchema";
+import { z } from "zod/v4";
 
 export const enrichResponseSchema = z.object({
   get tracks() {

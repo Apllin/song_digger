@@ -49,4 +49,20 @@ export type TrainingResult = {
    * @type integer
    */
   sample_size: number;
+  /**
+   * @type object
+   */
+  genre_adjustments: {
+    [key: string]: {
+      [key: string]: number;
+    };
+  };
+  /**
+   * @type object
+   */
+  bpm_range_adjustments: {
+    [key: string]: {
+      [key: string]: number;
+    };
+  };
 };
