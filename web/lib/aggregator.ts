@@ -34,6 +34,8 @@ export type WeightConfig = {
   keyCompatibleWeight: number;
   keyPresentWeight: number;
   sourceWeights: Partial<Record<string, number>>;
+  genreAdjustments: Partial<Record<string, Partial<Record<string, number>>>>;
+  bpmRangeAdjustments: Partial<Record<string, Partial<Record<string, number>>>>;
 };
 
 export const DEFAULT_WEIGHTS: WeightConfig = {
@@ -46,12 +48,15 @@ export const DEFAULT_WEIGHTS: WeightConfig = {
   keyCompatibleWeight: 0,
   keyPresentWeight: 0,
   sourceWeights: {},
+  genreAdjustments: {},
+  bpmRangeAdjustments: {},
 };
 
 // ── Audio features pulled from DB for bonus application ──────────────────────
 export type AudioFeatures = {
   seedBpm: number | null;
   seedMusicalKey: string | null;
+  seedGenre: string | null;
   candidateBpm: Map<string, number | null>;
   candidateMusicalKey: Map<string, string | null>;
 };
@@ -59,6 +64,7 @@ export type AudioFeatures = {
 export const EMPTY_AUDIO_FEATURES: AudioFeatures = {
   seedBpm: null,
   seedMusicalKey: null,
+  seedGenre: null,
   candidateBpm: new Map(),
   candidateMusicalKey: new Map(),
 };
@@ -221,6 +227,54 @@ function clipBonus(weight: number, value: number): number {
   return raw;
 }
 
+function getBpmRange(bpm: number): string {
+  if (bpm < 90) return "slow";
+  if (bpm < 120) return "mid";
+  if (bpm < 140) return "fast";
+  return "vfast";
+}
+
+function decorateWithGenreAndBpmAdjustments(
+  candidates: FusedCandidate[],
+  weights: WeightConfig,
+  audio: AudioFeatures,
+): void {
+  const genreAdj =
+    audio.seedGenre && weights.genreAdjustments ? (weights.genreAdjustments[audio.seedGenre] ?? {}) : {};
+  const bpmRange = audio.seedBpm != null ? getBpmRange(audio.seedBpm) : null;
+  const bpmRangeAdj = bpmRange && weights.bpmRangeAdjustments ? (weights.bpmRangeAdjustments[bpmRange] ?? {}) : {};
+
+  for (const c of candidates) {
+    // Genre × source rank adjustments
+    for (const { source, rank } of c.appearances) {
+      const adj = genreAdj[source] ?? 0;
+      if (adj !== 0) {
+        c.rrfScore += clipBonus(adj, 1.0 / (weights.rankDecayK + rank));
+      }
+    }
+
+    // Genre × cosine score adjustment
+    if (c.cosineScore != null) {
+      const cosAdj = genreAdj["cosine_score"] ?? 0;
+      if (cosAdj !== 0) c.rrfScore += clipBonus(cosAdj, c.cosineScore);
+    }
+
+    // BPM range × bpmDelta/bpmCompatible adjustments
+    if (bpmRange && audio.seedBpm != null) {
+      const candBpm = audio.candidateBpm.get(c.sourceUrl) ?? null;
+      if (candBpm != null) {
+        const bpmDelta = Math.abs(audio.seedBpm - candBpm);
+        const bpmDeltaNorm = Math.min(bpmDelta / BPM_DELTA_CAP_BPM, 1);
+        const bpmCompatible = bpmDelta <= BPM_COMPATIBLE_MAX_BPM ? 1 : 0;
+        const deltaAdj = bpmRangeAdj["bpmDelta"] ?? 0;
+        const compatAdj = bpmRangeAdj["bpmCompatible"] ?? 0;
+        if (deltaAdj !== 0) c.rrfScore += clipBonus(deltaAdj, bpmDeltaNorm);
+        if (compatAdj !== 0) c.rrfScore += clipBonus(compatAdj, bpmCompatible);
+      }
+    }
+  }
+}
+
 function decorateWithAudioBonus(candidates: FusedCandidate[], weights: WeightConfig, audio: AudioFeatures): void {
   for (const c of candidates) {
     // Aggregate signals (always known after rrfFuse).
@@ -262,6 +316,7 @@ export function aggregateTracks(
   // 2. Apply learned bonuses for aggregate (cosineScore, numSources) and audio
   //    (BPM/key) features. With DEFAULT_WEIGHTS all weights are 0 → no-op.
   decorateWithAudioBonus(fused, weights, audio);
+  decorateWithGenreAndBpmAdjustments(fused, weights, audio);
 
   // 3. Re-sort after bonus application — fused was sorted only by RRF.
   fused.sort((a, b) => b.rrfScore - a.rrfScore);
