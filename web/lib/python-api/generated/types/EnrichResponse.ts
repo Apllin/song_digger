@@ -13,4 +13,8 @@ export type EnrichResponse = {
    * @type array
    */
   tracks: TrackMeta[];
+  /**
+   * @type array | undefined
+   */
+  failed_urls?: string[];
 };

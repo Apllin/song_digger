@@ -21,9 +21,10 @@ function getEnrichAudioFeaturesUrl() {
 }
 
 /**
- * @description Background fill of BPM + Camelot key from Beatport for tracks that the
- * web service didn't already have cached. Idempotent; already-complete
- * tracks pass through untouched.
+ * @description Synchronous fill of BPM + Camelot key from Beatport for tracks the web
+ * service didn't already have cached. Idempotent; already-complete tracks pass
+ * through untouched. Transiently-failed lookups are reported in `failed_urls`
+ * so the caller can retry them instead of caching a false negative.
  * @summary Enrich
  * {@link /enrich}
  */

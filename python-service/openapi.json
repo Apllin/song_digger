@@ -438,7 +438,7 @@
     "/enrich": {
       "post": {
         "summary": "Enrich",
-        "description": "Background fill of BPM + Camelot key from Beatport for tracks that the\nweb service didn't already have cached. Idempotent; already-complete\ntracks pass through untouched.",
+        "description": "Synchronous fill of BPM + Camelot key from Beatport for tracks the web\nservice didn't already have cached. Idempotent; already-complete tracks pass\nthrough untouched. Transiently-failed lookups are reported in `failed_urls`\nso the caller can retry them instead of caching a false negative.",
         "operationId": "enrich_audio_features",
         "requestBody": {
           "content": {
@@ -727,6 +727,14 @@
             },
             "type": "array",
             "title": "Tracks"
+          },
+          "failed_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed Urls",
+            "default": []
           }
         },
         "type": "object",
