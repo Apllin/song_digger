@@ -36,14 +36,17 @@ def test_enrich_returns_beatport_filled_tracks_in_order():
     enriched_3 = {**inputs[2], "bpm": 132.0, "key": "5A"}
 
     from app.core.models import TrackMeta
+    # enrich_tracks always returns every input (resolved or unchanged); #2 is
+    # returned untouched (searched, no match).
     enrich_map = {
         "yt://1": TrackMeta(**enriched_1),
+        "yt://2": TrackMeta(**inputs[1]),
         "yt://3": TrackMeta(**enriched_3),
     }
 
     with patch(
         "app.api.routes.enrich._beatport.enrich_tracks",
-        new=AsyncMock(return_value=enrich_map),
+        new=AsyncMock(return_value=(enrich_map, set())),
     ) as mock_enrich:
         resp = client.post("/enrich", json={"tracks": inputs})
 
@@ -53,8 +56,9 @@ def test_enrich_returns_beatport_filled_tracks_in_order():
     # Order preserved; #1 and #3 filled, #2 untouched.
     assert body["tracks"][0]["bpm"] == 140.0
     assert body["tracks"][0]["key"] == "8A"
-    assert body["tracks"][1]["bpm"] is None  # not in enrich_map → returned as-is
+    assert body["tracks"][1]["bpm"] is None  # resolved but no data → returned as-is
     assert body["tracks"][2]["bpm"] == 132.0
+    assert body["failed_urls"] == []
 
     mock_enrich.assert_awaited_once()
 
@@ -68,7 +72,7 @@ def test_enrich_empty_list_returns_empty_without_calling_beatport():
         resp = client.post("/enrich", json={"tracks": []})
 
     assert resp.status_code == 200
-    assert resp.json() == {"tracks": []}
+    assert resp.json() == {"tracks": [], "failed_urls": []}
     mock_enrich.assert_not_called()
 
 
@@ -79,7 +83,7 @@ def test_enrich_keeps_input_when_beatport_returns_empty_map():
     inputs = [_track("yt://1"), _track("yt://2")]
     with patch(
         "app.api.routes.enrich._beatport.enrich_tracks",
-        new=AsyncMock(return_value={}),
+        new=AsyncMock(return_value=({}, set())),
     ):
         resp = client.post("/enrich", json={"tracks": inputs})
 
@@ -89,3 +93,19 @@ def test_enrich_keeps_input_when_beatport_returns_empty_map():
     for i, b in enumerate(body["tracks"]):
         assert b["sourceUrl"] == inputs[i]["sourceUrl"]
         assert b["bpm"] is None  # unchanged
+
+
+def test_enrich_surfaces_failed_urls():
+    """Transiently-failed sourceUrls are reported so the caller can retry them."""
+    inputs = [_track("yt://1"), _track("yt://2")]
+
+    from app.core.models import TrackMeta
+    enrich_map = {"yt://1": TrackMeta(**inputs[0]), "yt://2": TrackMeta(**inputs[1])}
+    with patch(
+        "app.api.routes.enrich._beatport.enrich_tracks",
+        new=AsyncMock(return_value=(enrich_map, {"yt://2"})),
+    ):
+        resp = client.post("/enrich", json={"tracks": inputs})
+
+    assert resp.status_code == 200
+    assert resp.json()["failed_urls"] == ["yt://2"]

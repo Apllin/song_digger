@@ -136,10 +136,11 @@ async def test_enrich_does_not_overwrite_existing_bpm():
     with patch.object(adapter, "_fetch_bpm_key",
                       new_callable=AsyncMock,
                       return_value=(140.0, "8A")):
-        result = await adapter.enrich_tracks([track])
+        result, failed = await adapter.enrich_tracks([track])
     enriched = result["https://x/1"]
     assert enriched.bpm == 137.5
     assert enriched.key == "8A"
+    assert failed == set()
 
 
 async def test_enrich_skips_already_complete_tracks():
@@ -153,11 +154,12 @@ async def test_enrich_skips_already_complete_tracks():
     )
     fetch_mock = AsyncMock(return_value=(150.0, "9A"))
     with patch.object(adapter, "_fetch_bpm_key", new=fetch_mock):
-        result = await adapter.enrich_tracks([track])
+        result, failed = await adapter.enrich_tracks([track])
     fetch_mock.assert_not_called()
     enriched = result["https://x/3"]
     assert enriched.bpm == 140.0
     assert enriched.key == "8A"
+    assert failed == set()
 
 
 async def test_enrich_does_not_overwrite_existing_key():
@@ -172,7 +174,42 @@ async def test_enrich_does_not_overwrite_existing_key():
     with patch.object(adapter, "_fetch_bpm_key",
                       new_callable=AsyncMock,
                       return_value=(140.0, "8A")):
-        result = await adapter.enrich_tracks([track])
+        result, failed = await adapter.enrich_tracks([track])
     enriched = result["https://x/2"]
     assert enriched.bpm == 140.0
     assert enriched.key == "9A"
+    assert failed == set()
+
+
+async def test_enrich_reports_transient_failure_without_resolving():
+    """A BeatportFetchError lands in `failed` and the track is returned
+    unchanged, so the caller retries instead of caching a false negative."""
+    from app.adapters.beatport import BeatportFetchError
+    adapter = BeatportAdapter()
+    track = TrackMeta(
+        title="Test", artist="Test", source="cosine_club",
+        sourceUrl="https://x/9", bpm=None, key=None,
+    )
+    with patch.object(adapter, "_fetch_bpm_key",
+                      new_callable=AsyncMock,
+                      side_effect=BeatportFetchError("429 Too Many Requests")):
+        result, failed = await adapter.enrich_tracks([track])
+    assert failed == {"https://x/9"}
+    assert result["https://x/9"].bpm is None
+    assert result["https://x/9"].key is None
+
+
+async def test_enrich_not_found_is_not_a_failure():
+    """A successful search with no match returns None — not a failure — so the
+    track is resolved (eligible to be marked enriched) and stays out of `failed`."""
+    adapter = BeatportAdapter()
+    track = TrackMeta(
+        title="Test", artist="Test", source="cosine_club",
+        sourceUrl="https://x/10", bpm=None, key=None,
+    )
+    with patch.object(adapter, "_fetch_bpm_key",
+                      new_callable=AsyncMock,
+                      return_value=None):
+        result, failed = await adapter.enrich_tracks([track])
+    assert failed == set()
+    assert result["https://x/10"].bpm is None

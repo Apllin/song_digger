@@ -11,4 +11,5 @@ export const enrichResponseSchema = z.object({
   get tracks() {
     return z.array(trackMetaSchema);
   },
+  failed_urls: z.optional(z.array(z.string())),
 }) as unknown as z.ZodType<EnrichResponse>;

@@ -1,5 +1,7 @@
 import re
+import os
 import json
+import random
 import asyncio
 import httpx
 from app.adapters.base import AbstractAdapter
@@ -40,7 +42,31 @@ NEXT_DATA_RE = re.compile(
     re.S,
 )
 
-_RETRY_DELAY_SECONDS = 2.0
+# Tunable via env so concurrency/timeout can be adjusted without a redeploy.
+TIMEOUT_SECONDS = float(os.getenv("BEATPORT_TIMEOUT_SECONDS", "8.0"))
+CONNECT_TIMEOUT_SECONDS = float(os.getenv("BEATPORT_CONNECT_TIMEOUT_SECONDS", "5.0"))
+MAX_RETRIES = int(os.getenv("BEATPORT_MAX_RETRIES", "3"))
+_RETRY_BASE_SECONDS = 1.0
+
+
+class BeatportFetchError(Exception):
+    """A Beatport request failed after retries (HTTP/network/timeout) — distinct
+    from a successful response that simply had no matching track. Callers use
+    this to avoid marking a track permanently as 'no audio features' on a
+    transient failure (which would otherwise never be retried)."""
+
+
+def _retry_delay(attempt: int, exc: Exception) -> float:
+    """Exponential backoff with full jitter; honours Retry-After when present.
+    Jitter de-synchronises concurrent retries so a burst of 429s doesn't
+    stampede Beatport in lockstep."""
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after and retry_after.isdigit():
+            return float(retry_after)
+    base = _RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+    return base + random.uniform(0.0, base)
 
 
 def _to_camelot(key_name: str | None) -> str | None:
@@ -87,7 +113,10 @@ class BeatportAdapter(AbstractAdapter):
 
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(
-            headers=HEADERS, timeout=10.0, follow_redirects=True
+            headers=HEADERS,
+            timeout=httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS),
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
         )
 
     async def aclose(self) -> None:
@@ -97,38 +126,52 @@ class BeatportAdapter(AbstractAdapter):
         self,
         tracks: list[TrackMeta],
         max_concurrent: int = 5,
-    ) -> dict[str, TrackMeta]:
+    ) -> tuple[dict[str, TrackMeta], set[str]]:
         """
         For each track without BPM/key, search Beatport and fill in the data.
-        Returns a dict sourceUrl → enriched TrackMeta. Already-complete tracks
-        are returned untouched (no Beatport call).
+        Returns (sourceUrl → enriched TrackMeta, set of sourceUrls whose scrape
+        failed transiently). Already-complete tracks are returned untouched (no
+        Beatport call). A track in the failed set was NOT resolved — the caller
+        must not mark it as permanently enriched, so it is retried next time.
         """
         semaphore = asyncio.Semaphore(max_concurrent)
+        failed: set[str] = set()
 
         async def enrich_one(track: TrackMeta) -> tuple[str, TrackMeta]:
             if track.bpm is not None and track.key is not None:
                 return track.sourceUrl, track
             async with semaphore:
-                result = await self._fetch_bpm_key(track.title, track.artist)
-                if result:
-                    bpm, key = result
-                    return track.sourceUrl, track.model_copy(update={
-                        "bpm": track.bpm if track.bpm is not None else bpm,
-                        "key": track.key if track.key is not None else key,
-                    })
-                return track.sourceUrl, track
+                try:
+                    result = await self._fetch_bpm_key(track.title, track.artist)
+                except BeatportFetchError:
+                    failed.add(track.sourceUrl)
+                    return track.sourceUrl, track
+            if result:
+                bpm, key = result
+                return track.sourceUrl, track.model_copy(update={
+                    "bpm": track.bpm if track.bpm is not None else bpm,
+                    "key": track.key if track.key is not None else key,
+                })
+            return track.sourceUrl, track
 
         pairs = await asyncio.gather(*[enrich_one(t) for t in tracks])
-        return dict(pairs)
+        enriched = dict(pairs)
+        with_features = sum(1 for t in enriched.values() if t.bpm is not None or t.key is not None)
+        print(
+            f"[Beatport] enrich: {len(tracks)} in / {with_features} with features / "
+            f"{len(failed)} failed (concurrency={max_concurrent})"
+        )
+        return enriched, failed
 
     async def _fetch_bpm_key(
         self, title: str, artist: str
     ) -> tuple[float, str] | None:
         """Search Beatport for the track and return (bpm, camelot_key) only when
         the title signature matches exactly (via shared `_seed_match` logic that
-        cosine_club uses for its seed resolution). Avoids the loose prefix-substring
-        match the original implementation used."""
-        results = await self.find_similar(f"{artist} {title}", limit=5)
+        cosine_club uses for its seed resolution). Raises BeatportFetchError on a
+        transient fetch failure so the caller can tell 'not found' apart from
+        'lookup failed'."""
+        results = await self._search(f"{artist} {title}", limit=5)
         match_query = f"{artist} - {title}"
         for t in results:
             if t.bpm is None or t.key is None:
@@ -138,20 +181,32 @@ class BeatportAdapter(AbstractAdapter):
         return None
 
     async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:
+        """AbstractAdapter entry point — soft-degrades a fetch failure to an empty
+        list. Enrichment uses `_search` directly to distinguish failure instead."""
+        try:
+            return await self._search(query, limit)
+        except BeatportFetchError as e:
+            print(f"[Beatport] find_similar error: {e}")
+            return []
+
+    async def _search(self, query: str, limit: int) -> list[TrackMeta]:
+        """One Beatport search with bounded retries on transient errors. Returns
+        parsed tracks (possibly empty when nothing matched); raises
+        BeatportFetchError when the request itself fails after retries."""
         url = f"https://www.beatport.com/search/tracks?q={query.replace(' ', '+')}"
-        for attempt in (1, 2):
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
                 resp = await self._client.get(url)
                 resp.raise_for_status()
                 return self._parse_html(resp.text, limit)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 status = getattr(getattr(e, "response", None), "status_code", None)
-                if attempt == 1 and (status is None or status >= 500 or status == 429):
-                    await asyncio.sleep(_RETRY_DELAY_SECONDS)
+                retriable = status is None or status >= 500 or status == 429
+                if attempt < MAX_RETRIES and retriable:
+                    await asyncio.sleep(_retry_delay(attempt, e))
                     continue
-                print(f"[Beatport] find_similar error: {e}")
-                return []
-        return []
+                raise BeatportFetchError(f"{query!r}: {e}") from e
+        raise BeatportFetchError(f"{query!r}: retries exhausted")
 
     def _parse_html(self, html: str, limit: int) -> list[TrackMeta]:
         match = NEXT_DATA_RE.search(html)
