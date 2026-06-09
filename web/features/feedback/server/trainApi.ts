@@ -34,7 +34,7 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
     }),
     prisma.searchQuery.findMany({
       where: { id: { in: searchIds } },
-      select: { id: true, seedBpm: true, seedMusicalKey: true },
+      select: { id: true, seedBpm: true, seedMusicalKey: true, seedGenre: true },
     }),
     prisma.track.findMany({
       where: { id: { in: trackIds } },
@@ -61,7 +61,7 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
 
     return [
       {
-        features: { ...parsed.data, bpmDelta, keyCompatible },
+        features: { ...parsed.data, bpmDelta, keyCompatible, seedGenre: sq?.seedGenre ?? null, seedBpm: sq?.seedBpm ?? null },
         is_similar: f.isSimilar,
       },
     ];
@@ -93,6 +93,8 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
       bpmPresentWeight: result.bpm_present_weight,
       keyCompatibleWeight: result.key_compatible_weight,
       keyPresentWeight: result.key_present_weight,
+      genreAdjustments: result.genre_adjustments ?? {},
+      bpmRangeAdjustments: result.bpm_range_adjustments ?? {},
       sourceWeights: {
         create: Object.entries(result.source_weights).map(([source, weight]) => ({
           source: source as SimilaritySource,
