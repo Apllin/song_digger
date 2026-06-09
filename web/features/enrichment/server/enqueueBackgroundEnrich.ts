@@ -2,6 +2,7 @@ import type { SearchQueryId } from "@/features/search/schemas";
 import { prisma } from "@/lib/prisma";
 import { enrichAudioFeatures } from "@/lib/python-api/generated/clients/enrichAudioFeatures";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
+import { genreToBucket } from "@/lib/genreBuckets";
 
 /**
  * Fire-and-forget Beatport enrichment for the search's seed (stored on
@@ -73,9 +74,9 @@ async function enrichSeed(
 
   const existing = await prisma.searchQuery.findUnique({
     where: { id: searchId },
-    select: { seedBpm: true, seedMusicalKey: true },
+    select: { seedBpm: true, seedMusicalKey: true, seedGenre: true },
   });
-  if (existing?.seedBpm != null && existing?.seedMusicalKey != null) return;
+  if (existing?.seedBpm != null && existing?.seedMusicalKey != null && existing?.seedGenre != null) return;
 
   const seedPseudoTrack: TrackMeta = {
     title: seed.title,
@@ -88,12 +89,17 @@ async function enrichSeed(
     const resp = await enrichAudioFeatures({ tracks: [seedPseudoTrack] }, { baseURL: pythonServiceUrl });
     const enriched = resp.tracks[0];
     if (!enriched) return;
-    if (enriched.bpm == null && enriched.key == null) return;
+    if (enriched.bpm == null && enriched.key == null && enriched.genre == null) return;
+
+    const rawGenre = enriched.genre ?? null;
+    const genreBucket: string | undefined = rawGenre != null ? genreToBucket(rawGenre) : undefined;
+
     await prisma.searchQuery.update({
       where: { id: searchId },
       data: {
         seedBpm: enriched.bpm ?? undefined,
         seedMusicalKey: enriched.key ?? undefined,
+        seedGenre: genreBucket,
       },
     });
   } catch (err) {
