@@ -102,6 +102,26 @@ def test_parse_track_source_url_format():
     assert "12345678" in result.sourceUrl
 
 
+def test_parse_track_populates_genre():
+    result = _parse_track(_raw_track())
+    assert result is not None
+    assert result.genre == "Techno"
+
+
+def test_parse_track_genre_missing_returns_none():
+    result = _parse_track(_raw_track(genre=[]))
+    assert result is not None
+    assert result.genre is None
+
+
+def test_parse_track_genre_no_genre_key():
+    raw = _raw_track()
+    del raw["genre"]
+    result = _parse_track(raw)
+    assert result is not None
+    assert result.genre is None
+
+
 # ── enrich_tracks: gap-fill semantics ─────────────────────────────────────────
 
 async def test_enrich_does_not_overwrite_existing_bpm():
