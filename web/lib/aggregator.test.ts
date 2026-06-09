@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SourceList } from "./python-api/generated/types/SourceList";
 import type { TrackMeta } from "./python-api/generated/types/TrackMeta";
 import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
+import type { AudioFeatures, WeightConfig } from "./aggregator";
 
 function makeTrack(overrides: Partial<TrackMeta> = {}): TrackMeta {
   return {
@@ -286,5 +287,97 @@ describe("aggregateTracks — audio bonus", () => {
     // Without a seed BPM, no bonus → a stays at rank 1 by RRF (tied), b by RRF
     // ordering — but at minimum both are returned without throwing.
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("genre and BPM range adjustments", () => {
+  const baseWeights: WeightConfig = {
+    rankDecayK: 60,
+    cosineScoreWeight: 0,
+    numSourcesWeight: 0,
+    bpmDeltaWeight: 0,
+    bpmCompatibleWeight: 0,
+    bpmPresentWeight: 0,
+    keyCompatibleWeight: 0,
+    keyPresentWeight: 0,
+    sourceWeights: {},
+    genreAdjustments: {},
+    bpmRangeAdjustments: {},
+  };
+
+  it("genre × source adjustment boosts beatport candidate when seed is techno", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const lists: SourceList[] = [
+      { source: "beatport", tracks: [trackA] },
+      { source: "lastfm", tracks: [trackB] },
+    ];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      genreAdjustments: {
+        techno: { beatport: 2.0, lastfm: 0.3 },
+      },
+    };
+    const audio: AudioFeatures = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      seedGenre: "techno",
+      candidateBpm: new Map(),
+      candidateMusicalKey: new Map(),
+    };
+    const result = aggregateTracks(lists, weightsWithAdj, audio);
+    // beatport gets a large genre adjustment, so trackA should rank higher
+    const scoreA = result.find((t) => t.title === "A")!.rrfScore;
+    const scoreB = result.find((t) => t.title === "B")!.rrfScore;
+    expect(scoreA).toBeGreaterThan(scoreB);
+  });
+
+  it("genre adjustment is no-op when seedGenre is null", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const lists: SourceList[] = [
+      { source: "beatport", tracks: [trackA] },
+      { source: "lastfm", tracks: [trackB] },
+    ];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      genreAdjustments: { techno: { beatport: 2.0 } },
+    };
+    const audio: AudioFeatures = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      seedGenre: null,
+      candidateBpm: new Map(),
+      candidateMusicalKey: new Map(),
+    };
+    const result = aggregateTracks(lists, weightsWithAdj, audio);
+    // Both have rank 1 in their respective sources, no adjustment → equal base RRF
+    const scoreA = result.find((t) => t.title === "A")!.rrfScore;
+    const scoreB = result.find((t) => t.title === "B")!.rrfScore;
+    expect(scoreA).toBeCloseTo(scoreB, 5);
+  });
+
+  it("BPM range adjustment modifies bpmDelta bonus for matching range", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const lists: SourceList[] = [{ source: "beatport", tracks: [trackA] }];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      bpmRangeAdjustments: { fast: { bpmDelta: 1.5, bpmCompatible: 1.0 } },
+    };
+    const audioWithBpm: AudioFeatures = {
+      seedBpm: 130,
+      seedMusicalKey: null,
+      seedGenre: "techno",
+      candidateBpm: new Map([["https://beatport.com/a", 132]]),
+      candidateMusicalKey: new Map(),
+    };
+    const audioNoBpm: AudioFeatures = {
+      ...audioWithBpm,
+      seedBpm: null,
+      candidateBpm: new Map(),
+    };
+    const withBpm = aggregateTracks(lists, weightsWithAdj, audioWithBpm);
+    const withoutBpm = aggregateTracks(lists, weightsWithAdj, audioNoBpm);
+    expect(withBpm[0]!.rrfScore).toBeGreaterThan(withoutBpm[0]!.rrfScore);
   });
 });

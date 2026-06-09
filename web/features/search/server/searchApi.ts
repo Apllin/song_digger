@@ -181,7 +181,7 @@ async function loadAudioFeatures(
   const seedPromise = prisma.searchQuery.findFirst({
     where: { cacheKey, seedBpm: { not: null } },
     orderBy: { createdAt: "desc" },
-    select: { seedBpm: true, seedMusicalKey: true },
+    select: { seedBpm: true, seedMusicalKey: true, seedGenre: true },
   });
 
   const urls = sourceLists.flatMap((l) => l.tracks.map((t) => t.sourceUrl));
@@ -197,6 +197,7 @@ async function loadAudioFeatures(
   return {
     seedBpm: seed?.seedBpm ?? null,
     seedMusicalKey: seed?.seedMusicalKey ?? null,
+    seedGenre: seed?.seedGenre ?? null,
     candidateBpm: new Map(tracks.map((t) => [t.sourceUrl, t.bpm])),
     candidateMusicalKey: new Map(tracks.map((t) => [t.sourceUrl, t.musicalKey])),
   };
