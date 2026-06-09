@@ -121,6 +121,7 @@ model SearchQuery {
     status             String               @default("pending")
     seedBpm            Float?
     seedMusicalKey     String?
+    seedGenre          String?
     createdAt          DateTime             @default(now())
     results            SearchResult[]
     similarityFeedback SimilarityFeedback[]
@@ -383,6 +384,8 @@ model ModelWeights {
     bpmPresentWeight    Float?
     keyCompatibleWeight Float?
     keyPresentWeight    Float?
+    genreAdjustments    Json?
+    bpmRangeAdjustments Json?
     sourceWeights       SourceWeight[]
 }
 
