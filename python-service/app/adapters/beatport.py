@@ -64,6 +64,9 @@ def _parse_track(t: dict) -> TrackMeta | None:
     release = t.get("release") or {}
     cover_url = release.get("release_image_uri") or t.get("track_image_uri")
 
+    genres = t.get("genre") or []
+    genre = genres[0].get("genre_name") if genres else None
+
     return TrackMeta(
         title=title,
         artist=artist,
@@ -72,6 +75,7 @@ def _parse_track(t: dict) -> TrackMeta | None:
         coverUrl=cover_url,
         bpm=t.get("bpm"),
         key=_to_camelot(t.get("key_name")),
+        genre=genre,
     )
 
 
