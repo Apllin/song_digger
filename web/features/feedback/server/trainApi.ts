@@ -61,7 +61,13 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
 
     return [
       {
-        features: { ...parsed.data, bpmDelta, keyCompatible, seedGenre: sq?.seedGenre ?? null, seedBpm: sq?.seedBpm ?? null },
+        features: {
+          ...parsed.data,
+          bpmDelta,
+          keyCompatible,
+          seedGenre: sq?.seedGenre ?? null,
+          seedBpm: sq?.seedBpm ?? null,
+        },
         is_similar: f.isSimilar,
       },
     ];

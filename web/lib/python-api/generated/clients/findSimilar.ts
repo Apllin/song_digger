@@ -3,10 +3,10 @@
  * Do not edit manually.
  */
 
-import fetch from "@kubb/plugin-client/clients/axios";
-import type { FindSimilarMutationRequest, FindSimilarMutationResponse, FindSimilar422 } from "../types/FindSimilar";
 import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
-import { findSimilarMutationResponseSchema, findSimilarMutationRequestSchema } from "../zod/findSimilarSchema";
+import fetch from "@kubb/plugin-client/clients/axios";
+import type { FindSimilar422, FindSimilarMutationRequest, FindSimilarMutationResponse } from "../types/FindSimilar";
+import { findSimilarMutationRequestSchema, findSimilarMutationResponseSchema } from "../zod/findSimilarSchema";
 
 function getFindSimilarUrl() {
   const res = { method: "POST", url: `/similar` as const };

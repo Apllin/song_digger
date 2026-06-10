@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SourceList } from "./python-api/generated/types/SourceList";
 import type { TrackMeta } from "./python-api/generated/types/TrackMeta";
-import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
 import type { AudioFeatures, WeightConfig } from "./aggregator";
+import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
 
 function makeTrack(overrides: Partial<TrackMeta> = {}): TrackMeta {
   return {

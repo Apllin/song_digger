@@ -3,14 +3,14 @@
  * Do not edit manually.
  */
 
+import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
-  GetReleaseTracklistQueryResponse,
+  GetReleaseTracklist422,
   GetReleaseTracklistPathParams,
   GetReleaseTracklistQueryParams,
-  GetReleaseTracklist422,
+  GetReleaseTracklistQueryResponse,
 } from "../types/GetReleaseTracklist";
-import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
 import { getReleaseTracklistQueryResponseSchema } from "../zod/getReleaseTracklistSchema";
 
 function getGetReleaseTracklistUrl(release_id: GetReleaseTracklistPathParams["release_id"]) {

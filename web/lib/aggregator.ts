@@ -239,8 +239,7 @@ function decorateWithGenreAndBpmAdjustments(
   weights: WeightConfig,
   audio: AudioFeatures,
 ): void {
-  const genreAdj =
-    audio.seedGenre && weights.genreAdjustments ? (weights.genreAdjustments[audio.seedGenre] ?? {}) : {};
+  const genreAdj = audio.seedGenre && weights.genreAdjustments ? (weights.genreAdjustments[audio.seedGenre] ?? {}) : {};
   const bpmRange = audio.seedBpm != null ? getBpmRange(audio.seedBpm) : null;
   const bpmRangeAdj = bpmRange && weights.bpmRangeAdjustments ? (weights.bpmRangeAdjustments[bpmRange] ?? {}) : {};
 

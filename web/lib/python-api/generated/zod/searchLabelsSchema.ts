@@ -3,15 +3,15 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   SearchLabels200,
   SearchLabels422,
   SearchLabelsQueryParams,
   SearchLabelsQueryResponse,
 } from "../types/SearchLabels";
-import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { discogsLabelSchema } from "./discogsLabelSchema";
-import { z } from "zod/v4";
+import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 
 export const searchLabelsQueryParamsSchema = z.object({
   q: z.string().min(1),

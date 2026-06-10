@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { LabelRelease } from "../types/LabelRelease";
 import { z } from "zod/v4";
+import type { LabelRelease } from "../types/LabelRelease";
 
 export const labelReleaseSchema = z.object({
   id: z.int(),
