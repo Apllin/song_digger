@@ -9,8 +9,8 @@ import { useSoundCloudPlayer } from "./useSoundCloudPlayer";
 import { useYTPlayer } from "./useYTPlayer";
 
 import { playerVolumeAtom, unplayableTrackIdsAtom } from "@/features/player/atoms";
+import { needsEmbedResolution } from "@/features/player/playability";
 import type { PlayerAdapter, PlayerTrack, TrackSource } from "@/features/player/types";
-import { extractVideoId } from "@/features/player/ytApi";
 import { api } from "@/lib/hono/client";
 
 interface Props {
@@ -45,22 +45,6 @@ export type SCPlayerReturn = PlayerAdapter &
 export type IdlePlayerReturn = PlayerAdapter & AdapterShared & { source: null };
 
 export type AudioPlayerReturn = YTPlayerReturn | BCPlayerReturn | SCPlayerReturn | IdlePlayerReturn;
-
-// A "playable" source row is only actually playable if the adapter has what it
-// needs. Track rows from older saves or feeds (discography/label tracklists)
-// can miss these fields, and without this guard the adapter spins forever.
-function canAdapterPlay(track: PlayerTrack): boolean {
-  switch (track.source) {
-    case "youtube_music":
-      return !!extractVideoId("youtube_music", track.sourceUrl, track.embedUrl);
-    case "bandcamp":
-      return !!track.sourceUrl;
-    case "soundcloud":
-      return !!track.embedUrl;
-    default:
-      return false;
-  }
-}
 
 export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlayerReturn {
   const [volume, setVolume] = useAtom(playerVolumeAtom);
@@ -98,8 +82,7 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
   // - source is non-playable (lastfm, cosine_club, yandex, trackidnet)
   // - source is "playable" but the data the adapter needs is missing
   //   (e.g. a YTM row without a videoId, a SC row without embedUrl).
-  // Empty title/artist would produce a useless lookup, so guard on those too.
-  const shouldResolve = !!track && !!track.title && !!track.artist && !canAdapterPlay(track);
+  const shouldResolve = !!track && needsEmbedResolution(track);
 
   const {
     data: embedData,

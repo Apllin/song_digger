@@ -6,7 +6,7 @@ import { useAtom } from "jotai";
 import { useEffect, useMemo } from "react";
 
 import { unplayableTrackIdsAtom } from "@/features/player/atoms";
-import { PLAYABLE_SOURCES } from "@/features/player/constants";
+import { needsEmbedResolution } from "@/features/player/playability";
 import type { PlayerTrack, TrackSource } from "@/features/player/types";
 import { api } from "@/lib/hono/client";
 
@@ -43,7 +43,7 @@ export function useNextTrackPreload({ playlist, playingIndex }: Props) {
 
   const queries = useQueries({
     queries: upcoming.map((t) => {
-      const needsResolution = t.source === null || !PLAYABLE_SOURCES.has(t.source);
+      const needsResolution = needsEmbedResolution(t);
       return {
         queryKey: ["embed", t.title, t.artist],
         queryFn: async ({ signal }: { signal: AbortSignal }): Promise<EmbedData | null> => {
