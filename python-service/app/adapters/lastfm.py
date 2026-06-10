@@ -150,13 +150,10 @@ class LastfmAdapter(AbstractAdapter):
             "limit": _LASTFM_TRACK_SIMILAR_CACHE_LIMIT,
             "autocorrect": 1,  # let Last.fm fix "Mulero" -> "Oscar Mulero"
         }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                resp = await client.get(LASTFM_API_BASE, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            print(f"[Lastfm] find_similar error: {e}")
+        data = await fetch_json_with_retry(
+            LASTFM_API_BASE, params=params, timeout=TIMEOUT_SECONDS, label="Lastfm.track.getSimilar"
+        )
+        if data is None:
             return []
         return data.get("similartracks", {}).get("track", []) or []
 
