@@ -23,8 +23,8 @@ Flow per seed:
   2. List playlists for the seed id. Sort by `addedOn` desc and take the
      first MAX_PLAYLISTS — fresher sets are more representative of the
      track's current DJ context.
-  3. Fetch each playlist's full tracklist concurrently with a
-     DETAIL_CONCURRENCY-bound semaphore. Soft-fail per fetch.
+  3. Fetch playlist tracklists in DETAIL_CONCURRENCY-sized batches, stopping
+     once EARLY_STOP_TRACK_COUNT unique tracks are collected. Soft-fail per fetch.
   4. For each playlist: pick the most recent NON-EMPTY detection process
      by endDate (sets get reprocessed; empty reprocesses can mask older
      real data). Find the seed track in the tracklist by slug; take the
@@ -40,7 +40,7 @@ Soft-degrades: any HTTP error, JSON parse error, or missing seed returns [].
 Never raises into the caller (per python-adapter-pattern).
 """
 import asyncio
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -74,6 +74,8 @@ PLAYLISTS_PAGE_SIZE = 20
 WINDOW = 2
 MAX_PLAYLISTS = 10
 DETAIL_CONCURRENCY = 5
+# Stop fetching playlists once the co-occurrence pool hits this many tracks.
+EARLY_STOP_TRACK_COUNT = 50
 DEFAULT_LIMIT = 50
 # Artist-only (keyword) flow: query audiostreams by keyword to find playlists
 # where the artist appears, then anchor on the artist's tracks inside each
@@ -138,37 +140,34 @@ class TrackidnetAdapter(AbstractAdapter):
             elif seed.get("id") is None:
                 return []
 
+            # Use slug, not id, as the lookup key — trackid.net's
+            # /audiostreams?musicTrackId=… index does not surface every
+            # detected playlist for niche tracks (TRA-19), whereas the
+            # ?musicTrackSlug=… query does. Cache key follows the slug too.
+            seed_slug = seed.get("slug") or ""
             playlist_slugs = await fetch_external_cache(
                 source="trackidnet_playlists",
-                cache_key=str(seed["id"]),
+                cache_key=seed_slug,
                 ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
             )
             if playlist_slugs is None:
-                playlist_slugs = await _list_playlists(client, seed["id"])
+                playlist_slugs = await _list_playlists(client, seed_slug)
                 if not playlist_slugs:
                     return []
                 await upsert_external_cache(
                     source="trackidnet_playlists",
-                    cache_key=str(seed["id"]),
+                    cache_key=seed_slug,
                     payload=playlist_slugs,
                 )
             elif not playlist_slugs:
                 return []
 
-            tracklists = await _fetch_tracklists(client, playlist_slugs)
-
-        seed_slug = seed.get("slug") or ""
-        coocc: dict[str, dict[str, Any]] = {}
-        for audiostream in tracklists:
-            for tr in _extract_window(audiostream, seed_slug, WINDOW):
-                slug = tr.get("slug")
-                if not slug:
-                    continue
-                rec = coocc.get(slug)
-                if rec is None:
-                    coocc[slug] = {"track": tr, "count": 1}
-                else:
-                    rec["count"] += 1
+            seed_slug = seed.get("slug") or ""
+            coocc = await _aggregate_incrementally(
+                client,
+                playlist_slugs,
+                lambda a: _extract_window(a, seed_slug, WINDOW),
+            )
 
         ranked = sorted(
             coocc.values(),
@@ -216,19 +215,11 @@ class TrackidnetAdapter(AbstractAdapter):
                 return []
 
             slugs = slugs[:MAX_KEYWORD_PLAYLISTS]
-            tracklists = await _fetch_tracklists(client, slugs)
-
-        coocc: dict[str, dict[str, Any]] = {}
-        for audiostream in tracklists:
-            for tr in _extract_playlist_tracks_excluding_artist(audiostream, artist_lc):
-                slug = tr.get("slug")
-                if not slug:
-                    continue
-                rec = coocc.get(slug)
-                if rec is None:
-                    coocc[slug] = {"track": tr, "count": 1}
-                else:
-                    rec["count"] += 1
+            coocc = await _aggregate_incrementally(
+                client,
+                slugs,
+                lambda a: _extract_playlist_tracks_excluding_artist(a, artist_lc),
+            )
 
         ranked = sorted(
             coocc.values(),
@@ -306,21 +297,27 @@ async def _find_seed_track(
 
 
 async def _list_playlists(
-    client: httpx.AsyncClient, music_track_id: int
+    client: httpx.AsyncClient, music_track_slug: str
 ) -> list[str]:
     """Return up to MAX_PLAYLISTS audiostream slugs for the given music
-    track id, sorted by addedOn descending (freshest first).
+    track slug, sorted by addedOn descending (freshest first).
 
-    The /audiostreams?musicTrackId= endpoint returns lightweight metadata
+    Uses `musicTrackSlug` (not `musicTrackId`) — empirically, the id-keyed
+    index on trackid.net's public API misses associations for niche tracks
+    that the slug-keyed index does surface (TRA-19).
+
+    The /audiostreams?musicTrackSlug= endpoint returns lightweight metadata
     only (no tracklists in the payload), so this call is cheap. We don't
     paginate — the first page (pageSize=20) is enough; we cap at
     MAX_PLAYLISTS of those, taking the freshest by addedOn.
     """
+    if not music_track_slug:
+        return []
     try:
         resp = await client.get(
             f"{API_BASE}/audiostreams",
             params={
-                "musicTrackId": music_track_id,
+                "musicTrackSlug": music_track_slug,
                 "pageSize": PLAYLISTS_PAGE_SIZE,
                 "currentPage": 0,
                 "sortField": "",
@@ -330,7 +327,7 @@ async def _list_playlists(
         resp.raise_for_status()
         data = resp.json()
     except (httpx.HTTPError, ValueError) as e:
-        print(f"[Trackidnet] playlists list failed for {music_track_id}: {e}")
+        print(f"[Trackidnet] playlists list failed for {music_track_slug!r}: {e}")
         return []
 
     streams = (data.get("result") or {}).get("audiostreams") or []
@@ -391,6 +388,32 @@ async def _fetch_tracklists(
 
     results = await asyncio.gather(*(_one(s) for s in slugs))
     return [r for r in results if r is not None]
+
+
+async def _aggregate_incrementally(
+    client: httpx.AsyncClient,
+    slugs: list[str],
+    extract: Callable[[dict], list[dict]],
+) -> dict[str, dict[str, Any]]:
+    """Fetch tracklists in DETAIL_CONCURRENCY-sized batches, aggregating
+    co-occurrence as we go. Stops once EARLY_STOP_TRACK_COUNT unique tracks
+    are collected, leaving the remaining playlists unrequested."""
+    coocc: dict[str, dict[str, Any]] = {}
+    for i in range(0, len(slugs), DETAIL_CONCURRENCY):
+        tracklists = await _fetch_tracklists(client, slugs[i:i + DETAIL_CONCURRENCY])
+        for audiostream in tracklists:
+            for tr in extract(audiostream):
+                slug = tr.get("slug")
+                if not slug:
+                    continue
+                rec = coocc.get(slug)
+                if rec is None:
+                    coocc[slug] = {"track": tr, "count": 1}
+                else:
+                    rec["count"] += 1
+        if len(coocc) >= EARLY_STOP_TRACK_COUNT:
+            break
+    return coocc
 
 
 def _extract_window(
@@ -505,8 +528,10 @@ async def _search_audiostreams_by_keyword(
 def _extract_playlist_tracks_excluding_artist(
     audiostream: dict, artist_lc: str
 ) -> list[dict]:
-    """Return every track from the latest non-empty detection process, except
-    those by the queried artist. Rationale for keyword flow: when keyword
+    """Return every track from the largest non-empty detection process, except
+    those by the queried artist (largest, not latest — trackid reprocesses
+    sets, and a fresh reprocess is often a partial detection). Rationale for
+    keyword flow: when keyword
     matches a DJ, their playlists are *their selections* — the artist
     themselves rarely appears as a tracklist entry. Anchor-window logic
     (which depends on finding the artist's own tracks inside the set) fails;
@@ -520,7 +545,7 @@ def _extract_playlist_tracks_excluding_artist(
     ]
     if not non_empty:
         return []
-    chosen = max(non_empty, key=lambda p: p.get("endDate") or "")
+    chosen = max(non_empty, key=lambda p: len(p.get("detectionProcessMusicTracks") or []))
     tracks = chosen.get("detectionProcessMusicTracks") or []
 
     out: list[dict] = []

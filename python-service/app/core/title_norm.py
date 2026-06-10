@@ -4,10 +4,12 @@ Two layers, both whitelist-only — unknown text is always kept, because a stray
 tag left in is cheaper than losing part of a real title:
 
 - `strip_recording_suffixes`: same-recording suffixes (Original Mix, Remaster,
-  feat., …) plus catalogue tags. Used by `app.adapters._seed_match` seed
-  signatures and the SoundCloud parser. Mirrored in
-  web/lib/aggregator.ts:normalizeTitle — keep them in sync or alternate
-  versions like "(NK & David Löhlein Version)" collapse onto the original seed.
+  feat., …) plus catalogue tags. Handles two surface forms — bracketed
+  ("Track (Original Mix)") and trailing-hyphen ("Track - Original Mix") — because
+  Last.fm/Discogs emit the latter while Cosine/YTM/Yandex bracket them. Used by
+  `app.adapters._seed_match` seed signatures and the SoundCloud parser. Mirrored
+  in web/lib/aggregator.ts:normalizeTitle — keep in sync or alternate versions
+  like "(NK & David Löhlein Version)" collapse onto the original seed.
 
 - `clean_title`: display-facing cleanup (TRA-27). Everything the normaliser
   strips, plus source *service* tags — promo banners ([PREMIERE], FREE DL),
@@ -27,6 +29,11 @@ def _both_brackets(inner: str) -> str:
     return rf"\s*(?:\({inner}\)|\[{inner}\])"
 
 
+def _trailing_hyphen(inner: str) -> str:
+    # Spotify/Apple/Yandex style: " - Original Mix" anchored to end of string.
+    return rf"\s+[-–—]\s+{inner}\s*$"
+
+
 # Version keywords that mark a DISTINCT recording. Used as a negative guard so
 # the catalogue matcher can't eat a versioned bracket like "[Live 2020]".
 _VERSION_WORDS = (
@@ -34,17 +41,14 @@ _VERSION_WORDS = (
     r"rework|bootleg|reprise|interlude|intro|outro|flip|refix"
 )
 
-
-# Suffixes describing the SAME recording — safe to drop.
-_RECORDING_SUFFIXES: tuple[str, ...] = (
-    _both_brackets(r"original mix"),
-    _both_brackets(r"extended(?:\s+mix)?"),
-    _both_brackets(r"radio\s+(?:edit|mix)"),
-    _both_brackets(r"(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)"),
-    _both_brackets(r"(?:feat\.|ft\.|featuring)\s+[^\)\]]*"),
-    _both_brackets(r"(?:prod\.|produced\s+by)\s+[^\)\]]*"),
-    _both_brackets(r"(?:clean|explicit)"),
-    _both_brackets(r"bonus\s+track"),
+# Suffixes describing the SAME recording — safe to drop. Both Last.fm/Discogs
+# raw scrobble names ("Track - Original Mix") and bracketed catalog forms
+# ("Track (Original Mix)") must be handled or orphans accumulate when fusing.
+_SAME_RECORDING_INNER = (
+    r"original mix",
+    r"extended(?:\s+mix)?",
+    r"radio\s+(?:edit|mix)",
+    r"(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)",
 )
 
 # Catalogue/label tags in square brackets — the defining mark is a catalogue
@@ -59,7 +63,19 @@ _CATALOG_TAG: re.Pattern[str] = re.compile(
 )
 
 STRIP_PATTERNS: tuple[re.Pattern[str], ...] = (
-    *(re.compile(p, re.IGNORECASE) for p in _RECORDING_SUFFIXES),
+    *(
+        re.compile(p, re.IGNORECASE)
+        for p in (
+            *(_both_brackets(inner) for inner in _SAME_RECORDING_INNER),
+            _both_brackets(r"(?:feat\.|ft\.|featuring)\s+[^\)\]]*"),
+            _both_brackets(r"(?:prod\.|produced\s+by)\s+[^\)\]]*"),
+            _both_brackets(r"(?:clean|explicit)"),
+            _both_brackets(r"bonus\s+track"),
+            *(_trailing_hyphen(inner) for inner in _SAME_RECORDING_INNER),
+            # Bare feat./ft./featuring without brackets — always trailing.
+            r"\s+(?:feat\.|ft\.|featuring)\s+.*$",
+        )
+    ),
     _CATALOG_TAG,
 )
 
@@ -69,7 +85,8 @@ def strip_recording_suffixes(s: str) -> str:
     version markers. Case-insensitive, so callers may pass any case."""
     for pat in STRIP_PATTERNS:
         s = pat.sub("", s)
-    return s
+    # Collapse whitespace left behind by mid-string strips.
+    return re.sub(r"\s+", " ", s).strip()
 
 
 # ── Display-only service tags (TRA-27) ───────────────────────────────────────

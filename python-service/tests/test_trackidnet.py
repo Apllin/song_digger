@@ -3,7 +3,7 @@ Tests for the trackid.net JSON API adapter (playlists-list architecture).
 
 The adapter calls three endpoints:
   - GET /api/public/musictracks?keywords=...           → search/seed lookup
-  - GET /api/public/audiostreams?musicTrackId=<id>     → list of playlists
+  - GET /api/public/audiostreams?musicTrackSlug=<id>     → list of playlists
   - GET /api/public/audiostreams/<slug>                → DJ-set tracklist
 
 Captured JSON fixtures live in tests/fixtures/trackidnet/ (filename
@@ -20,6 +20,8 @@ import pytest
 from app.adapters.trackidnet import (
     TrackidnetAdapter,
     WINDOW,
+    _aggregate_incrementally,
+    _extract_playlist_tracks_excluding_artist,
     _split_query,
 )
 
@@ -85,10 +87,10 @@ def _is_search(url, params):
 
 
 def _is_playlists_list(url, params=None):
-    # /audiostreams with musicTrackId param (not /audiostreams/<slug>)
+    # /audiostreams with musicTrackSlug param (not /audiostreams/<slug>)
     if not url.endswith("/audiostreams"):
         return False
-    return params is not None and "musicTrackId" in params
+    return params is not None and "musicTrackSlug" in params
 
 
 def _is_keyword_search(url, params=None):
@@ -219,9 +221,9 @@ async def test_search_picks_highest_playcount_artist_match_and_uses_id(_enabled)
     client = _ScriptedClient(rules)
     with _patch_client(client):
         await adapter.find_similar("Nina Kraviz - Tarde")
-    # Verify musicTrackId=502601 was sent on the playlists call
+    # Verify the picked seed slug was sent on the playlists call
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
-    assert any(c[1].get("musicTrackId") == 502601 for c in list_calls)
+    assert any(c[1].get("musicTrackSlug") == "nina-kraviz-tarde-mix" for c in list_calls)
 
 
 async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled):
@@ -244,7 +246,7 @@ async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled)
     with _patch_client(client):
         await adapter.find_similar("Nina - T")
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
-    assert any(c[1].get("musicTrackId") == 1 for c in list_calls)
+    assert any(c[1].get("musicTrackSlug") == "other-t" for c in list_calls)
 
 
 async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
@@ -271,7 +273,7 @@ async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
         assert await adapter.find_similar("Nina Kraviz - Tarde") == []
     # Playlists call IS made — playCount=0 must not short-circuit
     assert any(
-        c[0].endswith("/audiostreams") and c[1].get("musicTrackId") == 1
+        c[0].endswith("/audiostreams") and c[1].get("musicTrackSlug") == "nina-kraviz-tarde"
         for c in client.calls
     )
 
@@ -300,7 +302,7 @@ async def test_search_500_returns_empty(_enabled, capsys):
     assert "[Trackidnet]" in capsys.readouterr().out
 
 
-# ── playlists list (/audiostreams?musicTrackId=) ─────────────────────────
+# ── playlists list (/audiostreams?musicTrackSlug=) ─────────────────────────
 
 async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
     """10 playlists from the (capped) fixture → all 10 detail fetches happen."""
@@ -897,3 +899,45 @@ async def test_trackmeta_fields_populated_correctly(_enabled):
     assert track.source == "trackidnet"
     assert track.sourceUrl == "https://trackid.net/musictracks/heliobolus-forest-hunter"
     assert track.bpm is None and track.key is None and track.energy is None
+
+
+# ── _aggregate_incrementally early-stop ───────────────────────────────────────
+
+async def test_aggregate_incrementally_stops_early(monkeypatch):
+    monkeypatch.setattr("app.adapters.trackidnet.EARLY_STOP_TRACK_COUNT", 3)
+    monkeypatch.setattr("app.adapters.trackidnet.DETAIL_CONCURRENCY", 1)
+    fetched_batches = []
+
+    async def fake_fetch(_client, slugs):
+        fetched_batches.append(list(slugs))
+        return [{"slug": s} for s in slugs]
+
+    monkeypatch.setattr("app.adapters.trackidnet._fetch_tracklists", fake_fetch)
+
+    def extract(audiostream):
+        s = audiostream["slug"]
+        return [{"slug": f"{s}-t1"}, {"slug": f"{s}-t2"}]
+
+    coocc = await _aggregate_incrementally(None, ["p1", "p2", "p3", "p4", "p5"], extract)
+
+    # p1 -> 2 tracks (<3, continue); p2 -> 4 tracks (>=3, stop). p3-p5 never fetched.
+    assert fetched_batches == [["p1"], ["p2"]]
+    assert len(coocc) == 4
+
+
+def test_keyword_extract_picks_largest_process_not_latest():
+    # trackid reprocesses sets — the freshest process can be a partial detection.
+    audiostream = {
+        "detectionProcesses": [
+            {"endDate": "2026-05-01", "detectionProcessMusicTracks": [
+                {"slug": "big-1", "artist": "X"},
+                {"slug": "big-2", "artist": "Y"},
+                {"slug": "big-3", "artist": "Z"},
+            ]},
+            {"endDate": "2026-05-20", "detectionProcessMusicTracks": [
+                {"slug": "small-1", "artist": "W"},
+            ]},
+        ],
+    }
+    out = _extract_playlist_tracks_excluding_artist(audiostream, "queryartist")
+    assert [t["slug"] for t in out] == ["big-1", "big-2", "big-3"]

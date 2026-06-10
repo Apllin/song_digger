@@ -1,3 +1,4 @@
+export { enrichAudioFeatures } from "./enrichAudioFeatures";
 export { findSimilar } from "./findSimilar";
 export { getArtistReleases } from "./getArtistReleases";
 export { getLabelReleases } from "./getLabelReleases";

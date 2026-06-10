@@ -245,6 +245,13 @@ export function TrackCard({
         >
           {sourceLabel} ↗
         </a>
+        {(track.bpm != null || track.musicalKey != null) && (
+          <span className="font-mono-td text-[10px] text-td-fg-d truncate" title="BPM · Camelot key">
+            {track.bpm != null && `${Math.round(track.bpm)} BPM`}
+            {track.bpm != null && track.musicalKey != null && " · "}
+            {track.musicalKey != null && track.musicalKey}
+          </span>
+        )}
         <button
           onClick={handleFindSimilar}
           className="self-start mt-1 text-[10px] font-medium px-2 py-[3px] rounded-full border transition-colors"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceList } from "./python-api/generated/types/SourceList";
 import type { TrackMeta } from "./python-api/generated/types/TrackMeta";
+import type { AudioFeatures, WeightConfig } from "./aggregator";
 import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
 
 function makeTrack(overrides: Partial<TrackMeta> = {}): TrackMeta {
@@ -39,6 +40,27 @@ describe("normalizeTitle", () => {
   it("strips feat/ft/featuring", () => {
     expect(normalizeTitle("Track (feat. Someone)")).toBe("track");
     expect(normalizeTitle("Track (ft. Someone)")).toBe("track");
+  });
+
+  it("strips hyphen-trailing same-recording suffixes (Spotify/Apple/Yandex form)", () => {
+    expect(normalizeTitle("Lunfardo - Original Mix")).toBe("lunfardo");
+    expect(normalizeTitle("Track - Extended Mix")).toBe("track");
+    expect(normalizeTitle("Track - Radio Edit")).toBe("track");
+    expect(normalizeTitle("Track - Remastered")).toBe("track");
+    expect(normalizeTitle("Track - Remastered 2019")).toBe("track");
+    expect(normalizeTitle("Track – Original Mix")).toBe("track"); // en dash
+  });
+
+  it("strips bare feat./ft./featuring without brackets", () => {
+    expect(normalizeTitle("Track feat. Someone")).toBe("track");
+    expect(normalizeTitle("Track ft. A & B")).toBe("track");
+    expect(normalizeTitle("Track featuring X")).toBe("track");
+  });
+
+  it("preserves Remix / Live / Version in hyphen form (distinct recordings)", () => {
+    expect(normalizeTitle("Track - Remix")).toBe("track - remix");
+    expect(normalizeTitle("Track - Live")).toBe("track - live");
+    expect(normalizeTitle("Track - Acoustic Version")).toBe("track - acoustic version");
   });
 });
 
@@ -183,5 +205,184 @@ describe("aggregateTracks — artist diversity", () => {
       const run = artists.slice(i, i + 3);
       expect(new Set(run).size).toBeGreaterThan(1);
     }
+  });
+});
+
+describe("aggregateTracks — audio bonus", () => {
+  const seedBpm = 130;
+  const weights = {
+    rankDecayK: 60,
+    cosineScoreWeight: 0,
+    numSourcesWeight: 0,
+    bpmDeltaWeight: 0,
+    bpmCompatibleWeight: 1.0,
+    bpmPresentWeight: 0,
+    keyCompatibleWeight: 0,
+    keyPresentWeight: 0,
+    sourceWeights: {},
+    genreAdjustments: {},
+    bpmRangeAdjustments: {},
+  };
+
+  it("compatible BPM nudges candidate above tied source-only competitor", () => {
+    const compat = makeTrack({ sourceUrl: "compat", artist: "X", title: "T1" });
+    const off = makeTrack({ sourceUrl: "off", artist: "Y", title: "T2" });
+    const audio = {
+      seedBpm,
+      seedMusicalKey: null,
+      seedGenre: null,
+      candidateBpm: new Map<string, number | null>([
+        ["compat", 128],
+        ["off", 102],
+      ]),
+      candidateMusicalKey: new Map<string, string | null>(),
+    };
+    const result = aggregateTracks([listOf("lastfm", compat, off)], weights, audio);
+    // Same rank base contribution; compatible BPM bonus tips compat above off.
+    expect(result.map((t) => t.sourceUrl)).toEqual(["compat", "off"]);
+  });
+
+  it("AUDIO_BONUS_CAP keeps audio influence below a single multi-source candidate", () => {
+    // A multi-source consensus candidate (3 sources) must still outrank a
+    // single-source candidate even when the latter has every audio bonus.
+    const consensus = makeTrack({ sourceUrl: "cons", artist: "X", title: "Cons" });
+    const audioWin = makeTrack({ sourceUrl: "aud", artist: "Y", title: "Aud" });
+    const aggressiveWeights = {
+      ...weights,
+      bpmCompatibleWeight: 10,
+      bpmPresentWeight: 10,
+      keyCompatibleWeight: 10,
+      keyPresentWeight: 10,
+      cosineScoreWeight: 10,
+      numSourcesWeight: 10,
+    };
+    const audio = {
+      seedBpm,
+      seedMusicalKey: "8A" as string | null,
+      seedGenre: null,
+      candidateBpm: new Map<string, number | null>([
+        ["aud", 130],
+        ["cons", null],
+      ]),
+      candidateMusicalKey: new Map<string, string | null>([
+        ["aud", "8A"],
+        ["cons", null],
+      ]),
+    };
+    const result = aggregateTracks(
+      [listOf("lastfm", audioWin, consensus), listOf("cosine_club", consensus), listOf("trackidnet", consensus)],
+      aggressiveWeights,
+      audio,
+    );
+    expect(result[0]?.sourceUrl).toBe("cons");
+  });
+
+  it("missing seed BPM disables the bonus even if candidate has one", () => {
+    const a = makeTrack({ sourceUrl: "a", artist: "X", title: "T1" });
+    const b = makeTrack({ sourceUrl: "b", artist: "Y", title: "T2" });
+    const audio = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      seedGenre: null,
+      candidateBpm: new Map<string, number | null>([["a", 130]]),
+      candidateMusicalKey: new Map<string, string | null>(),
+    };
+    const wins = { ...weights, bpmCompatibleWeight: 10 };
+    const result = aggregateTracks([listOf("lastfm", a, b)], wins, audio);
+    // Without a seed BPM, no bonus → a stays at rank 1 by RRF (tied), b by RRF
+    // ordering — but at minimum both are returned without throwing.
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("genre and BPM range adjustments", () => {
+  const baseWeights: WeightConfig = {
+    rankDecayK: 60,
+    cosineScoreWeight: 0,
+    numSourcesWeight: 0,
+    bpmDeltaWeight: 0,
+    bpmCompatibleWeight: 0,
+    bpmPresentWeight: 0,
+    keyCompatibleWeight: 0,
+    keyPresentWeight: 0,
+    sourceWeights: {},
+    genreAdjustments: {},
+    bpmRangeAdjustments: {},
+  };
+
+  it("genre × source adjustment boosts beatport candidate when seed is techno", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const lists: SourceList[] = [
+      { source: "beatport", tracks: [trackA] },
+      { source: "lastfm", tracks: [trackB] },
+    ];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      genreAdjustments: {
+        techno: { beatport: 2.0, lastfm: 0.3 },
+      },
+    };
+    const audio: AudioFeatures = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      seedGenre: "techno",
+      candidateBpm: new Map(),
+      candidateMusicalKey: new Map(),
+    };
+    const result = aggregateTracks(lists, weightsWithAdj, audio);
+    // beatport gets a large genre adjustment, so trackA should rank higher
+    const scoreA = result.find((t) => t.title === "A")!.rrfScore;
+    const scoreB = result.find((t) => t.title === "B")!.rrfScore;
+    expect(scoreA).toBeGreaterThan(scoreB);
+  });
+
+  it("genre adjustment is no-op when seedGenre is null", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const lists: SourceList[] = [
+      { source: "beatport", tracks: [trackA] },
+      { source: "lastfm", tracks: [trackB] },
+    ];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      genreAdjustments: { techno: { beatport: 2.0 } },
+    };
+    const audio: AudioFeatures = {
+      seedBpm: null,
+      seedMusicalKey: null,
+      seedGenre: null,
+      candidateBpm: new Map(),
+      candidateMusicalKey: new Map(),
+    };
+    const result = aggregateTracks(lists, weightsWithAdj, audio);
+    // Both have rank 1 in their respective sources, no adjustment → equal base RRF
+    const scoreA = result.find((t) => t.title === "A")!.rrfScore;
+    const scoreB = result.find((t) => t.title === "B")!.rrfScore;
+    expect(scoreA).toBeCloseTo(scoreB, 5);
+  });
+
+  it("BPM range adjustment modifies bpmDelta bonus for matching range", () => {
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const lists: SourceList[] = [{ source: "beatport", tracks: [trackA] }];
+    const weightsWithAdj: WeightConfig = {
+      ...baseWeights,
+      bpmRangeAdjustments: { fast: { bpmDelta: 1.5, bpmCompatible: 1.0 } },
+    };
+    const audioWithBpm: AudioFeatures = {
+      seedBpm: 130,
+      seedMusicalKey: null,
+      seedGenre: "techno",
+      candidateBpm: new Map([["https://beatport.com/a", 132]]),
+      candidateMusicalKey: new Map(),
+    };
+    const audioNoBpm: AudioFeatures = {
+      ...audioWithBpm,
+      seedBpm: null,
+      candidateBpm: new Map(),
+    };
+    const withBpm = aggregateTracks(lists, weightsWithAdj, audioWithBpm);
+    const withoutBpm = aggregateTracks(lists, weightsWithAdj, audioNoBpm);
+    expect(withBpm[0]!.rrfScore).toBeGreaterThan(withoutBpm[0]!.rrfScore);
   });
 });

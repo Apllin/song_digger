@@ -435,6 +435,45 @@
         }
       }
     },
+    "/enrich": {
+      "post": {
+        "summary": "Enrich",
+        "description": "Synchronous fill of BPM + Camelot key from Beatport for tracks the web\nservice didn't already have cached. Idempotent; already-complete tracks pass\nthrough untouched. Transiently-failed lookups are reported in `failed_urls`\nso the caller can retry them instead of caching a false negative.",
+        "operationId": "enrich_audio_features",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrichRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -664,6 +703,46 @@
         ],
         "title": "DiscogsLabel"
       },
+      "EnrichRequest": {
+        "properties": {
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackMeta"
+            },
+            "type": "array",
+            "title": "Tracks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracks"
+        ],
+        "title": "EnrichRequest"
+      },
+      "EnrichResponse": {
+        "properties": {
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackMeta"
+            },
+            "type": "array",
+            "title": "Tracks"
+          },
+          "failed_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed Urls",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracks"
+        ],
+        "title": "EnrichResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -840,6 +919,50 @@
           "rrfScore": {
             "type": "number",
             "title": "Rrfscore"
+          },
+          "bpmDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bpmdelta"
+          },
+          "keyCompatible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keycompatible"
+          },
+          "seedGenre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seedgenre"
+          },
+          "seedBpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seedbpm"
           }
         },
         "type": "object",
@@ -1132,6 +1255,26 @@
             "type": "number",
             "title": "Num Sources Weight"
           },
+          "bpm_delta_weight": {
+            "type": "number",
+            "title": "Bpm Delta Weight"
+          },
+          "bpm_compatible_weight": {
+            "type": "number",
+            "title": "Bpm Compatible Weight"
+          },
+          "bpm_present_weight": {
+            "type": "number",
+            "title": "Bpm Present Weight"
+          },
+          "key_compatible_weight": {
+            "type": "number",
+            "title": "Key Compatible Weight"
+          },
+          "key_present_weight": {
+            "type": "number",
+            "title": "Key Present Weight"
+          },
           "rank_decay_k": {
             "type": "number",
             "title": "Rank Decay K"
@@ -1139,6 +1282,26 @@
           "sample_size": {
             "type": "integer",
             "title": "Sample Size"
+          },
+          "genre_adjustments": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Genre Adjustments"
+          },
+          "bpm_range_adjustments": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Bpm Range Adjustments"
           }
         },
         "type": "object",
@@ -1146,8 +1309,15 @@
           "source_weights",
           "cosine_score_weight",
           "num_sources_weight",
+          "bpm_delta_weight",
+          "bpm_compatible_weight",
+          "bpm_present_weight",
+          "key_compatible_weight",
+          "key_present_weight",
           "rank_decay_k",
-          "sample_size"
+          "sample_size",
+          "genre_adjustments",
+          "bpm_range_adjustments"
         ],
         "title": "TrainingResult"
       },

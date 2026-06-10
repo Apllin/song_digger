@@ -5,6 +5,7 @@ from app.api.routes.similar import (
     _normalize_title,
     _same_artist,
     _cosine_is_confident,
+    _spread_unique_artists,
 )
 from app.core.models import TrackMeta
 
@@ -196,3 +197,28 @@ def test_cosine_is_confident_empty():
 def test_cosine_is_confident_no_scores():
     tracks = [make_track(score=None)]
     assert _cosine_is_confident(tracks) is False
+
+
+# ── _spread_unique_artists ────────────────────────────────────────────────────
+
+def test_spread_unique_artists_picks_high_mid_low():
+    tracks = [make_track(artist=f"A{i}") for i in range(7)]
+    assert _spread_unique_artists(tracks) == ["A0", "A3", "A6"]
+
+
+def test_spread_unique_artists_small_pool_returns_all():
+    tracks = [make_track(artist="A"), make_track(artist="B")]
+    assert _spread_unique_artists(tracks) == ["A", "B"]
+
+
+def test_spread_unique_artists_dedupes_by_normalized_form():
+    tracks = [
+        make_track(artist="Surgeon"),
+        make_track(artist="surgeon"),
+        make_track(artist="Lakker"),
+    ]
+    assert _spread_unique_artists(tracks) == ["Surgeon", "Lakker"]
+
+
+def test_spread_unique_artists_empty():
+    assert _spread_unique_artists([]) == []

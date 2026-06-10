@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isCamelotCompatible } from "@/lib/camelot";
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
@@ -8,6 +9,17 @@ import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 // curve (rank-1 vs rank-2 contribute more equally); smaller k makes the head
 // sharper.
 const RRF_K = 60;
+// Mirrors python-service: features used as training input.
+const SOURCE_COUNT = 7;
+const BPM_DELTA_CAP_BPM = 24;
+const BPM_COMPATIBLE_MAX_BPM = 6;
+// Per-feature absolute cap on the bonus a single learned weight can add to a
+// candidate's rrfScore. A top-rank single-source contribution is ~1/61 ≈ 0.0164;
+// at this cap, the strongest possible audio signal is roughly 30% of one source
+// hit — enough to break ties between equally-ranked candidates, never enough
+// to override multi-source consensus. Tune up if BPM/key empirically deserve
+// more weight; tune down if learned coefficients dominate the head of the list.
+const AUDIO_BONUS_CAP = 0.005;
 
 // ── Weight config ─────────────────────────────────────────────────────────────
 // Loaded from ModelWeights (latest DB row) at search time; falls back to
@@ -16,14 +28,45 @@ export type WeightConfig = {
   rankDecayK: number;
   cosineScoreWeight: number;
   numSourcesWeight: number;
+  bpmDeltaWeight: number;
+  bpmCompatibleWeight: number;
+  bpmPresentWeight: number;
+  keyCompatibleWeight: number;
+  keyPresentWeight: number;
   sourceWeights: Partial<Record<string, number>>;
+  genreAdjustments: Partial<Record<string, Partial<Record<string, number>>>>;
+  bpmRangeAdjustments: Partial<Record<string, Partial<Record<string, number>>>>;
 };
 
 export const DEFAULT_WEIGHTS: WeightConfig = {
   rankDecayK: RRF_K,
   cosineScoreWeight: 0,
   numSourcesWeight: 0,
+  bpmDeltaWeight: 0,
+  bpmCompatibleWeight: 0,
+  bpmPresentWeight: 0,
+  keyCompatibleWeight: 0,
+  keyPresentWeight: 0,
   sourceWeights: {},
+  genreAdjustments: {},
+  bpmRangeAdjustments: {},
+};
+
+// ── Audio features pulled from DB for bonus application ──────────────────────
+export type AudioFeatures = {
+  seedBpm: number | null;
+  seedMusicalKey: string | null;
+  seedGenre: string | null;
+  candidateBpm: Map<string, number | null>;
+  candidateMusicalKey: Map<string, string | null>;
+};
+
+export const EMPTY_AUDIO_FEATURES: AudioFeatures = {
+  seedBpm: null,
+  seedMusicalKey: null,
+  seedGenre: null,
+  candidateBpm: new Map(),
+  candidateMusicalKey: new Map(),
 };
 
 // ── Feature snapshot ──────────────────────────────────────────────────────────
@@ -49,9 +92,11 @@ export interface FusedCandidate extends TrackMeta {
 // Mirrors python-service _normalize_title: lower-cased, with whitelisted
 // recording-equivalence suffixes (Original Mix, Extended, Radio Edit, Remaster,
 // Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped, plus square-bracket
-// label/catalog tags ("[Perlon114]"). Anything not in the whitelist (Remix,
-// Dub, Live, VIP, Instrumental, …) survives — those identify distinct
-// recordings.
+// catalog tags ("[Perlon114]"). Anything not in the whitelist (Remix, Dub,
+// Live, VIP, Instrumental, …) survives — those identify distinct recordings.
+// Two surface forms: bracketed ("Track (Original Mix)") and hyphen-trailed
+// ("Track - Original Mix"). Last.fm/Discogs emit the latter; without it,
+// the same recording from different sources doesn't fuse in RRF.
 const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([]original mix[)\]]/gi,
   /\s*[([]extended(?:\s+mix)?[)\]]/gi,
@@ -61,9 +106,14 @@ const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
   /\s*[([](?:clean|explicit)[)\]]/gi,
   /\s*[([]bonus\s+track[)\]]/gi,
+  /\s+[-–—]\s+original mix\s*$/gi,
+  /\s+[-–—]\s+extended(?:\s+mix)?\s*$/gi,
+  /\s+[-–—]\s+radio\s+(?:edit|mix)\s*$/gi,
+  /\s+[-–—]\s+(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)\s*$/gi,
+  /\s+(?:feat\.|ft\.|featuring)\s+.*$/gi,
   // Catalogue/label tags: "[Perlon114]", "[Perlon - PERL114]", "[SOMOV010]".
   // Mirrors python-service title_norm._CATALOG_TAG (negative guard keeps
-  // versioned brackets like "[Live 2020]" intact). Note: source *service* tags
+  // versioned brackets like "[Live 2020]" intact). Source *service* tags
   // (promo/vinyl/label tails) are stripped server-side by clean_title before
   // results reach the client, so they're not duplicated here.
   /\s*\[(?![^\]]*\b(?:remix|rmx|mix|dub|live|edit|vip|version|instrumental|acapella|acappella|rework|bootleg|reprise|interlude|intro|outro|flip|refix)\b)[^\]]*?[a-z]{2,}[\s–/-]{0,3}\d{2,}[^\]]*\]/gi,
@@ -72,7 +122,7 @@ const TITLE_STRIP_PATTERNS: RegExp[] = [
 export function normalizeTitle(s: string): string {
   let out = s.toLowerCase().trim();
   for (const pat of TITLE_STRIP_PATTERNS) out = out.replace(pat, "");
-  return out.trim();
+  return out.replace(/\s+/g, " ").trim();
 }
 
 export function normalizeArtist(artist: string): string {
@@ -172,17 +222,116 @@ function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCa
   return result;
 }
 
+// ── Audio bonus decoration ────────────────────────────────────────────────────
+// Adds per-candidate bonuses for cosineScore, numSources, and BPM/key signals.
+// Each contribution is clipped to ±AUDIO_BONUS_CAP so the learned coefficients
+// nudge ordering without overriding what the per-source RRF already says.
+function clipBonus(weight: number, value: number): number {
+  const raw = weight * value;
+  if (raw > AUDIO_BONUS_CAP) return AUDIO_BONUS_CAP;
+  if (raw < -AUDIO_BONUS_CAP) return -AUDIO_BONUS_CAP;
+  return raw;
+}
+
+function getBpmRange(bpm: number): string {
+  if (bpm < 90) return "slow";
+  if (bpm < 120) return "mid";
+  if (bpm < 140) return "fast";
+  return "vfast";
+}
+
+function decorateWithGenreAndBpmAdjustments(
+  candidates: FusedCandidate[],
+  weights: WeightConfig,
+  audio: AudioFeatures,
+): void {
+  const genreAdj = audio.seedGenre && weights.genreAdjustments ? (weights.genreAdjustments[audio.seedGenre] ?? {}) : {};
+  const bpmRange = audio.seedBpm != null ? getBpmRange(audio.seedBpm) : null;
+  const bpmRangeAdj = bpmRange && weights.bpmRangeAdjustments ? (weights.bpmRangeAdjustments[bpmRange] ?? {}) : {};
+
+  for (const c of candidates) {
+    // Genre × source rank adjustments
+    for (const { source, rank } of c.appearances) {
+      const adj = genreAdj[source] ?? 0;
+      if (adj !== 0) {
+        c.rrfScore += clipBonus(adj, 1.0 / (weights.rankDecayK + rank));
+      }
+    }
+
+    // Genre × cosine score adjustment
+    if (c.cosineScore != null) {
+      const cosAdj = genreAdj["cosine_score"] ?? 0;
+      if (cosAdj !== 0) c.rrfScore += clipBonus(cosAdj, c.cosineScore);
+    }
+
+    // BPM range × bpmDelta/bpmCompatible adjustments
+    if (bpmRange && audio.seedBpm != null) {
+      const candBpm = audio.candidateBpm.get(c.sourceUrl) ?? null;
+      if (candBpm != null) {
+        const bpmDelta = Math.abs(audio.seedBpm - candBpm);
+        const bpmDeltaNorm = Math.min(bpmDelta / BPM_DELTA_CAP_BPM, 1);
+        const bpmCompatible = bpmDelta <= BPM_COMPATIBLE_MAX_BPM ? 1 : 0;
+        const deltaAdj = bpmRangeAdj["bpmDelta"] ?? 0;
+        const compatAdj = bpmRangeAdj["bpmCompatible"] ?? 0;
+        if (deltaAdj !== 0) c.rrfScore += clipBonus(deltaAdj, bpmDeltaNorm);
+        if (compatAdj !== 0) c.rrfScore += clipBonus(compatAdj, bpmCompatible);
+      }
+    }
+  }
+}
+
+function decorateWithAudioBonus(candidates: FusedCandidate[], weights: WeightConfig, audio: AudioFeatures): void {
+  for (const c of candidates) {
+    // Aggregate signals (always known after rrfFuse).
+    c.rrfScore += clipBonus(weights.numSourcesWeight, c.appearances.length / SOURCE_COUNT);
+    if (c.cosineScore != null) {
+      c.rrfScore += clipBonus(weights.cosineScoreWeight, c.cosineScore);
+    }
+
+    // BPM bonus requires both seed and candidate to have a value.
+    const candBpm = audio.candidateBpm.get(c.sourceUrl) ?? null;
+    if (audio.seedBpm != null && candBpm != null) {
+      const bpmDelta = Math.abs(audio.seedBpm - candBpm);
+      const bpmDeltaNorm = Math.min(bpmDelta / BPM_DELTA_CAP_BPM, 1);
+      const bpmCompatible = bpmDelta <= BPM_COMPATIBLE_MAX_BPM ? 1 : 0;
+      c.rrfScore += clipBonus(weights.bpmDeltaWeight, bpmDeltaNorm);
+      c.rrfScore += clipBonus(weights.bpmCompatibleWeight, bpmCompatible);
+      c.rrfScore += clipBonus(weights.bpmPresentWeight, 1);
+    }
+
+    // Camelot key bonus likewise requires both sides.
+    const candKey = audio.candidateMusicalKey.get(c.sourceUrl) ?? null;
+    if (audio.seedMusicalKey != null && candKey != null) {
+      const keyCompat = isCamelotCompatible(audio.seedMusicalKey, candKey) ? 1 : 0;
+      c.rrfScore += clipBonus(weights.keyCompatibleWeight, keyCompat);
+      c.rrfScore += clipBonus(weights.keyPresentWeight, 1);
+    }
+  }
+}
+
 // ── Main aggregation ─────────────────────────────────────────────────────────
-export function aggregateTracks(sourceLists: SourceList[], weights: WeightConfig = DEFAULT_WEIGHTS): FusedCandidate[] {
+export function aggregateTracks(
+  sourceLists: SourceList[],
+  weights: WeightConfig = DEFAULT_WEIGHTS,
+  audio: AudioFeatures = EMPTY_AUDIO_FEATURES,
+): FusedCandidate[] {
   // 1. Fuse per-source ranks into a single ranked list.
   const fused = rrfFuse(sourceLists, weights);
 
-  // 2. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
+  // 2. Apply learned bonuses for aggregate (cosineScore, numSources) and audio
+  //    (BPM/key) features. With DEFAULT_WEIGHTS all weights are 0 → no-op.
+  decorateWithAudioBonus(fused, weights, audio);
+  decorateWithGenreAndBpmAdjustments(fused, weights, audio);
+
+  // 3. Re-sort after bonus application — fused was sorted only by RRF.
+  fused.sort((a, b) => b.rrfScore - a.rrfScore);
+
+  // 4. Surface rrfScore on `score` so existing consumers (DB persistence, UI)
   //    keep working.
   for (const t of fused) {
     t.score = t.rrfScore;
   }
 
-  // 3. Artist diversification — stops 3+ consecutive same-artist tracks.
+  // 5. Artist diversification — stops 3+ consecutive same-artist tracks.
   return diversifyArtists(fused);
 }

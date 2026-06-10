@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
 
-const TABS = [
+const BASE_TABS = [
   { href: "/", label: "Search" },
   { href: "/discography", label: "Discography" },
   { href: "/labels", label: "Labels" },
   { href: "/favorites", label: "Favorites" },
 ];
+const TRAINER_TAB = { href: "/admin/train", label: "Train" };
 
 // LaunchDarkly-style pill segmented control:
 // - container: dark surface w/ subtle border + lg shadow
@@ -52,9 +53,10 @@ function mobileChipStyle(active: boolean): React.CSSProperties {
   };
 }
 
-export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
+export function Nav({ rightSlot, isTrainer = false }: { rightSlot?: React.ReactNode; isTrainer?: boolean }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const tabs = isTrainer ? [...BASE_TABS, TRAINER_TAB] : BASE_TABS;
 
   // Close drawer when navigating to a new route.
   useEffect(() => {
@@ -90,7 +92,7 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
               active-pill, centered between logo and right slot. Hidden on
               mobile in favour of the hamburger drawer. */}
           <div className="hidden md:flex flex-1 justify-center">
-            <DesktopChips pathname={pathname} />
+            <DesktopChips pathname={pathname} tabs={tabs} />
           </div>
 
           {/* Mobile spacer — pushes auth + hamburger to the right edge. */}
@@ -159,7 +161,7 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
           </button>
         </div>
         <ul className="flex flex-col gap-2 mt-2">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = pathname === tab.href;
             return (
               <li key={tab.href}>
@@ -190,14 +192,14 @@ export function Nav({ rightSlot }: { rightSlot?: React.ReactNode }) {
   link's offsetLeft / offsetWidth after layout and store them, then apply
   them as inline transform/width on the pill with a transition.
 */
-function DesktopChips({ pathname }: { pathname: string }) {
+function DesktopChips({ pathname, tabs }: { pathname: string; tabs: { href: string; label: string }[] }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chipRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
   // First measurement should snap (no transition); subsequent ones animate.
   const [hasMeasured, setHasMeasured] = useState(false);
 
-  const activeIndex = TABS.findIndex((t) => t.href === pathname);
+  const activeIndex = tabs.findIndex((t) => t.href === pathname);
 
   // Measure synchronously so the pill never paints in the wrong place.
   useLayoutEffect(() => {
@@ -255,7 +257,7 @@ function DesktopChips({ pathname }: { pathname: string }) {
           }}
         />
       )}
-      {TABS.map((tab, i) => {
+      {tabs.map((tab, i) => {
         const active = pathname === tab.href;
         return (
           <Link

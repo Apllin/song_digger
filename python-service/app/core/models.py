@@ -108,6 +108,10 @@ class SampleFeatures(BaseModel):
     minSourceRank: int
     cosineScore: float | None
     rrfScore: float
+    bpmDelta: float | None = None
+    keyCompatible: bool | None = None
+    seedGenre: str | None = None   # raw Beatport genre string; bucketed in _build_feature_vector
+    seedBpm: float | None = None   # absolute seed BPM for conditioning (not delta)
 
 
 class TrainingSample(BaseModel):
@@ -123,5 +127,12 @@ class TrainingResult(BaseModel):
     source_weights: dict[str, float]
     cosine_score_weight: float
     num_sources_weight: float
+    bpm_delta_weight: float
+    bpm_compatible_weight: float
+    bpm_present_weight: float
+    key_compatible_weight: float
+    key_present_weight: float
     rank_decay_k: float
     sample_size: int
+    genre_adjustments: dict[str, dict[str, float]]   # {genre_bucket: {source: weight, "cosine_score": weight}}
+    bpm_range_adjustments: dict[str, dict[str, float]]  # {bpm_range: {"bpmDelta": weight, "bpmCompatible": weight}}

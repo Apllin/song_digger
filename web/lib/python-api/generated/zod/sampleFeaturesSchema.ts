@@ -15,4 +15,8 @@ export const sampleFeaturesSchema = z.object({
   minSourceRank: z.int(),
   cosineScore: z.union([z.number(), z.null()]),
   rrfScore: z.number(),
+  bpmDelta: z.optional(z.union([z.number(), z.null()])),
+  keyCompatible: z.optional(z.union([z.boolean(), z.null()])),
+  seedGenre: z.optional(z.union([z.string(), z.null()])),
+  seedBpm: z.optional(z.union([z.number(), z.null()])),
 }) as unknown as z.ZodType<SampleFeatures>;

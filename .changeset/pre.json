@@ -1,0 +1,14 @@
+{
+  "mode": "pre",
+  "tag": "rc",
+  "initialVersions": {
+    "@trackdigger/python-service": "0.3.0",
+    "@trackdigger/web": "0.3.1"
+  },
+  "changesets": [
+    "anon-daily-reset",
+    "persist-label-discography-state",
+    "swift-pumas",
+    "yt-player-ready-gate"
+  ]
+}
