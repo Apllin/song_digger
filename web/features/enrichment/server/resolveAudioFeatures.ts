@@ -46,7 +46,7 @@ export async function resolveAudioFeatures(
     prisma.searchQuery.findFirst({
       where: { cacheKey, seedBpm: { not: null } },
       orderBy: { createdAt: "desc" },
-      select: { seedBpm: true, seedMusicalKey: true },
+      select: { seedBpm: true, seedMusicalKey: true, seedGenre: true },
     }),
     urls.length
       ? prisma.track.findMany({
@@ -73,6 +73,7 @@ export async function resolveAudioFeatures(
 
   let seedBpm = seedRow?.seedBpm ?? null;
   let seedMusicalKey = seedRow?.seedMusicalKey ?? null;
+  const seedGenre = seedRow?.seedGenre ?? null;
 
   // Gaps: candidates still missing both signals and not scraped within the
   // cooldown. A track that already has bpm/key is never a gap (never re-scraped);
@@ -89,7 +90,7 @@ export async function resolveAudioFeatures(
   // resolved (found or definitively not-found). Transient failures and a total
   // /enrich failure leave it empty → those rows aren't stamped → retried next time.
   const attemptedUrls = new Set<string>();
-  const audio: AudioFeatures = { seedBpm, seedMusicalKey, candidateBpm, candidateMusicalKey };
+  const audio: AudioFeatures = { seedBpm, seedMusicalKey, seedGenre, candidateBpm, candidateMusicalKey };
   if (!gaps.length && !needSeed) return { audio, attemptedUrls };
 
   const reqTracks: TrackMeta[] = gaps.map((c) => ({
@@ -127,5 +128,5 @@ export async function resolveAudioFeatures(
     if (!failed.has(c.sourceUrl)) attemptedUrls.add(c.sourceUrl);
   }
 
-  return { audio: { seedBpm, seedMusicalKey, candidateBpm, candidateMusicalKey }, attemptedUrls };
+  return { audio: { seedBpm, seedMusicalKey, seedGenre, candidateBpm, candidateMusicalKey }, attemptedUrls };
 }
