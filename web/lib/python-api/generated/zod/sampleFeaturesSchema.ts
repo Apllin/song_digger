@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type { SampleFeatures } from "../types/SampleFeatures";
 import { sourceAppearanceSchema } from "./sourceAppearanceSchema";
-import { z } from "zod/v4";
 
 export const sampleFeaturesSchema = z.object({
   get appearances() {

@@ -3,9 +3,9 @@
  * Do not edit manually.
  */
 
-import fetch from "@kubb/plugin-client/clients/axios";
-import type { SearchLabelsQueryResponse, SearchLabelsQueryParams, SearchLabels422 } from "../types/SearchLabels";
 import type { Client, RequestConfig, ResponseErrorConfig } from "@kubb/plugin-client/clients/axios";
+import fetch from "@kubb/plugin-client/clients/axios";
+import type { SearchLabels422, SearchLabelsQueryParams, SearchLabelsQueryResponse } from "../types/SearchLabels";
 import { searchLabelsQueryResponseSchema } from "../zod/searchLabelsSchema";
 
 function getSearchLabelsUrl() {

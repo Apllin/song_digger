@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import { z } from "zod/v4";
 import type {
   FindSimilar200,
   FindSimilar422,
@@ -12,7 +13,6 @@ import type {
 import { HTTPValidationErrorSchema } from "./HTTPValidationErrorSchema";
 import { similarRequestSchema } from "./similarRequestSchema";
 import { similarResponseSchema } from "./similarResponseSchema";
-import { z } from "zod/v4";
 
 /**
  * @description Successful Response

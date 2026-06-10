@@ -1,8 +1,8 @@
 import type { SearchQueryId } from "@/features/search/schemas";
+import { genreToBucket } from "@/lib/genreBuckets";
 import { prisma } from "@/lib/prisma";
 import { enrichAudioFeatures } from "@/lib/python-api/generated/clients/enrichAudioFeatures";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
-import { genreToBucket } from "@/lib/genreBuckets";
 
 /**
  * Fire-and-forget Beatport enrichment for the search's seed (stored on
