@@ -127,6 +127,22 @@ def test_normalize_title_strips_bonus_track():
     assert _normalize_title("Track [Bonus Track]") == base
 
 
+def test_normalize_title_strips_catalog_tag():
+    """Label/catalog tags like "[Perlon114]" are release noise, not a distinct
+    recording — they must not break seed-match or dedup. Regression for the
+    'Baby Ford - Dognosematic [Perlon114]' bug where YTM/Yandex dropped out."""
+    assert _normalize_title("Dognosematic [Perlon114]") == "dognosematic"
+    assert _normalize_title("Dognosematic [Perlon 114]") == "dognosematic"
+    assert _normalize_title("Dognosematic [DRUM-01]") == "dognosematic"
+
+
+def test_normalize_title_preserves_bracketed_version_markers():
+    """A bracketed tag without a catalog number is a version marker, not a
+    label code — the `\\d+` requirement keeps it intact."""
+    assert _normalize_title("Insomnia [Remix]") == "insomnia [remix]"
+    assert _normalize_title("Track [Live]") == "track [live]"
+
+
 def test_normalize_title_preserves_vip_and_instrumental():
     """VIP, Instrumental, Acoustic, Demo identify distinct recordings."""
     assert _normalize_title("Track (VIP)") != _normalize_title("Track")

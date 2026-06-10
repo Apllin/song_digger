@@ -3,7 +3,7 @@ import random
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
-from app.core.title_norm import strip_recording_suffixes
+from app.core.title_norm import clean_title, strip_recording_suffixes
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
@@ -179,7 +179,7 @@ async def _find_by_artist_and_track(
         lastfm_tracks,
         trackidnet_tracks,
         soundcloud_tracks,
-        ytm_source_search,
+        ytm_seed,
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
         _ytm.find_similar(full_query, limit),
@@ -187,7 +187,7 @@ async def _find_by_artist_and_track(
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
         _soundcloud.find_similar(full_query, limit),
-        _ytm.search_songs(full_query, limit=1),
+        _ytm.resolve_seed(full_query),
         return_exceptions=True,
     )
 
@@ -197,22 +197,19 @@ async def _find_by_artist_and_track(
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
     soundcloud_tracks = soundcloud_tracks if isinstance(soundcloud_tracks, list) else []
-    ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
-    # Derive source artist from the YTM *search result* for the queried track —
-    # this is the actual performer, unlike ytm_tracks[0] which is already a
-    # *similar* (radio) track and may be a completely different artist.
-    # Use only the PRIMARY (first) artist to avoid compound strings like
-    # "Sascha Funke, Nina Kraviz" that break _same_artist token matching.
-    ytm_source_artist: str | None = None
-    if ytm_source_search:
-        artists_list = ytm_source_search[0].get("artists") or []
-        if artists_list:
-            ytm_source_artist = artists_list[0].get("name") or None
+    # Resolved YTM seed for the queried track (catalog songs → UGC videos). This
+    # is the actual queried track — its artist is the real performer (unlike
+    # ytm_tracks[0], which is already a *similar* radio track), and its videoId
+    # is the correct URL to seed Cosine (TRA-25). `resolve_seed` already returns
+    # the PRIMARY (single) artist, so no compound strings break _same_artist.
+    ytm_seed = ytm_seed if isinstance(ytm_seed, dict) else None
+    ytm_source_artist: str | None = ytm_seed.get("artist") if ytm_seed else None
+    ytm_source_video_id: str | None = ytm_seed.get("videoId") if ytm_seed else None
 
     cosine_confident = _cosine_is_confident(cosine_tracks)
 
-    # Phase 2: retry Cosine with the words swapped (handles "Track - Artist" input).
+    # Phase 2a: retry Cosine with the words swapped (handles "Track - Artist" input).
     if not cosine_confident and reversed_query != full_query:
         try:
             reversed_cosine = await _cosine.find_similar(reversed_query, limit)
@@ -225,7 +222,22 @@ async def _find_by_artist_and_track(
                 cosine_tracks = reversed_cosine
                 cosine_confident = rev_confident
 
-    # Drop low-confidence Cosine results when no query order landed a confident seed.
+    # Phase 2b (TRA-25): text search still found no confident seed — the track
+    # is likely absent from Cosine's catalog. Seed from the YTM URL so Cosine
+    # parses the exact track and returns real similars instead of nothing. The
+    # URL pins the exact track, so trust the output regardless of absolute score.
+    if not cosine_confident and ytm_source_video_id:
+        ytm_url = f"https://music.youtube.com/watch?v={ytm_source_video_id}"
+        try:
+            url_cosine = await _cosine.find_similar_by_url(ytm_url, limit)
+        except Exception as e:
+            print(f"[CosineClub] url-seeded error: {e}")
+            url_cosine = []
+        if url_cosine:
+            cosine_tracks = url_cosine
+            cosine_confident = True
+
+    # Drop low-confidence Cosine results when no seed strategy landed a confident hit.
     if not cosine_confident:
         cosine_tracks = [t for t in cosine_tracks if t.score is not None and t.score >= COSINE_CONFIDENCE_THRESHOLD]
 
@@ -347,6 +359,23 @@ async def _find_by_artist_only(
     operation_id="find_similar",
     response_model=SimilarResponse,
 )
+def _clean_source_titles(source_lists: list[SourceList]) -> list[SourceList]:
+    """Strip source service tags from every track's display title (TRA-27).
+    Keeps the original when cleaning would empty the title (all-tag title)."""
+    cleaned: list[SourceList] = []
+    for sl in source_lists:
+        tracks = []
+        for t in sl.tracks:
+            title = clean_title(t.title)
+            tracks.append(
+                t.model_copy(update={"title": title})
+                if title and title != t.title
+                else t
+            )
+        cleaned.append(SourceList(source=sl.source, tracks=tracks))
+    return cleaned
+
+
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(
@@ -358,6 +387,6 @@ async def find_similar(req: SimilarRequest) -> SimilarResponse:
         )
 
     return SimilarResponse(
-        source_lists=source_lists,
+        source_lists=_clean_source_titles(source_lists),
         source_artist=source_artist,
     )

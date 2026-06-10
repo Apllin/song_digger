@@ -13,39 +13,54 @@ def _yt_embed_url(video_id: str) -> str:
     return f"https://www.youtube.com/embed/{video_id}?autoplay=1&origin={settings.frontend_origin}"
 
 
-def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
-    """Return the videoId of the best-scoring search hit for `query`.
+def _split_artist_title(raw_title: str) -> tuple[str | None, str]:
+    """UGC video titles pack 'Artist - Title' into one string, with the channel
+    as the nominal artist. Split on the first ' - '; return (None, raw) when
+    there's no separator so the caller keeps the channel / original title."""
+    parts = raw_title.split(" - ", 1)
+    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+        return parts[0].strip(), parts[1].strip()
+    return None, raw_title.strip()
+
+
+def _best_seed_candidate(
+    query: str, results: list[dict], *, parse_title: bool
+) -> dict | None:
+    """Pick the best-scoring search hit for `query` as a seed.
 
     YTM search is fuzzy: a query with no exact match still returns the closest
-    text-similar song, and `get_watch_playlist()` on that mismatched seed
-    yields a radio of the wrong genre. Scoring rules come from
-    `_seed_match.query_match_score`: "Artist - Title" requires an exact
-    title-signature match; bare-artist accepts the first hit whose artist
-    matches. No qualifying candidate → return None and emit no radio.
+    text-similar hit, and a radio off that mismatched seed is the wrong genre.
+    Scoring comes from `_seed_match.query_match_score` ("Artist - Title" needs an
+    exact title-signature match; bare-artist accepts an artist match).
+
+    `parse_title=False` (catalog `songs`): score the artists field + title.
+    `parse_title=True` (`videos`): the real 'Artist - Title' lives in the video
+    title and the artists field is the uploader channel, so parse the title
+    first and fall back to the channel only when there's no separator.
+
+    Returns {"videoId", "artist", "title"} of the best match (artist = primary
+    name, never a compound), or None.
     """
-    best_vid: str | None = None
+    best: dict | None = None
     best_score = 0
     for cand in results:
         vid = cand.get("videoId")
         if not vid:
             continue
-        cand_artist = ", ".join(
-            a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")
-        )
-        cand_title = cand.get("title") or ""
-        score = query_match_score(query, cand_artist, cand_title)
+        names = [a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")]
+        if parse_title:
+            parsed_artist, cand_title = _split_artist_title(cand.get("title") or "")
+            score_artist = parsed_artist or ", ".join(names)
+            primary_artist = parsed_artist or (names[0] if names else "")
+        else:
+            cand_title = cand.get("title") or ""
+            score_artist = ", ".join(names)
+            primary_artist = names[0] if names else ""
+        score = query_match_score(query, score_artist, cand_title)
         if score > best_score:
             best_score = score
-            best_vid = vid
-    if best_vid is not None:
-        return best_vid
-    rejected = ", ".join(
-        f"{', '.join(a.get('name', '') for a in (c.get('artists') or []) if a.get('name'))!r}"
-        f" - {c.get('title', '')!r}"
-        for c in results
-    )
-    print(f"[YouTubeMusic] no seed matched query {query!r}; rejected: {rejected}")
-    return None
+            best = {"videoId": vid, "artist": primary_artist or None, "title": cand_title}
+    return best
 
 
 def _parse_ytm_track(t: dict) -> TrackMeta | None:
@@ -56,12 +71,21 @@ def _parse_ytm_track(t: dict) -> TrackMeta | None:
     vid = t.get("videoId")
     if not vid:
         return None
-    artists = t.get("artists") or []
-    artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
+    raw_title = t.get("title", "Unknown")
+    artist = ", ".join(a.get("name", "") for a in (t.get("artists") or [])) or "Unknown"
+    title = raw_title
+    # UGC uploads carry 'Artist - Title' in the title and the uploader channel in
+    # the artists field — parse the real pair so cards show the performer, not the
+    # channel. Catalog tracks (ATV/OMV) keep their clean fields untouched.
+    if t.get("videoType") == "MUSIC_VIDEO_TYPE_UGC":
+        parsed_artist, parsed_title = _split_artist_title(raw_title)
+        if parsed_artist:
+            artist = parsed_artist
+            title = parsed_title
     thumbnails = t.get("thumbnail") or []
     cover_url = thumbnails[-1].get("url") if thumbnails else None
     return TrackMeta(
-        title=t.get("title", "Unknown"),
+        title=title,
         artist=artist,
         source="youtube_music",
         sourceUrl=f"https://music.youtube.com/watch?v={vid}",
@@ -87,17 +111,11 @@ class YouTubeMusicAdapter(AbstractAdapter):
             return []
 
     def _find_similar_sync(self, query: str, limit: int) -> list[TrackMeta]:
-        # Step 1: search for the track and validate the seed.
-        # YTM search is fuzzy and will return *something* for almost any input.
-        # Without validation a query like "Ignez - Aventurine" can resolve to
-        # an unrelated record and the radio playlist will be off-genre.
-        results = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
-        if not results:
+        # Step 1: resolve + validate the seed (catalog songs, then UGC videos).
+        seed = self._resolve_seed_sync(query)
+        if not seed:
             return []
-
-        video_id = _pick_seed_video_id(query, results)
-        if not video_id:
-            return []
+        video_id = seed["videoId"]
 
         # Step 2: get YTM Radio for this track.
         # playlistId="RDAMVM{videoId}" triggers the full radio station algorithm
@@ -109,6 +127,33 @@ class YouTubeMusicAdapter(AbstractAdapter):
         # Skip the first — it's the source track itself
         parsed = [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
         return parsed
+
+    def _resolve_seed_sync(self, query: str) -> dict | None:
+        """Resolve `query` to a seed across catalog songs, then UGC videos.
+
+        `search(filter='songs')` only covers YTM's official catalog; many
+        underground tracks exist solely as user video uploads. When no song hit
+        validates, fall back to `filter='videos'` and match against the parsed
+        title. Returns {"videoId", "artist", "title"} or None.
+        """
+        songs = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
+        seed = _best_seed_candidate(query, songs, parse_title=False) if songs else None
+        if seed:
+            return seed
+        videos = _ytm.search(query, filter="videos", limit=SEED_CANDIDATES)
+        seed = _best_seed_candidate(query, videos, parse_title=True) if videos else None
+        if not seed:
+            print(f"[YouTubeMusic] no seed matched query {query!r} in songs or videos")
+        return seed
+
+    async def resolve_seed(self, query: str) -> dict | None:
+        """Public seed resolver (catalog songs → UGC videos). Used by /similar to
+        seed Cosine with the correct track URL and to derive the source artist."""
+        try:
+            return await asyncio.to_thread(self._resolve_seed_sync, query)
+        except Exception as e:
+            print(f"[YouTubeMusic] resolve_seed error: {e}")
+            return None
 
     async def find_similar_by_video_id(self, video_id: str, limit: int = 50) -> list[TrackMeta]:
         """Start YTM Radio from a known videoId — no search step needed."""

@@ -48,9 +48,10 @@ export interface FusedCandidate extends TrackMeta {
 // ── Title normalisation ──────────────────────────────────────────────────────
 // Mirrors python-service _normalize_title: lower-cased, with whitelisted
 // recording-equivalence suffixes (Original Mix, Extended, Radio Edit, Remaster,
-// Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped. Anything not in the
-// whitelist (Remix, Dub, Live, VIP, Instrumental, …) survives — those identify
-// distinct recordings.
+// Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped, plus square-bracket
+// label/catalog tags ("[Perlon114]"). Anything not in the whitelist (Remix,
+// Dub, Live, VIP, Instrumental, …) survives — those identify distinct
+// recordings.
 const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([]original mix[)\]]/gi,
   /\s*[([]extended(?:\s+mix)?[)\]]/gi,
@@ -60,6 +61,12 @@ const TITLE_STRIP_PATTERNS: RegExp[] = [
   /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
   /\s*[([](?:clean|explicit)[)\]]/gi,
   /\s*[([]bonus\s+track[)\]]/gi,
+  // Catalogue/label tags: "[Perlon114]", "[Perlon - PERL114]", "[SOMOV010]".
+  // Mirrors python-service title_norm._CATALOG_TAG (negative guard keeps
+  // versioned brackets like "[Live 2020]" intact). Note: source *service* tags
+  // (promo/vinyl/label tails) are stripped server-side by clean_title before
+  // results reach the client, so they're not duplicated here.
+  /\s*\[(?![^\]]*\b(?:remix|rmx|mix|dub|live|edit|vip|version|instrumental|acapella|acappella|rework|bootleg|reprise|interlude|intro|outro|flip|refix)\b)[^\]]*?[a-z]{2,}[\s–/-]{0,3}\d{2,}[^\]]*\]/gi,
 ];
 
 export function normalizeTitle(s: string): string {
