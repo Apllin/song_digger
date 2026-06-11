@@ -29,8 +29,10 @@ const cspDirectives = [
   // when /api/embed resolves a non-YTM track to Bandcamp (ADR-0023:
   // adapter removed, player fallback kept). Without a media-src
   // directive the browser falls back to default-src and blocks the
-  // stream.
-  "media-src 'self' https://*.bcbits.com",
+  // stream. blob: is the silent-WAV media-session anchor (SilentAudioAnchor)
+  // — without it the OS never sees our player and hardware media keys
+  // route to the YT/SC iframe's session instead.
+  "media-src 'self' blob: https://*.bcbits.com",
 
   // Outgoing fetch destinations: same-origin API + Cloudflare's
   // Turnstile challenge domain (the widget posts back to it).

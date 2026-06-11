@@ -7,11 +7,13 @@ export function formatTime(s: number): string {
 
 // Lazy singleton blob URL — created once per page load, never revoked.
 // A real WAV file (vs. a MediaStream) is what Chrome uses to detect "tab has
-// audio" and surface the media mini-player / tab indicator.
+// audio" and surface the media mini-player / tab indicator. Chromium only
+// activates the media session (OS controls, hardware media keys) for media
+// of 5+ seconds, so the loop must be comfortably above that threshold.
 let _silentSrc: string | null = null;
 export function silentWavSrc(): string {
   if (!_silentSrc && typeof URL !== "undefined") {
-    const n = 8000; // 1 s @ 8 kHz mono 8-bit
+    const n = 80000; // 10 s @ 8 kHz mono 8-bit — Chromium ignores media < 5 s
     const buf = new ArrayBuffer(44 + n);
     const v = new DataView(buf);
     const w = (s: string, o: number) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
