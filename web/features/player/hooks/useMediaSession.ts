@@ -1,21 +1,20 @@
 "use client";
 
-import { type RefObject, useEffect } from "react";
+import { useEffect } from "react";
 
 import type { PlayerTrack } from "@/features/player/types";
-import { getYTSingleton } from "@/features/player/ytApi";
 
 interface MediaSessionProps {
   track: PlayerTrack | null;
   playing: boolean;
   currentTime: number;
   duration: number;
-  playingIndex: number | null;
-  playlist: PlayerTrack[];
+  hasNext: boolean;
+  hasPrev: boolean;
+  toggle: () => void;
   playNext: () => void;
   playPrev: () => void;
   seekTo: (t: number) => void;
-  audioRef: RefObject<HTMLAudioElement | null> | null;
 }
 
 export function useMediaSession({
@@ -23,12 +22,12 @@ export function useMediaSession({
   playing,
   currentTime,
   duration,
-  playingIndex,
-  playlist,
+  hasNext,
+  hasPrev,
+  toggle,
   playNext,
   playPrev,
   seekTo,
-  audioRef,
 }: MediaSessionProps) {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
@@ -49,20 +48,17 @@ export function useMediaSession({
     });
     navigator.mediaSession.playbackState = playing ? "playing" : "paused";
 
+    // The effect re-registers on `playing` changes, so gating toggle() on the
+    // current state turns it into a true play/pause for every adapter.
     navigator.mediaSession.setActionHandler("play", () => {
-      if (track.source === "bandcamp") audioRef?.current?.play().catch(() => {});
-      else if (track.source === "youtube_music") getYTSingleton()?.playVideo();
+      if (!playing) toggle();
     });
     navigator.mediaSession.setActionHandler("pause", () => {
-      if (track.source === "bandcamp") audioRef?.current?.pause();
-      else if (track.source === "youtube_music") getYTSingleton()?.pauseVideo();
+      if (playing) toggle();
     });
-    navigator.mediaSession.setActionHandler("nexttrack", () => {
-      if (playingIndex !== null && playingIndex < playlist.length - 1) playNext();
-    });
-    navigator.mediaSession.setActionHandler("previoustrack", () => {
-      if (playingIndex !== null && playingIndex > 0) playPrev();
-    });
+    // null hides the button in OS controls when the action is unavailable.
+    navigator.mediaSession.setActionHandler("nexttrack", hasNext ? () => playNext() : null);
+    navigator.mediaSession.setActionHandler("previoustrack", hasPrev ? () => playPrev() : null);
     navigator.mediaSession.setActionHandler("seekto", (details) => {
       if (details.seekTime !== undefined) seekTo(details.seekTime);
     });
@@ -78,7 +74,7 @@ export function useMediaSession({
         // Ignore if Media Session API is unavailable
       }
     };
-  }, [track, playing, audioRef, playNext, playPrev, seekTo, playingIndex, playlist.length]);
+  }, [track, playing, hasNext, hasPrev, toggle, playNext, playPrev, seekTo]);
 
   // Keep OS scrubber position in sync (iOS uses this for the lockscreen slider).
   useEffect(() => {

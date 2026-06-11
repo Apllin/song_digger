@@ -42,8 +42,6 @@ function BottomPlayerContent({ track }: { track: PlayerTrack }) {
 
   useNextTrackPreload({ playlist, playingIndex });
 
-  const audioRef = player.source === "bandcamp" ? player.audioRef : null;
-
   const resolving = player.resolving;
 
   useMediaSession({
@@ -51,12 +49,12 @@ function BottomPlayerContent({ track }: { track: PlayerTrack }) {
     playing: player.playing,
     currentTime: player.currentTime,
     duration: player.duration,
-    playingIndex,
-    playlist,
+    hasNext,
+    hasPrev,
+    toggle: player.toggle,
     playNext,
     playPrev,
     seekTo: player.seekTo,
-    audioRef,
   });
   usePlayerKeyboard({ trackId: track.id, toggle: player.toggle, playNext, playPrev });
 
@@ -111,21 +109,12 @@ function YoutubePlayer({
 }: SharedProps & { player: YTPlayerReturn }) {
   const { playing, currentTime, duration, isReady, toggle, seekTo, volume, setVolume, videoId } = player;
 
-  const silentRef = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    if (playing) {
-      silentRef.current?.play().catch(() => {});
-    } else {
-      silentRef.current?.pause();
-    }
-  }, [playing]);
-
   const coverUrl = track.coverUrl ?? (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
   const sourceHref = videoId ? `https://www.youtube.com/watch?v=${videoId}` : (track.sourceUrl ?? "#");
 
   return (
     <>
-      {videoId && <audio ref={silentRef} src={silentWavSrc()} loop />}
+      {videoId && <SilentAudioAnchor playing={playing} />}
       <PlayerLayout
         track={track}
         coverUrl={coverUrl}
@@ -227,6 +216,7 @@ function SoundCloudPlayer({
           style={{ position: "fixed", left: "-1px", top: 0, width: "1px", height: "1px", opacity: 0 }}
         />
       )}
+      {embedUrl && <SilentAudioAnchor playing={playing} />}
       <PlayerLayout
         track={track}
         coverUrl={track.coverUrl ?? null}
@@ -249,6 +239,20 @@ function SoundCloudPlayer({
       />
     </>
   );
+}
+
+// Keeps this page's media session active while audio plays inside a
+// cross-origin iframe (YT/SC), so OS controls target our handlers.
+function SilentAudioAnchor({ playing }: { playing: boolean }) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (playing) {
+      ref.current?.play().catch((err) => console.warn("[player] silent media-session anchor failed:", err));
+    } else {
+      ref.current?.pause();
+    }
+  }, [playing]);
+  return <audio ref={ref} src={silentWavSrc()} loop />;
 }
 
 interface PlayerLayoutProps {
