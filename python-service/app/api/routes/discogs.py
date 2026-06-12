@@ -21,7 +21,8 @@ async def search_artist(q: str = Query(..., min_length=1)):
     try:
         return await _discogs.search_artist(q)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[discogs.search_artist] error: {e}")
+        raise HTTPException(status_code=502, detail="Discogs upstream request failed")
 
 
 @router.get(
@@ -36,7 +37,8 @@ async def get_releases(
     try:
         return await _discogs.get_releases(artist_id, role)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[discogs.get_releases] error: {e}")
+        raise HTTPException(status_code=502, detail="Discogs upstream request failed")
 
 
 @router.get(
@@ -48,7 +50,8 @@ async def search_label(q: str = Query(..., min_length=1)):
     try:
         return await _discogs.search_label(q)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[discogs.search_label] error: {e}")
+        raise HTTPException(status_code=502, detail="Discogs upstream request failed")
 
 
 @router.get(
@@ -64,7 +67,8 @@ async def get_label_releases(
     try:
         return await _discogs.get_label_releases(label_id, page, per_page)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[discogs.get_label_releases] error: {e}")
+        raise HTTPException(status_code=502, detail="Discogs upstream request failed")
 
 
 @router.get(
@@ -79,4 +83,5 @@ async def get_tracklist(
     try:
         return await _discogs.get_tracklist(release_id, release_type)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[discogs.get_tracklist] error: {e}")
+        raise HTTPException(status_code=502, detail="Discogs upstream request failed")
