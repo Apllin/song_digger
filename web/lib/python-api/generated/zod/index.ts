@@ -3,6 +3,14 @@ export { artistReleasesResponseSchema } from "./artistReleasesResponseSchema";
 export { discogsArtistSchema } from "./discogsArtistSchema";
 export { discogsLabelSchema } from "./discogsLabelSchema";
 export {
+  enrichAudioFeatures200Schema,
+  enrichAudioFeatures422Schema,
+  enrichAudioFeaturesMutationRequestSchema,
+  enrichAudioFeaturesMutationResponseSchema,
+} from "./enrichAudioFeaturesSchema";
+export { enrichRequestSchema } from "./enrichRequestSchema";
+export { enrichResponseSchema } from "./enrichResponseSchema";
+export {
   findSimilar200Schema,
   findSimilar422Schema,
   findSimilarMutationRequestSchema,

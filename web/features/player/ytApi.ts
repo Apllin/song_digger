@@ -65,6 +65,11 @@ const _handlers = {
 let _singleton: YTPlayer | null = null;
 let _singletonReady = false;
 let _holderEl: HTMLDivElement | null = null;
+// The video the caller last asked for. A next-click during the singleton's
+// startup window (created but pre-onReady) can't loadVideoById yet — its methods
+// aren't bound — so we record the request here and apply it on onReady. Without
+// this, the request is silently dropped and playback hangs until remount.
+let _pendingVideoId: string | null = null;
 
 export function registerYTHandlers(h: Partial<typeof _handlers>): void {
   Object.assign(_handlers, h);
@@ -78,6 +83,7 @@ export function getYTSingleton(): YTPlayer | null {
 }
 
 export async function ensureYTSingleton(videoId: string): Promise<void> {
+  _pendingVideoId = videoId;
   if (_singleton) return;
   await loadYTApi();
   if (_singleton || !window.YT) return; // double-check after async gap
@@ -103,6 +109,10 @@ export async function ensureYTSingleton(videoId: string): Promise<void> {
     events: {
       onReady: (e: { target: YTPlayer }) => {
         _singletonReady = true;
+        // A newer track was requested while the iframe was still loading — the
+        // player autoplayed `videoId`, so only switch if the request changed.
+        if (_pendingVideoId && _pendingVideoId !== videoId) e.target.loadVideoById(_pendingVideoId);
+        _pendingVideoId = null;
         _handlers.onReady(e.target.getDuration());
       },
       onStateChange: (e: { data: number }) => {

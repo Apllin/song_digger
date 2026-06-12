@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { resolveAudioFeatures } from "@/features/enrichment/server/resolveAudioFeatures";
 import { TrackSourceSchema } from "@/features/player/types";
 import type { SearchQueryId } from "@/features/search/schemas";
 import {
@@ -11,8 +12,8 @@ import {
   SearchQueryIdSchema,
 } from "@/features/search/schemas";
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
-import type { FusedCandidate } from "@/lib/aggregator";
-import { aggregateTracks, buildFeatures } from "@/lib/aggregator";
+import type { AudioFeatures, FusedCandidate } from "@/lib/aggregator";
+import { aggregateTracks, buildFeatures, rrfFuse } from "@/lib/aggregator";
 import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
@@ -80,14 +81,23 @@ async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: n
   };
 }
 
-async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Promise<void> {
+async function saveTracks(
+  searchId: SearchQueryId,
+  tracks: FusedCandidate[],
+  seed: { artist: string; title: string | null },
+  audio: AudioFeatures,
+  attemptedUrls: Set<string>,
+): Promise<void> {
   if (!tracks.length) return;
 
   const urls = tracks.map((t) => t.sourceUrl);
+  const now = new Date();
 
   // 1. Bulk insert any new Track rows in a single statement. `skipDuplicates`
   //    collapses upsert-per-row into one round-trip; existing rows aren't
-  //    touched here — backfill is handled in step 3 only when needed.
+  //    touched here — backfill is handled in step 3 only when needed. New rows
+  //    carry the eagerly-resolved bpm/key; `audioFeaturesFetchedAt` is stamped
+  //    on every scraped row so a fruitless Beatport lookup isn't repeated.
   await prisma.track.createMany({
     data: tracks.map((t) => ({
       title: t.title,
@@ -96,38 +106,58 @@ async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Pr
       sourceUrl: t.sourceUrl,
       coverUrl: t.coverUrl,
       embedUrl: t.embedUrl,
+      bpm: audio.candidateBpm.get(t.sourceUrl) ?? null,
+      musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? null,
+      audioFeaturesFetchedAt: attemptedUrls.has(t.sourceUrl) ? now : null,
     })),
     skipDuplicates: true,
   });
 
   // 2. One SELECT to map every sourceUrl → id (covers freshly inserted and
-  //    pre-existing rows alike) and to read current cover/embed for the
-  //    backfill check.
+  //    pre-existing rows alike) and to read current cover/embed/audio state for
+  //    the backfill check.
   const existing = await prisma.track.findMany({
     where: { sourceUrl: { in: urls } },
-    select: { id: true, sourceUrl: true, coverUrl: true, embedUrl: true },
+    select: { id: true, sourceUrl: true, coverUrl: true, embedUrl: true, audioFeaturesFetchedAt: true },
   });
   const urlToRow = new Map(existing.map((r) => [r.sourceUrl, r]));
 
-  // 3. Backfill cover/embed only when DB stores NULL but the current fetch has
-  //    data — preserves the previous "later adapter fills missing art without
-  //    overwriting good data" behavior. Typically a no-op after the first save.
+  // 3. Backfill cover/embed when DB stores NULL but the current fetch has data,
+  //    and the eagerly-resolved bpm/key for pre-existing rows we scraped this
+  //    search (audioFeaturesFetchedAt still NULL). Never overwrites good data.
+  //    Typically a no-op after the first save of a given track.
   const backfills = tracks.filter((t) => {
     const row = urlToRow.get(t.sourceUrl);
     if (!row) return false;
-    return (row.coverUrl == null && t.coverUrl != null) || (row.embedUrl == null && t.embedUrl != null);
+    const coverEmbed = (row.coverUrl == null && t.coverUrl != null) || (row.embedUrl == null && t.embedUrl != null);
+    // Refresh on every attempt — including a re-attempt of a stale "not found"
+    // (timestamp older than `now`) so its cooldown resets. Just-inserted rows
+    // already carry `now` from createMany and are skipped here.
+    const audioBackfill =
+      attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
+    return coverEmbed || audioBackfill;
   });
   if (backfills.length) {
     await prisma.$transaction(
-      backfills.map((t) =>
-        prisma.track.update({
+      backfills.map((t) => {
+        const row = urlToRow.get(t.sourceUrl)!;
+        const audioBackfill =
+          attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
+        return prisma.track.update({
           where: { sourceUrl: t.sourceUrl },
           data: {
             coverUrl: t.coverUrl ?? undefined,
             embedUrl: t.embedUrl ?? undefined,
+            ...(audioBackfill
+              ? {
+                  bpm: audio.candidateBpm.get(t.sourceUrl) ?? undefined,
+                  musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? undefined,
+                  audioFeaturesFetchedAt: now,
+                }
+              : {}),
           },
-        }),
-      ),
+        });
+      }),
       { timeout: DB_TXN_TIMEOUT_MS },
     );
   }
@@ -154,6 +184,20 @@ async function saveTracks(searchId: SearchQueryId, tracks: FusedCandidate[]): Pr
   //    without a live YTM lookup. Best-effort, never blocks the search
   //    response.
   warmEmbedCache(tracks).catch((err) => console.error("[embed-cache] warm failed:", err));
+
+  // 6. Persist the eagerly-resolved seed bpm/key on this search row so the
+  //    trainer (SearchQuery → SearchResult join) and later searches of the same
+  //    seed can read it. Value may be cache-sourced or freshly scraped.
+  if (seed.title != null && audio.seedBpm != null) {
+    await prisma.searchQuery.update({
+      where: { id: searchId },
+      data: { seedBpm: audio.seedBpm, seedMusicalKey: audio.seedMusicalKey ?? undefined },
+    });
+  }
+}
+
+function cacheKeyFor(artist: string, track: string | null): string {
+  return searchCacheKey(artist, track);
 }
 
 async function runSearch(
@@ -179,9 +223,22 @@ async function runSearch(
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
   const weights = await getActiveWeights();
-  const aggregated = aggregateTracks(pythonResult.source_lists, weights);
+
+  // Fuse first to get the deduped candidate set (one row per identity), then
+  // eagerly resolve BPM/key for all of them so the audio bonus is applied to
+  // the whole list before the final sort — not on a later background pass.
+  // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
+  const seed = { artist, title: track };
+  const fused = rrfFuse(pythonResult.source_lists, weights);
+  const { audio, attemptedUrls } = await resolveAudioFeatures(
+    cacheKeyFor(artist, track),
+    seed,
+    fused,
+    pythonServiceUrl,
+  );
+  const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
   const playable = await enrichMissingCovers(aggregated);
-  await saveTracks(searchId, playable);
+  await saveTracks(searchId, playable, seed, audio, attemptedUrls);
 
   await prisma.searchQuery.update({
     where: { id: searchId },

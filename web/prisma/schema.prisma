@@ -24,17 +24,20 @@ enum SimilaritySource {
 }
 
 model Track {
-    id                 String               @id @default(cuid())
-    title              String
-    artist             String
-    source             String
-    sourceUrl          String               @unique
-    coverUrl           String?
-    embedUrl           String?
-    createdAt          DateTime             @default(now())
-    favorites          Favorite[]
-    searchResults      SearchResult[]
-    similarityFeedback SimilarityFeedback[]
+    id                     String               @id @default(cuid())
+    title                  String
+    artist                 String
+    source                 String
+    sourceUrl              String               @unique
+    coverUrl               String?
+    embedUrl               String?
+    bpm                    Float?
+    musicalKey             String?
+    audioFeaturesFetchedAt DateTime?
+    createdAt              DateTime             @default(now())
+    favorites              Favorite[]
+    searchResults          SearchResult[]
+    similarityFeedback     SimilarityFeedback[]
 
     @@index([source])
 }
@@ -117,6 +120,9 @@ model SearchQuery {
     input              String
     cacheKey           String?
     status             String               @default("pending")
+    seedBpm            Float?
+    seedMusicalKey     String?
+    seedGenre          String?
     createdAt          DateTime             @default(now())
     results            SearchResult[]
     similarityFeedback SimilarityFeedback[]
@@ -367,14 +373,21 @@ model SimilarityFeedback {
 }
 
 model ModelWeights {
-    id                String         @id @default(cuid())
-    version           Int            @unique
-    trainedAt         DateTime
-    sampleSize        Int
-    rankDecayK        Float
-    cosineScoreWeight Float
-    numSourcesWeight  Float
-    sourceWeights     SourceWeight[]
+    id                  String         @id @default(cuid())
+    version             Int            @unique
+    trainedAt           DateTime
+    sampleSize          Int
+    rankDecayK          Float
+    cosineScoreWeight   Float
+    numSourcesWeight    Float
+    bpmDeltaWeight      Float?
+    bpmCompatibleWeight Float?
+    bpmPresentWeight    Float?
+    keyCompatibleWeight Float?
+    keyPresentWeight    Float?
+    genreAdjustments    Json?
+    bpmRangeAdjustments Json?
+    sourceWeights       SourceWeight[]
 }
 
 model SourceWeight {

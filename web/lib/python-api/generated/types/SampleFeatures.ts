@@ -26,4 +26,8 @@ export type SampleFeatures = {
    * @type number
    */
   rrfScore: number;
+  bpmDelta?: number | null;
+  keyCompatible?: boolean | null;
+  seedGenre?: string | null;
+  seedBpm?: number | null;
 };

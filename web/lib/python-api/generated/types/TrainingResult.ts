@@ -24,9 +24,45 @@ export type TrainingResult = {
   /**
    * @type number
    */
+  bpm_delta_weight: number;
+  /**
+   * @type number
+   */
+  bpm_compatible_weight: number;
+  /**
+   * @type number
+   */
+  bpm_present_weight: number;
+  /**
+   * @type number
+   */
+  key_compatible_weight: number;
+  /**
+   * @type number
+   */
+  key_present_weight: number;
+  /**
+   * @type number
+   */
   rank_decay_k: number;
   /**
    * @type integer
    */
   sample_size: number;
+  /**
+   * @type object
+   */
+  genre_adjustments: {
+    [key: string]: {
+      [key: string]: number;
+    };
+  };
+  /**
+   * @type object
+   */
+  bpm_range_adjustments: {
+    [key: string]: {
+      [key: string]: number;
+    };
+  };
 };

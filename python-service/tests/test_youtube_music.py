@@ -154,3 +154,89 @@ async def test_search_songs_returns_raw_search_payload():
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
         out = await adapter.search_songs("query", limit=1)
     assert out[0]["videoId"] == "v1"
+
+
+# ── videos fallback (songs catalogue miss → niche label uploads) ─────────────
+
+def _ytm_video_search_hit(video_id: str, title: str) -> dict:
+    """Shape ytmusicapi returns for `filter=videos` search: title + videoId;
+    `artists` carries the uploader channel, not the actual artist."""
+    return {"videoId": video_id, "title": title, "artists": [{"name": "uploaderChannel"}]}
+
+
+async def test_videos_fallback_used_when_songs_catalogue_misses():
+    """`The Computer Controlled Minds - Machines Are Working` lives on YT Music
+    only as a user-uploaded video. The songs results carry the same artist but
+    a different track; the strict matcher rejects them, then videos fallback
+    finds the exact title-bearing upload and starts a radio off it."""
+    adapter = YouTubeMusicAdapter()
+    songs_hits = [
+        _ytm_track("songA", "Machines Eat My Body", artist="The Computer Controlled Minds"),
+        _ytm_track("songB", "Rubber Foam", artist="The Computer Controlled Minds"),
+    ]
+    video_hits = [
+        _ytm_video_search_hit("vidND", "The Computer Controlled Minds - Machines Are Working [ND002]"),
+    ]
+    seed = _ytm_track("vidND", "Machines Are Working", artist="The Computer Controlled Minds")
+    rec = _ytm_track("rec1", "Phase Sequence", artist="Marcel Dettmann")
+
+    fake_ytm = MagicMock()
+    fake_ytm.search.side_effect = [songs_hits, video_hits]
+    fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, rec]}
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        results = await adapter.find_similar("The Computer Controlled Minds - Machines Are Working", limit=10)
+
+    assert len(results) == 1
+    assert results[0].sourceUrl == "https://music.youtube.com/watch?v=rec1"
+    # Two searches: songs first, then videos
+    assert fake_ytm.search.call_count == 2
+    # Radio started from the videos-fallback videoId
+    fake_ytm.get_watch_playlist.assert_called_once()
+    assert fake_ytm.get_watch_playlist.call_args.kwargs["videoId"] == "vidND"
+
+
+async def test_videos_fallback_rejects_partial_token_match():
+    """A video whose title contains only some query tokens must NOT seed the
+    radio — otherwise unrelated uploads would bleed into recommendations."""
+    adapter = YouTubeMusicAdapter()
+    video_hits = [
+        # Missing "Machines Are Working" tokens entirely
+        _ytm_video_search_hit("vidWrong", "The Computer Controlled Minds - Live at Berlin 2024"),
+    ]
+    fake_ytm = MagicMock()
+    fake_ytm.search.side_effect = [[], video_hits]  # songs empty, videos has near-miss
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        results = await adapter.find_similar("The Computer Controlled Minds - Machines Are Working")
+
+    assert results == []
+    fake_ytm.get_watch_playlist.assert_not_called()
+
+
+async def test_videos_fallback_skipped_for_bare_artist_query():
+    """Bare-artist queries (no ` - `) must NOT trigger the videos fallback —
+    its token-subset matcher would accept almost anything in that mode."""
+    adapter = YouTubeMusicAdapter()
+    fake_ytm = MagicMock()
+    fake_ytm.search.return_value = []  # songs empty for the bare-artist query
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        assert await adapter.find_similar("Some Unknown Artist") == []
+    # Exactly one search — videos fallback never attempted.
+    assert fake_ytm.search.call_count == 1
+
+
+async def test_videos_fallback_not_called_when_songs_match():
+    """Happy songs match short-circuits the videos search."""
+    adapter = YouTubeMusicAdapter()
+    seed = _ytm_track("seedvid", "Horses", artist="Oscar Mulero")
+    rec = _ytm_track("rec1", "Faceless", artist="Reeko")
+    fake_ytm = MagicMock()
+    fake_ytm.search.return_value = [_ytm_track("seedvid", "Horses", artist="Oscar Mulero")]
+    fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, rec]}
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        await adapter.find_similar("Oscar Mulero - Horses")
+
+    assert fake_ytm.search.call_count == 1

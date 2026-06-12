@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Track" ADD COLUMN "bpm" DOUBLE PRECISION;
+ALTER TABLE "Track" ADD COLUMN "musicalKey" TEXT;
+ALTER TABLE "Track" ADD COLUMN "audioFeaturesFetchedAt" TIMESTAMP(3);
+ALTER TABLE "SearchQuery" ADD COLUMN "seedBpm" DOUBLE PRECISION;
+ALTER TABLE "SearchQuery" ADD COLUMN "seedMusicalKey" TEXT;

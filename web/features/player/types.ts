@@ -30,6 +30,8 @@ export interface PlayerTrack {
   sourceUrl: string;
   coverUrl?: string | null;
   embedUrl?: string | null;
+  bpm?: number | null;
+  musicalKey?: string | null;
 }
 
 // Registered by paginated playlist owners (e.g. search, discography).

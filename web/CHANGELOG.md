@@ -1,5 +1,23 @@
 # @trackdigger/web
 
+## 0.3.2
+
+### Patch Changes
+
+- ad605da: Anonymous request limit now resets on a sliding 24-hour window per IP, so unauthenticated users get 5 free requests per day instead of 5 for life.
+- 7751a17: Persist label/discography page state (search input + selected entity) across route navigation. Previously, typing a label, switching to discography, then returning landed on an empty input — local `useState` in `useEntitySearch` reset when the page unmounted. Hoisted `query` and `selectedItem` into the existing `labelsAtom` / `discographyAtom` (Jotai), which live above the route boundary and survive navigation.
+- f395dea: Validate the SoundCloud search seed with the shared query-match scorer before fetching recommendations — a fuzzy hit like a label-uploaded DJ mix no longer becomes the seed, and an unvalidated query contributes nothing. Also cache Last.fm track.getSimilar (7-day TTL), the last uncached Last.fm path. Search cache bumped to v14.
+- 138037d: Seek/toggle/poll on the YouTube player now wait until the iframe has fired `onReady`, fixing a `seekTo is not a function` crash when dragging the progress bar before the player finishes loading.
+
+## 0.3.2-rc.0
+
+### Patch Changes
+
+- b2b2128: Anonymous request limit now resets on a sliding 24-hour window per IP, so unauthenticated users get 5 free requests per day instead of 5 for life.
+- 194c825: Persist label/discography page state (search input + selected entity) across route navigation. Previously, typing a label, switching to discography, then returning landed on an empty input — local `useState` in `useEntitySearch` reset when the page unmounted. Hoisted `query` and `selectedItem` into the existing `labelsAtom` / `discographyAtom` (Jotai), which live above the route boundary and survive navigation.
+- 9577603: Validate the SoundCloud search seed with the shared query-match scorer before fetching recommendations — a fuzzy hit like a label-uploaded DJ mix no longer becomes the seed, and an unvalidated query contributes nothing. Also cache Last.fm track.getSimilar (7-day TTL), the last uncached Last.fm path. Search cache bumped to v14.
+- a6880fc: Seek/toggle/poll on the YouTube player now wait until the iframe has fired `onReady`, fixing a `seekTo is not a function` crash when dragging the progress bar before the player finishes loading.
+
 ## 0.3.1
 
 ### Patch Changes

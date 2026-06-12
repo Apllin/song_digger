@@ -1,3 +1,4 @@
+export { enrichAudioFeatures } from "./clients/enrichAudioFeatures";
 export { findSimilar } from "./clients/findSimilar";
 export { getArtistReleases } from "./clients/getArtistReleases";
 export { getLabelReleases } from "./clients/getLabelReleases";
@@ -12,6 +13,15 @@ export type { ArtistRelease } from "./types/ArtistRelease";
 export type { ArtistReleasesResponse } from "./types/ArtistReleasesResponse";
 export type { DiscogsArtist } from "./types/DiscogsArtist";
 export type { DiscogsLabel } from "./types/DiscogsLabel";
+export type {
+  EnrichAudioFeatures200,
+  EnrichAudioFeatures422,
+  EnrichAudioFeaturesMutation,
+  EnrichAudioFeaturesMutationRequest,
+  EnrichAudioFeaturesMutationResponse,
+} from "./types/EnrichAudioFeatures";
+export type { EnrichRequest } from "./types/EnrichRequest";
+export type { EnrichResponse } from "./types/EnrichResponse";
 export type {
   FindSimilar200,
   FindSimilar422,
@@ -98,6 +108,14 @@ export { artistReleaseSchema } from "./zod/artistReleaseSchema";
 export { artistReleasesResponseSchema } from "./zod/artistReleasesResponseSchema";
 export { discogsArtistSchema } from "./zod/discogsArtistSchema";
 export { discogsLabelSchema } from "./zod/discogsLabelSchema";
+export {
+  enrichAudioFeatures200Schema,
+  enrichAudioFeatures422Schema,
+  enrichAudioFeaturesMutationRequestSchema,
+  enrichAudioFeaturesMutationResponseSchema,
+} from "./zod/enrichAudioFeaturesSchema";
+export { enrichRequestSchema } from "./zod/enrichRequestSchema";
+export { enrichResponseSchema } from "./zod/enrichResponseSchema";
 export {
   findSimilar200Schema,
   findSimilar422Schema,

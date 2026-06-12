@@ -3,6 +3,15 @@ export type { ArtistReleasesResponse } from "./ArtistReleasesResponse";
 export type { DiscogsArtist } from "./DiscogsArtist";
 export type { DiscogsLabel } from "./DiscogsLabel";
 export type {
+  EnrichAudioFeatures200,
+  EnrichAudioFeatures422,
+  EnrichAudioFeaturesMutation,
+  EnrichAudioFeaturesMutationRequest,
+  EnrichAudioFeaturesMutationResponse,
+} from "./EnrichAudioFeatures";
+export type { EnrichRequest } from "./EnrichRequest";
+export type { EnrichResponse } from "./EnrichResponse";
+export type {
   FindSimilar200,
   FindSimilar422,
   FindSimilarMutation,

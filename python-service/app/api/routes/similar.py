@@ -1,5 +1,4 @@
 import asyncio
-import random
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
@@ -35,11 +34,6 @@ TRACKIDNET_TIMEOUT = 25.0
 # seed artists). Cold path ~1s; cap at 5s so a slow Last.fm doesn't stall
 # /similar on its longest critical path.
 LASTFM_HOP_TIMEOUT = 5.0
-# N artists randomly sampled from the trackid output to use as additional
-# hop seeds alongside the query artist. Random sampling (rather than top-N
-# by co-occurrence) spreads the hop across the whole trackid cluster, so
-# repeat searches for the same query surface different lateral branches.
-LASTFM_HOP_TRACKID_SEED_COUNT = 5
 
 
 # Troi runs the lb-radio patch (sync, off-loaded to a thread) over several
@@ -147,12 +141,9 @@ def _dedup_within_source(tracks: list[TrackMeta]) -> list[TrackMeta]:
     return out
 
 
-def _random_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
-    """Random `n` unique artists from `tracks`, deduped by normalized form.
-    Sampling (vs. taking top-N by co-occurrence rank) spreads hop seeds
-    across the whole trackid cluster instead of clustering them on the
-    most-frequent artists — gives the hop more lateral coverage and makes
-    repeat searches surface different similar-artist branches."""
+def _spread_unique_artists(tracks: list[TrackMeta]) -> list[str]:
+    """Three artists spanning the trackid co-occurrence range — highest,
+    middle, lowest. `tracks` is already ranked by co-occurrence desc."""
     seen: set[str] = set()
     pool: list[str] = []
     for t in tracks:
@@ -161,10 +152,9 @@ def _random_unique_artists(tracks: list[TrackMeta], n: int) -> list[str]:
             continue
         seen.add(key)
         pool.append(t.artist)
-    if not pool:
-        return []
-    k = min(n, len(pool))
-    return random.sample(pool, k)
+    if len(pool) <= 3:
+        return pool
+    return [pool[0], pool[len(pool) // 2], pool[-1]]
 
 
 async def _lastfm_hop_safe(
@@ -278,9 +268,7 @@ async def _find_by_artist_and_track(
     # because seed-artist selection depends on trackid output. Excludes
     # artists already present in trackid's contribution so the hop doesn't
     # double up on the same lateral cluster.
-    trackid_seed_artists = _random_unique_artists(
-        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
-    )
+    trackid_seed_artists = _spread_unique_artists(trackidnet_tracks)
     hop_seed_pool = [artist] + trackid_seed_artists
     hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
     lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
@@ -303,15 +291,12 @@ async def _find_by_artist_only(
     artist: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
     """
-    Artist-only mode: same six adapters as track mode, plus the lastfm hop.
-    Lastfm's `find_similar` recognizes a track-less query and routes to its
-    own artist-level fallback (artist.getSimilar → top tracks per similar).
-    Trackid's `find_similar` routes to its keyword flow (/audiostreams?
-    keywords=<artist>) when no track is supplied. If Cosine returns few
-    results, seeds a second query with the artist's top track.
+    Artist-only mode. lastfm routes to its artist-level fallback and trackid
+    to its keyword flow when no track is supplied. Cosine.club has no
+    artist-only search, so it is queried with the artist's top track and
+    contributes nothing without an exact catalogue match.
     """
     (
-        cosine_artist,
         ytm_artist,
         yandex_artist,
         soundcloud_artist,
@@ -320,7 +305,6 @@ async def _find_by_artist_only(
         troi_artist,
         top_songs,
     ) = await asyncio.gather(
-        _cosine.find_similar(artist, limit),
         _ytm.find_similar_by_artist(artist, limit),
         _yandex.find_similar(artist, limit),
         _soundcloud.find_similar(artist, limit),
@@ -331,7 +315,6 @@ async def _find_by_artist_only(
         return_exceptions=True,
     )
 
-    cosine_tracks: list[TrackMeta] = cosine_artist if isinstance(cosine_artist, list) else []
     ytm_tracks: list[TrackMeta] = ytm_artist if isinstance(ytm_artist, list) else []
     yandex_tracks: list[TrackMeta] = yandex_artist if isinstance(yandex_artist, list) else []
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
@@ -339,20 +322,19 @@ async def _find_by_artist_only(
     trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
     troi_tracks: list[TrackMeta] = troi_artist if isinstance(troi_artist, list) else []
 
-    # If the artist-only Cosine query returned few results, seed with a specific track
-    if isinstance(top_songs, list) and top_songs and len(cosine_tracks) < 8:
+    # Cosine.club has no artist-only search — seed it with the artist's top track.
+    cosine_tracks: list[TrackMeta] = []
+    if isinstance(top_songs, list) and top_songs:
         top_title = top_songs[0].get("title", "")
         if top_title:
             seeded = await _cosine.find_similar(f"{artist} - {top_title}", limit)
-            if isinstance(seeded, list) and len(seeded) > len(cosine_tracks):
+            if isinstance(seeded, list):
                 cosine_tracks = seeded
 
     # Lastfm hop — fan out from query artist + top trackid artists, same logic
     # as the track-mode path so artist-only queries also surface lateral
     # similars one hop deeper.
-    trackid_seed_artists = _random_unique_artists(
-        trackidnet_tracks, LASTFM_HOP_TRACKID_SEED_COUNT
-    )
+    trackid_seed_artists = _spread_unique_artists(trackidnet_tracks)
     hop_seed_pool = [artist] + trackid_seed_artists
     hop_exclude = [t.artist for t in trackidnet_tracks if t.artist]
     lastfm_hop_tracks = await _lastfm_hop_safe(hop_seed_pool, hop_exclude)
