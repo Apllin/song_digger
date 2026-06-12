@@ -10,6 +10,7 @@ from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.soundcloud import SoundCloudAdapter
+from app.adapters.troi import TroiAdapter
 from app.services.lastfm_hop import expand_via_similar_artists
 
 router = APIRouter()
@@ -20,6 +21,7 @@ _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 _soundcloud = SoundCloudAdapter()
+_troi = TroiAdapter()
 
 # Trackidnet does up to 12 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 10 detail fetches with Semaphore(5) inside the
@@ -38,6 +40,28 @@ LASTFM_HOP_TIMEOUT = 5.0
 # by co-occurrence) spreads the hop across the whole trackid cluster, so
 # repeat searches for the same query surface different lateral branches.
 LASTFM_HOP_TRACKID_SEED_COUNT = 5
+
+
+# Troi runs the lb-radio patch (sync, off-loaded to a thread) over several
+# sequential MB/LB calls. Cold path is a few seconds; the adapter caches with a
+# long TTL and trips a circuit breaker on a down backend, so the slow path is
+# rare. Cap here so one cold/slow run can't stall the /similar fan-out.
+TROI_TIMEOUT = 15.0
+
+
+async def _troi_safe(query: str, limit: int) -> list[TrackMeta]:
+    """Run Troi with a hard timeout. The adapter already soft-degrades, breaks,
+    and serves stale internally — this is the outer fan-out latency cap."""
+    try:
+        return await asyncio.wait_for(
+            _troi.find_similar(query, limit), timeout=TROI_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        print(f"[Troi] timed out after {TROI_TIMEOUT}s, skipping")
+        return []
+    except Exception as e:
+        print(f"[Troi] error: {e}")
+        return []
 
 
 async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
@@ -179,6 +203,7 @@ async def _find_by_artist_and_track(
         lastfm_tracks,
         trackidnet_tracks,
         soundcloud_tracks,
+        troi_tracks,
         ytm_source_search,
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
@@ -187,6 +212,7 @@ async def _find_by_artist_and_track(
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
         _soundcloud.find_similar(full_query, limit),
+        _troi_safe(full_query, limit),
         _ytm.search_songs(full_query, limit=1),
         return_exceptions=True,
     )
@@ -197,6 +223,7 @@ async def _find_by_artist_and_track(
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
     soundcloud_tracks = soundcloud_tracks if isinstance(soundcloud_tracks, list) else []
+    troi_tracks = troi_tracks if isinstance(troi_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -266,6 +293,7 @@ async def _find_by_artist_and_track(
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
+        SourceList(source="troi", tracks=_dedup_within_source(_filter_artist(troi_tracks))),
     ]
 
     return source_lists, source_artist
@@ -289,6 +317,7 @@ async def _find_by_artist_only(
         soundcloud_artist,
         lastfm_artist,
         trackidnet_artist,
+        troi_artist,
         top_songs,
     ) = await asyncio.gather(
         _cosine.find_similar(artist, limit),
@@ -297,6 +326,7 @@ async def _find_by_artist_only(
         _soundcloud.find_similar(artist, limit),
         _lastfm.find_similar(artist, limit),
         _trackidnet_safe(artist, limit),
+        _troi_safe(artist, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
@@ -307,6 +337,7 @@ async def _find_by_artist_only(
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
     lastfm_tracks: list[TrackMeta] = lastfm_artist if isinstance(lastfm_artist, list) else []
     trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
+    troi_tracks: list[TrackMeta] = troi_artist if isinstance(troi_artist, list) else []
 
     # If the artist-only Cosine query returned few results, seed with a specific track
     if isinstance(top_songs, list) and top_songs and len(cosine_tracks) < 8:
@@ -337,6 +368,7 @@ async def _find_by_artist_only(
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
+        SourceList(source="troi", tracks=_dedup_within_source(_filter_artist(troi_tracks))),
     ]
 
     return source_lists, artist

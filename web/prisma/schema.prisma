@@ -20,6 +20,7 @@ enum SimilaritySource {
     trackidnet
     soundcloud
     lastfm_hop
+    troi
 }
 
 model Track {

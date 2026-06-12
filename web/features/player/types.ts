@@ -18,6 +18,7 @@ export const TrackSourceSchema = z.enum([
   "trackidnet",
   "soundcloud",
   "discogs",
+  "troi",
 ]);
 export type TrackSource = z.infer<typeof TrackSourceSchema>;
 
