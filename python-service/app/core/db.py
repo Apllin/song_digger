@@ -10,13 +10,33 @@ no-ops on write, mirroring the project-wide adapter convention.
 """
 import asyncio
 import json
+import ssl
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import asyncpg
+import certifi
 
 from app.config import settings
+
+
+def _build_ssl_context() -> ssl.SSLContext | None:
+    """Build the SSL context asyncpg should use for the managed (Neon) DB.
+
+    Passing an explicit context makes asyncpg use it directly and ignore the
+    DSN's `sslmode`/`sslrootcert` — so `sslmode=verify-full` no longer demands a
+    local `~/.postgresql/root.crt`. Verification stays ON, anchored on certifi's
+    CA bundle (Neon's cert chains to a public CA). Returns None only for an
+    explicitly plaintext (`sslmode=disable`) connection or no DATABASE_URL.
+
+    To disable verification instead (encrypted but no CA/hostname check), set
+    ctx.check_hostname = False and ctx.verify_mode = ssl.CERT_NONE below.
+    """
+    url = settings.database_url
+    if not url or "sslmode=disable" in url:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
@@ -41,6 +61,7 @@ async def _get_pool() -> asyncpg.Pool | None:
                     settings.database_url,
                     min_size=1,
                     max_size=5,
+                    ssl=_build_ssl_context(),
                 )
             except Exception as e:
                 _pool_init_failed = True
