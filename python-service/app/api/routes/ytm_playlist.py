@@ -131,4 +131,5 @@ async def search_exact(title: str, artist: str) -> dict:
             return result
         return {"embedUrl": None, "coverUrl": None}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ytm.search_exact] error: {e}")
+        raise HTTPException(status_code=500, detail="YouTube Music search failed")
