@@ -7,6 +7,7 @@ import { isCamelotCompatible } from "@/lib/camelot";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 import { trainWeights } from "@/lib/python-api/generated/clients/trainWeights";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const MIN_SAMPLES = 20;
 
@@ -78,7 +79,7 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
   }
 
   const pythonServiceUrl = c.var.pythonServiceUrl;
-  const result = await trainWeights({ samples }, { baseURL: pythonServiceUrl });
+  const result = await trainWeights({ samples }, { baseURL: pythonServiceUrl, headers: pythonServiceHeaders() });
 
   const latest = await prisma.modelWeights.findFirst({
     orderBy: { version: "desc" },

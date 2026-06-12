@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { ReleasesQuerySchema } from "@/features/label/schemas";
 import type { AppEnv } from "@/lib/hono/types";
 import { getLabelReleases } from "@/lib/python-api/generated/clients/getLabelReleases";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 export const labelApi = new Hono<AppEnv>().get(
   "/discography/label/releases",
@@ -13,7 +14,7 @@ export const labelApi = new Hono<AppEnv>().get(
     const data = await getLabelReleases(
       Number(labelId),
       { page, per_page: perPage },
-      { baseURL: c.var.pythonServiceUrl },
+      { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() },
     );
     return c.json(data);
   },

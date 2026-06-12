@@ -5,6 +5,7 @@ import { releasesQuerySchema } from "@/features/discography/schemas";
 import type { AppEnv } from "@/lib/hono/types";
 import { prisma } from "@/lib/prisma";
 import { getArtistReleases } from "@/lib/python-api/generated/clients/getArtistReleases";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const TTL_30D_MS = 30 * 86_400 * 1_000;
 
@@ -17,7 +18,7 @@ export const artistReleasesRoute = new Hono<AppEnv>().get(
     const meta = await prisma.artistReleasesMeta.findUnique({ where: { artistId } });
 
     if (!meta || Date.now() - meta.fetchedAt.getTime() >= TTL_30D_MS) {
-      const { releases } = await getArtistReleases(Number(artistId), {}, { baseURL: c.var.pythonServiceUrl });
+      const { releases } = await getArtistReleases(Number(artistId), {}, { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() });
       await prisma.$transaction([
         prisma.artistRelease.deleteMany({ where: { artistId } }),
         prisma.artistRelease.createMany({

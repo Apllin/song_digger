@@ -5,6 +5,7 @@ import { z } from "zod";
 import { anonGate } from "@/lib/hono/anonGate";
 import type { AppEnv } from "@/lib/hono/types";
 import { searchLabels } from "@/lib/python-api/generated/clients/searchLabels";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const schema = z.object({
   q: z.string().trim().min(1).max(200),
@@ -16,7 +17,7 @@ export const labelSearchRoute = new Hono<AppEnv>().get(
   zValidator("query", schema),
   async (c) => {
     const { q } = c.req.valid("query");
-    const data = await searchLabels({ q }, { baseURL: c.var.pythonServiceUrl });
+    const data = await searchLabels({ q }, { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() });
     return c.json(data);
   },
 );

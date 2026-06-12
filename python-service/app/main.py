@@ -5,11 +5,13 @@ from app.api.routes.discogs import router as discogs_router
 from app.api.routes.ytm_playlist import router as ytm_playlist_router
 from app.api.routes.train import router as train_router
 from app.api.routes.enrich import router as enrich_router
+from app.core.auth_middleware import AuthMiddleware
 from app.core.metrics import MetricsMiddleware
 
 app = FastAPI(title="Track Digger — Python Service", version="0.1.0")
 
 app.add_middleware(MetricsMiddleware)
+app.add_middleware(AuthMiddleware)
 
 app.include_router(similar_router)
 app.include_router(suggestions_router)
