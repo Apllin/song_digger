@@ -1,6 +1,7 @@
 fastapi==0.115.12
 uvicorn[standard]==0.34.0
 httpx==0.28.1
+certifi==2026.4.22  # explicit: db.py anchors the asyncpg TLS context on certifi's CA bundle
 pydantic==2.13.4
 pydantic-settings==2.14.1
 ytmusicapi==1.10.2
