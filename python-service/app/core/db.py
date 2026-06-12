@@ -20,20 +20,32 @@ from app.config import settings
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
+# Set once when pool creation fails for a config reason (bad DSN, missing SSL
+# cert, unreachable host). Short-circuits further connect attempts so a
+# misconfigured DATABASE_URL degrades to "no cache" instead of raising on every
+# call and taking down every DB-backed adapter (lastfm, troi, trackidnet).
+_pool_init_failed = False
 
 
 async def _get_pool() -> asyncpg.Pool | None:
-    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty."""
-    global _pool
-    if not settings.database_url:
+    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty or when
+    the pool can't be created — never raises, so cache outages soft-degrade
+    instead of propagating into adapters."""
+    global _pool, _pool_init_failed
+    if not settings.database_url or _pool_init_failed:
         return None
     async with _pool_lock:
         if _pool is None:
-            _pool = await asyncpg.create_pool(
-                settings.database_url,
-                min_size=1,
-                max_size=5,
-            )
+            try:
+                _pool = await asyncpg.create_pool(
+                    settings.database_url,
+                    min_size=1,
+                    max_size=5,
+                )
+            except Exception as e:
+                _pool_init_failed = True
+                print(f"[cache] pool init failed, disabling DB cache: {e}")
+                return None
     return _pool
 
 
