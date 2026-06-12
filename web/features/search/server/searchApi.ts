@@ -18,12 +18,12 @@ import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import { HttpError } from "@/lib/hono/httpError";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 import type { AppEnv } from "@/lib/hono/types";
 import { getActiveWeights } from "@/lib/modelWeights";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const SearchBodySchema = z.object({
   input: z.string().trim().min(1).max(500),

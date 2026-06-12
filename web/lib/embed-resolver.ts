@@ -34,7 +34,10 @@ function cleanArtist(artist: string): string {
 async function tryYtmExact(title: string, cleanedArtist: string): Promise<EmbedResult | null> {
   try {
     const params = new URLSearchParams({ title, artist: cleanedArtist });
-    const res = await fetch(`${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`, { signal: AbortSignal.timeout(8000), headers: pythonServiceHeaders() });
+    const res = await fetch(`${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`, {
+      signal: AbortSignal.timeout(8000),
+      headers: pythonServiceHeaders(),
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.embedUrl) return null;
