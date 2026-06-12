@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
@@ -11,17 +12,28 @@ const prismaMock = {
     deleteMany: vi.fn(),
     create: vi.fn(),
   },
+  loginAttempt: {
+    count: vi.fn(),
+    create: vi.fn(),
+  },
 };
 
 const sendPasswordResetEmail = vi.fn();
+const getRequestIpMock = vi.fn().mockResolvedValue("1.2.3.4");
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendPasswordResetEmail }));
+vi.mock("@/lib/anonymous-counter", () => ({ getRequestIp: getRequestIpMock }));
 
 const { authApi } = await import("./authApi");
+const { createErrorHandler } = await import("@/lib/hono/errorMiddleware");
+
+// Wrap authApi with the same error handler used by the production app so
+// HttpError(429, ...) is translated to a 429 response rather than 500.
+const testApp = new Hono().onError(createErrorHandler()).route("/", authApi);
 
 async function postForgot(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/account/forgot-password", {
+  return testApp.request("/account/forgot-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -29,7 +41,7 @@ async function postForgot(body: Record<string, unknown>): Promise<Response> {
 }
 
 async function postReset(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/account/reset-password", {
+  return testApp.request("/account/reset-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -126,6 +138,10 @@ describe("POST /account/forgot-password", () => {
 describe("POST /account/reset-password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getRequestIpMock.mockResolvedValue("1.2.3.4");
+    // Default: not rate-limited
+    prismaMock.loginAttempt.count.mockResolvedValue(0);
+    prismaMock.loginAttempt.create.mockResolvedValue({});
   });
 
   it("returns 400 for short password", async () => {
@@ -184,5 +200,46 @@ describe("POST /account/reset-password", () => {
     expect(prismaMock.passwordResetToken.deleteMany).toHaveBeenCalledWith({
       where: { email: "user@example.com" },
     });
+  });
+
+  // New cases
+
+  it("invalid token: records failed attempt, returns existing error message unchanged", async () => {
+    prismaMock.passwordResetToken.findUnique.mockResolvedValueOnce(null);
+
+    const res = await postReset({ token: "a".repeat(64), password: "validpassword" });
+    const result = await res.json();
+
+    expect(result).toEqual({ error: "Reset link invalid or expired. Request a new one." });
+    expect(prismaMock.loginAttempt.create).toHaveBeenCalledWith({
+      data: { ip: "1.2.3.4", email: null, success: false },
+    });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("IP rate-limited: returns 429 before token lookup", async () => {
+    prismaMock.loginAttempt.count.mockResolvedValueOnce(10);
+
+    const res = await postReset({ token: "a".repeat(64), password: "validpassword" });
+
+    expect(res.status).toBe(429);
+    expect(prismaMock.passwordResetToken.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("valid token still resets password (happy path regression)", async () => {
+    prismaMock.passwordResetToken.findUnique.mockResolvedValueOnce({
+      email: "happy@example.com",
+      token: "b".repeat(64),
+      expires: new Date(Date.now() + 30 * 60 * 1000),
+    });
+    prismaMock.user.update.mockResolvedValueOnce({});
+    prismaMock.passwordResetToken.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    const res = await postReset({ token: "b".repeat(64), password: "newsecurepassword" });
+    const result = await res.json();
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.loginAttempt.create).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
   });
 });

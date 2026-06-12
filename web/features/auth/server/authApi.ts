@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { getRequestIp } from "@/lib/anonymous-counter";
 import { generateResetToken, generateVerificationCode, hashCode, verifyCode } from "@/lib/auth-tokens";
-import { checkIpRateLimit, shouldRequireCaptcha } from "@/lib/brute-force";
+import { checkIpRateLimit, recordLoginAttempt, shouldRequireCaptcha } from "@/lib/brute-force";
 import { sendPasswordResetEmail, sendVerificationCode } from "@/lib/email";
 import { HttpError } from "@/lib/hono/httpError";
 import type { AppEnv } from "@/lib/hono/types";
@@ -102,6 +102,13 @@ export const authApi = new Hono<AppEnv>()
   })
   .post("/account/verify-email", zValidator("json", VerifyEmailSchema), async (c) => {
     const { email, code } = c.req.valid("json");
+    const ip = await getRequestIp();
+    const { blocked } = await checkIpRateLimit(ip);
+    if (blocked)
+      throw new HttpError(429, {
+        name: "RATE_LIMIT_REACHED",
+        message: "Too many attempts. Please try again later.",
+      });
 
     const pendingCodes = await prisma.verificationCode.findMany({
       where: { email, expires: { gt: new Date() } },
@@ -119,7 +126,18 @@ export const authApi = new Hono<AppEnv>()
       }
     }
 
-    if (!matched) return c.json({ error: "Invalid code" });
+    if (!matched) {
+      await recordLoginAttempt(ip, null, false);
+      await prisma.verificationCode.updateMany({ where: { email }, data: { failedAttempts: { increment: 1 } } });
+      // Re-read updated counters to check if any code has hit the cap.
+      const updated = await prisma.verificationCode.findMany({ where: { email } });
+      const maxFailed = Math.max(...updated.map((c) => c.failedAttempts));
+      if (maxFailed >= 5) {
+        await prisma.verificationCode.deleteMany({ where: { email } });
+        return c.json({ error: "Code expired or not found. Please request a new one." });
+      }
+      return c.json({ error: "Invalid code" });
+    }
 
     await prisma.user.update({ where: { email }, data: { emailVerified: new Date() } });
     await prisma.verificationCode.deleteMany({ where: { email } });
@@ -186,10 +204,18 @@ export const authApi = new Hono<AppEnv>()
   })
   .post("/account/reset-password", zValidator("json", ResetPasswordSchema), async (c) => {
     const { token, password } = c.req.valid("json");
+    const ip = await getRequestIp();
+    const { blocked } = await checkIpRateLimit(ip);
+    if (blocked)
+      throw new HttpError(429, {
+        name: "RATE_LIMIT_REACHED",
+        message: "Too many attempts. Please try again later.",
+      });
 
     const reset = await prisma.passwordResetToken.findUnique({ where: { token } });
 
     if (!reset || reset.expires < new Date()) {
+      await recordLoginAttempt(ip, null, false);
       return c.json({ error: "Reset link invalid or expired. Request a new one." });
     }
 
