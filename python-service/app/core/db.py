@@ -59,7 +59,7 @@ async def fetch_lastfm_artist_similars(
     if pool is None:
         return None
 
-    cutoff = datetime.utcnow() - timedelta(days=ttl_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=ttl_days)
     seed = _normalize(artist)
 
     try:
@@ -202,9 +202,8 @@ async def fetch_external_cache(
     if ttl_seconds is not None:
         # Prisma writes "updatedAt" as TIMESTAMP(3) WITHOUT TIME ZONE in UTC,
         # so compare against naive UTC. utcnow() is deprecated in 3.12+ —
-        # use tz-aware now(UTC) and strip the tzinfo so subtraction works
-        # against the naive DB column. (Backlog P2 will sweep the rest of
-        # this file later; new code shouldn't compound the debt.)
+        # use tz-aware now(UTC) and strip tzinfo so subtraction works
+        # against the naive DB column.
         now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         age_s = int((now_naive - row["updatedAt"]).total_seconds())
         if age_s > ttl_seconds:
