@@ -100,8 +100,6 @@ def _mock_async_client(html: str, monkeypatch):
 
     client = MagicMock()
     client.get = AsyncMock(return_value=resp)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=None)
 
     monkeypatch.setattr("app.adapters.soundcloud.httpx.AsyncClient", lambda **_: client)
 
