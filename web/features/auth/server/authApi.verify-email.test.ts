@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
@@ -11,18 +12,30 @@ const prismaMock = {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
     create: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  loginAttempt: {
+    count: vi.fn(),
+    create: vi.fn(),
   },
 };
 
 const sendVerificationCode = vi.fn();
+const getRequestIpMock = vi.fn().mockResolvedValue("1.2.3.4");
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/email", () => ({ sendVerificationCode }));
+vi.mock("@/lib/anonymous-counter", () => ({ getRequestIp: getRequestIpMock }));
 
 const { authApi } = await import("./authApi");
+const { createErrorHandler } = await import("@/lib/hono/errorMiddleware");
+
+// Wrap authApi with the same error handler used by the production app so
+// HttpError(429, ...) is translated to a 429 response rather than 500.
+const testApp = new Hono().onError(createErrorHandler()).route("/", authApi);
 
 async function postVerify(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/account/verify-email", {
+  return testApp.request("/account/verify-email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -30,7 +43,7 @@ async function postVerify(body: Record<string, unknown>): Promise<Response> {
 }
 
 async function postResend(body: Record<string, unknown>): Promise<Response> {
-  return authApi.request("/account/resend-verification", {
+  return testApp.request("/account/resend-verification", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -40,6 +53,11 @@ async function postResend(body: Record<string, unknown>): Promise<Response> {
 describe("POST /account/verify-email", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getRequestIpMock.mockResolvedValue("1.2.3.4");
+    // Default: not rate-limited
+    prismaMock.loginAttempt.count.mockResolvedValue(0);
+    prismaMock.loginAttempt.create.mockResolvedValue({});
+    prismaMock.verificationCode.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it("returns 400 for malformed code", async () => {
@@ -64,9 +82,9 @@ describe("POST /account/verify-email", () => {
 
   it("rejects when code does not match any pending hash", async () => {
     const wrongHash = await bcrypt.hash("999999", 10);
-    prismaMock.verificationCode.findMany.mockResolvedValueOnce([
-      { code: wrongHash, expires: new Date(Date.now() + 60_000) },
-    ]);
+    prismaMock.verificationCode.findMany
+      .mockResolvedValueOnce([{ code: wrongHash, expires: new Date(Date.now() + 60_000), failedAttempts: 0 }])
+      .mockResolvedValueOnce([{ code: wrongHash, failedAttempts: 1 }]);
     const res = await postVerify({ email: "user@example.com", code: "123456" });
     const result = await res.json();
     expect(result).toEqual({ error: "Invalid code" });
@@ -114,6 +132,69 @@ describe("POST /account/verify-email", () => {
     const call = prismaMock.verificationCode.findMany.mock.calls[0]![0];
     expect(call.where.email).toBe("user@example.com");
     expect(call.where.expires).toEqual({ gt: expect.any(Date) });
+  });
+
+  // New cases
+
+  it("wrong code: records failed LoginAttempt with email null, returns Invalid code, increments counter", async () => {
+    const wrongHash = await bcrypt.hash("999999", 10);
+    prismaMock.verificationCode.findMany
+      .mockResolvedValueOnce([{ code: wrongHash, expires: new Date(Date.now() + 60_000), failedAttempts: 0 }])
+      .mockResolvedValueOnce([{ code: wrongHash, failedAttempts: 1 }]);
+
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+    const result = await res.json();
+
+    expect(result).toEqual({ error: "Invalid code" });
+    expect(prismaMock.loginAttempt.create).toHaveBeenCalledWith({
+      data: { ip: "1.2.3.4", email: null, success: false },
+    });
+    expect(prismaMock.verificationCode.updateMany).toHaveBeenCalledWith({
+      where: { email: "user@example.com" },
+      data: { failedAttempts: { increment: 1 } },
+    });
+  });
+
+  it("5th cumulative failure: deleteMany called, returns generic expired message", async () => {
+    const wrongHash = await bcrypt.hash("999999", 10);
+    // First findMany (pending check), second findMany (re-read after increment)
+    prismaMock.verificationCode.findMany
+      .mockResolvedValueOnce([{ code: wrongHash, expires: new Date(Date.now() + 60_000), failedAttempts: 4 }])
+      .mockResolvedValueOnce([{ code: wrongHash, failedAttempts: 5 }]);
+    prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+    const result = await res.json();
+
+    expect(result).toEqual({ error: "Code expired or not found. Please request a new one." });
+    expect(prismaMock.verificationCode.deleteMany).toHaveBeenCalledWith({
+      where: { email: "user@example.com" },
+    });
+  });
+
+  it("IP rate-limited: returns 429 before any code lookup", async () => {
+    prismaMock.loginAttempt.count.mockResolvedValueOnce(10);
+
+    const res = await postVerify({ email: "user@example.com", code: "123456" });
+
+    expect(res.status).toBe(429);
+    expect(prismaMock.verificationCode.findMany).not.toHaveBeenCalled();
+  });
+
+  it("correct code still verifies (happy path regression)", async () => {
+    const validHash = await bcrypt.hash("654321", 10);
+    prismaMock.verificationCode.findMany.mockResolvedValueOnce([
+      { code: validHash, expires: new Date(Date.now() + 60_000) },
+    ]);
+    prismaMock.user.update.mockResolvedValueOnce({});
+    prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    const res = await postVerify({ email: "happy@example.com", code: "654321" });
+    const result = await res.json();
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.loginAttempt.create).not.toHaveBeenCalled();
+    expect(prismaMock.verificationCode.updateMany).not.toHaveBeenCalled();
   });
 });
 

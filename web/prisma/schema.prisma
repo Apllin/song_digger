@@ -94,11 +94,12 @@ model Session {
 // 6-digit email verification codes. Stored bcrypt-hashed so DB
 // compromise doesn't leak in-flight codes. 15-minute expiry.
 model VerificationCode {
-    id        String   @id @default(cuid())
-    email     String
-    code      String
-    expires   DateTime
-    createdAt DateTime @default(now())
+    id             String   @id @default(cuid())
+    email          String
+    code           String
+    expires        DateTime
+    failedAttempts Int      @default(0)
+    createdAt      DateTime @default(now())
 
     @@index([email])
 }
