@@ -1,6 +1,7 @@
 import type { AudioFeatures } from "@/lib/aggregator";
 import { prisma } from "@/lib/prisma";
 import { enrichAudioFeatures } from "@/lib/python-api/generated/clients/enrichAudioFeatures";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
 type Seed = { artist: string; title: string | null };
@@ -107,7 +108,7 @@ export async function resolveAudioFeatures(
   try {
     resp = await enrichAudioFeatures(
       { tracks: reqTracks },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS) },
+      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS), headers: pythonServiceHeaders() },
     );
   } catch (err) {
     console.error("[enrichment] eager /enrich failed:", err);

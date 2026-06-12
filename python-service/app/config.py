@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     yandex_music_enabled: bool = False
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
+    # Shared secret for web → python-service requests. Empty = fail-open (dev default).
+    python_service_secret: str = ""
 
     # extra="ignore": the shared root .env also holds POSTGRES_*, DATABASE_URL,
     # PYTHON_SERVICE_URL etc. for web/docker — silently ignore those here.

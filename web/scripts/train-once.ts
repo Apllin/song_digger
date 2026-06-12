@@ -2,6 +2,7 @@ import process from "node:process";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, SimilaritySource } from "../app/generated/prisma/client.ts";
 import { type TrackFeatures, TrackFeaturesSchema } from "../lib/aggregator.ts";
+import { pythonServiceHeaders } from "../lib/python-api/headers.ts";
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 const MIN_SAMPLES = 20;
@@ -52,7 +53,7 @@ async function main() {
 
   const res = await fetch(`${PYTHON_SERVICE_URL}/train`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...pythonServiceHeaders() },
     body: JSON.stringify({ samples }),
   });
 

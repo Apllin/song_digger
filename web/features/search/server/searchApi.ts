@@ -18,6 +18,7 @@ import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import { HttpError } from "@/lib/hono/httpError";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 import type { AppEnv } from "@/lib/hono/types";
 import { getActiveWeights } from "@/lib/modelWeights";
 import { parseQuery } from "@/lib/parse-query";
@@ -212,7 +213,7 @@ async function runSearch(
   try {
     pythonResult = await findSimilar(
       { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000), headers: pythonServiceHeaders() },
     );
   } catch (err) {
     console.error("[Search] Python stage failed:", err);

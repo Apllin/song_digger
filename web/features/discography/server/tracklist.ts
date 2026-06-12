@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { AppEnv } from "@/lib/hono/types";
 import { getReleaseTracklist } from "@/lib/python-api/generated/clients/getReleaseTracklist";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const schema = z.object({
   releaseId: z.string().trim().regex(/^\d+$/).max(12),
@@ -18,7 +19,7 @@ export const tracklistRoute = new Hono<AppEnv>().get(
     const data = await getReleaseTracklist(
       Number(releaseId),
       { release_type: type },
-      { baseURL: c.var.pythonServiceUrl },
+      { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() },
     );
     return c.json(data);
   },
