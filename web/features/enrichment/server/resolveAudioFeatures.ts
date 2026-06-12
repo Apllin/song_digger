@@ -1,8 +1,8 @@
 import type { AudioFeatures } from "@/lib/aggregator";
 import { prisma } from "@/lib/prisma";
 import { enrichAudioFeatures } from "@/lib/python-api/generated/clients/enrichAudioFeatures";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
+import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 type Seed = { artist: string; title: string | null };
 type Candidate = { sourceUrl: string; artist: string; title: string; source: string };

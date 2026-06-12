@@ -18,7 +18,11 @@ export const artistReleasesRoute = new Hono<AppEnv>().get(
     const meta = await prisma.artistReleasesMeta.findUnique({ where: { artistId } });
 
     if (!meta || Date.now() - meta.fetchedAt.getTime() >= TTL_30D_MS) {
-      const { releases } = await getArtistReleases(Number(artistId), {}, { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() });
+      const { releases } = await getArtistReleases(
+        Number(artistId),
+        {},
+        { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() },
+      );
       await prisma.$transaction([
         prisma.artistRelease.deleteMany({ where: { artistId } }),
         prisma.artistRelease.createMany({
