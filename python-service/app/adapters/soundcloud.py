@@ -264,6 +264,12 @@ def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
 class SoundCloudAdapter(AbstractAdapter):
     name = "soundcloud"
 
+    def __init__(self) -> None:
+        self._client = httpx.AsyncClient(timeout=TIMEOUT_SECONDS, headers=_HEADERS)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
         seed_url = await self._search_seed(query)
         if not seed_url:
@@ -275,9 +281,8 @@ class SoundCloudAdapter(AbstractAdapter):
         artist, track = _split_query(query)
         search_query = f"{artist} {track}" if track else artist
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, headers=_HEADERS) as client:
-                resp = await client.get(f"{SC_BASE}/search", params={"q": search_query})
-                resp.raise_for_status()
+            resp = await self._client.get(f"{SC_BASE}/search", params={"q": search_query})
+            resp.raise_for_status()
         except Exception as e:
             print(f"[SoundCloud] search error: {e}")
             return None
@@ -286,9 +291,8 @@ class SoundCloudAdapter(AbstractAdapter):
     async def _fetch_recommended(self, seed_url: str, limit: int) -> list[TrackMeta]:
         rec_url = seed_url.rstrip("/") + "/recommended"
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, headers=_HEADERS) as client:
-                resp = await client.get(rec_url, headers=_HEADERS)
-                resp.raise_for_status()
+            resp = await self._client.get(rec_url)
+            resp.raise_for_status()
         except Exception as e:
             print(f"[SoundCloud] recommended error: {e}")
             return []

@@ -92,8 +92,24 @@ def _seed_cache_key(artist: str, track: str) -> str:
     return f"{artist.lower().strip()}|{track.lower().strip()}"
 
 
+_CLIENT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json",
+    "Referer": "https://trackid.net/",
+}
+
+
 class TrackidnetAdapter(AbstractAdapter):
     SOURCE = "trackidnet"
+
+    def __init__(self) -> None:
+        self._client = httpx.AsyncClient(
+            timeout=TIMEOUT_SECONDS,
+            headers=_CLIENT_HEADERS,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def find_similar(
         self, query: str, limit: int = DEFAULT_LIMIT
@@ -117,57 +133,50 @@ class TrackidnetAdapter(AbstractAdapter):
             ttl_seconds=_TRACKIDNET_SEED_TTL,
         )
 
-        async with httpx.AsyncClient(
-            timeout=TIMEOUT_SECONDS,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/json",
-                "Referer": "https://trackid.net/",
-            },
-        ) as client:
-            if seed is None:
-                seed = await _find_seed_track(client, artist, track)
-                if not seed or seed.get("id") is None:
-                    # Negative result: skip cache write — caller may succeed
-                    # on a future request when the catalogue grows.
-                    return []
-                # Persist only the fields downstream actually reads.
-                await upsert_external_cache(
-                    source="trackidnet_seed",
-                    cache_key=seed_key,
-                    payload={"id": seed["id"], "slug": seed.get("slug") or ""},
-                )
-            elif seed.get("id") is None:
+        client = self._client
+        if seed is None:
+            seed = await _find_seed_track(client, artist, track)
+            if not seed or seed.get("id") is None:
+                # Negative result: skip cache write — caller may succeed
+                # on a future request when the catalogue grows.
                 return []
+            # Persist only the fields downstream actually reads.
+            await upsert_external_cache(
+                source="trackidnet_seed",
+                cache_key=seed_key,
+                payload={"id": seed["id"], "slug": seed.get("slug") or ""},
+            )
+        elif seed.get("id") is None:
+            return []
 
-            # Use slug, not id, as the lookup key — trackid.net's
-            # /audiostreams?musicTrackId=… index does not surface every
-            # detected playlist for niche tracks (TRA-19), whereas the
-            # ?musicTrackSlug=… query does. Cache key follows the slug too.
-            seed_slug = seed.get("slug") or ""
-            playlist_slugs = await fetch_external_cache(
+        # Use slug, not id, as the lookup key — trackid.net's
+        # /audiostreams?musicTrackId=… index does not surface every
+        # detected playlist for niche tracks (TRA-19), whereas the
+        # ?musicTrackSlug=… query does. Cache key follows the slug too.
+        seed_slug = seed.get("slug") or ""
+        playlist_slugs = await fetch_external_cache(
+            source="trackidnet_playlists",
+            cache_key=seed_slug,
+            ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
+        )
+        if playlist_slugs is None:
+            playlist_slugs = await _list_playlists(client, seed_slug)
+            if not playlist_slugs:
+                return []
+            await upsert_external_cache(
                 source="trackidnet_playlists",
                 cache_key=seed_slug,
-                ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
+                payload=playlist_slugs,
             )
-            if playlist_slugs is None:
-                playlist_slugs = await _list_playlists(client, seed_slug)
-                if not playlist_slugs:
-                    return []
-                await upsert_external_cache(
-                    source="trackidnet_playlists",
-                    cache_key=seed_slug,
-                    payload=playlist_slugs,
-                )
-            elif not playlist_slugs:
-                return []
+        elif not playlist_slugs:
+            return []
 
-            seed_slug = seed.get("slug") or ""
-            coocc = await _aggregate_incrementally(
-                client,
-                playlist_slugs,
-                lambda a: _extract_window(a, seed_slug, WINDOW),
-            )
+        seed_slug = seed.get("slug") or ""
+        coocc = await _aggregate_incrementally(
+            client,
+            playlist_slugs,
+            lambda a: _extract_window(a, seed_slug, WINDOW),
+        )
 
         ranked = sorted(
             coocc.values(),
@@ -189,37 +198,30 @@ class TrackidnetAdapter(AbstractAdapter):
         if not artist_lc:
             return []
 
-        async with httpx.AsyncClient(
-            timeout=TIMEOUT_SECONDS,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/json",
-                "Referer": "https://trackid.net/",
-            },
-        ) as client:
-            slugs = await fetch_external_cache(
+        client = self._client
+        slugs = await fetch_external_cache(
+            source="trackidnet_keyword",
+            cache_key=artist_lc,
+            ttl_seconds=_TRACKIDNET_KEYWORD_TTL,
+        )
+        if slugs is None:
+            slugs = await _search_audiostreams_by_keyword(client, artist)
+            if not slugs:
+                return []
+            await upsert_external_cache(
                 source="trackidnet_keyword",
                 cache_key=artist_lc,
-                ttl_seconds=_TRACKIDNET_KEYWORD_TTL,
+                payload=slugs,
             )
-            if slugs is None:
-                slugs = await _search_audiostreams_by_keyword(client, artist)
-                if not slugs:
-                    return []
-                await upsert_external_cache(
-                    source="trackidnet_keyword",
-                    cache_key=artist_lc,
-                    payload=slugs,
-                )
-            elif not slugs:
-                return []
+        elif not slugs:
+            return []
 
-            slugs = slugs[:MAX_KEYWORD_PLAYLISTS]
-            coocc = await _aggregate_incrementally(
-                client,
-                slugs,
-                lambda a: _extract_playlist_tracks_excluding_artist(a, artist_lc),
-            )
+        slugs = slugs[:MAX_KEYWORD_PLAYLISTS]
+        coocc = await _aggregate_incrementally(
+            client,
+            slugs,
+            lambda a: _extract_playlist_tracks_excluding_artist(a, artist_lc),
+        )
 
         ranked = sorted(
             coocc.values(),
