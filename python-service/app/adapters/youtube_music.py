@@ -15,6 +15,16 @@ def _yt_embed_url(video_id: str) -> str:
     return f"https://www.youtube.com/embed/{video_id}?autoplay=1&origin={settings.frontend_origin}"
 
 
+def _split_artist_title(raw_title: str) -> tuple[str | None, str]:
+    """UGC video titles pack 'Artist - Title' into one string, with the channel
+    as the nominal artist. Split on the first ' - '; return (None, raw) when
+    there's no separator so the caller keeps the channel / original title."""
+    parts = raw_title.split(" - ", 1)
+    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+        return parts[0].strip(), parts[1].strip()
+    return None, raw_title.strip()
+
+
 def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
     """Return the videoId of the best-scoring search hit for `query`.
 
@@ -48,6 +58,20 @@ def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
     )
     print(f"[YouTubeMusic] no seed matched query {query!r}; rejected: {rejected}")
     return None
+
+
+def _seed_dict_from_candidate(cand: dict, *, parse_title: bool) -> dict:
+    """Build the {videoId, artist, title} seed dict resolve_seed returns.
+    For UGC videos the real 'Artist - Title' is in the title and the artists
+    field is the uploader channel, so parse it out; primary artist only."""
+    names = [a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")]
+    if parse_title:
+        parsed_artist, title = _split_artist_title(cand.get("title") or "")
+        artist = parsed_artist or (names[0] if names else None)
+    else:
+        title = cand.get("title") or ""
+        artist = names[0] if names else None
+    return {"videoId": cand.get("videoId"), "artist": artist or None, "title": title}
 
 
 def _pick_seed_video_id_from_videos(query: str, results: list[dict]) -> str | None:
@@ -90,12 +114,21 @@ def _parse_ytm_track(t: dict) -> TrackMeta | None:
     vid = t.get("videoId")
     if not vid:
         return None
-    artists = t.get("artists") or []
-    artist = ", ".join(a.get("name", "") for a in artists) or "Unknown"
+    raw_title = t.get("title", "Unknown")
+    artist = ", ".join(a.get("name", "") for a in (t.get("artists") or [])) or "Unknown"
+    title = raw_title
+    # UGC uploads carry 'Artist - Title' in the title and the uploader channel in
+    # the artists field — parse the real pair so cards show the performer, not the
+    # channel. Catalog tracks (ATV/OMV) keep their clean fields untouched.
+    if t.get("videoType") == "MUSIC_VIDEO_TYPE_UGC":
+        parsed_artist, parsed_title = _split_artist_title(raw_title)
+        if parsed_artist:
+            artist = parsed_artist
+            title = parsed_title
     thumbnails = t.get("thumbnail") or []
     cover_url = thumbnails[-1].get("url") if thumbnails else None
     return TrackMeta(
-        title=t.get("title", "Unknown"),
+        title=title,
         artist=artist,
         source="youtube_music",
         sourceUrl=f"https://music.youtube.com/watch?v={vid}",
@@ -153,6 +186,34 @@ class YouTubeMusicAdapter(AbstractAdapter):
         # Skip the first — it's the source track itself
         parsed = [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
         return parsed
+
+    def _resolve_seed_sync(self, query: str) -> dict | None:
+        """Resolve `query` to a seed across catalog songs, then UGC videos — the
+        same two-tier lookup as `_find_similar_sync`, but returning the seed's
+        videoId + primary artist + title so /similar can seed Cosine by URL
+        (TRA-25) and derive the source artist. Returns None when nothing matches.
+        """
+        songs = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
+        vid = _pick_seed_video_id(query, songs) if songs else None
+        if vid:
+            cand = next((c for c in songs if c.get("videoId") == vid), None)
+            return _seed_dict_from_candidate(cand, parse_title=False) if cand else None
+        if " - " in query:
+            videos = _ytm.search(query, filter="videos", limit=SEED_CANDIDATES)
+            vid = _pick_seed_video_id_from_videos(query, videos)
+            if vid:
+                cand = next((c for c in videos if c.get("videoId") == vid), None)
+                return _seed_dict_from_candidate(cand, parse_title=True) if cand else None
+        return None
+
+    async def resolve_seed(self, query: str) -> dict | None:
+        """Public seed resolver (catalog songs → UGC videos). Used by /similar to
+        seed Cosine with the correct track URL and to derive the source artist."""
+        try:
+            return await asyncio.to_thread(self._resolve_seed_sync, query)
+        except Exception as e:
+            print(f"[YouTubeMusic] resolve_seed error: {e}")
+            return None
 
     async def find_similar_by_video_id(self, video_id: str, limit: int = 50) -> list[TrackMeta]:
         """Start YTM Radio from a known videoId — no search step needed."""

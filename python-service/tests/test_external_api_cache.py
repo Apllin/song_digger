@@ -33,8 +33,10 @@ def _mock_pool(conn: MagicMock) -> MagicMock:
 def _reset_pool():
     """Reset the lazy-initialized pool between tests."""
     db._pool = None
+    db._pool_init_failed = False
     yield
     db._pool = None
+    db._pool_init_failed = False
 
 
 # ── fetch_external_cache ─────────────────────────────────────────────────────
@@ -219,3 +221,38 @@ async def test_upsert_swallows_db_exception():
     with patch.object(db, "_get_pool", AsyncMock(return_value=pool)):
         # Must not raise — caller is best-effort.
         await db.upsert_external_cache(source="s", cache_key="k", payload={"x": 1})
+
+
+# ── _get_pool soft-degradation (regression: Last.fm fallback wiped on DB outage)
+
+async def test_get_pool_returns_none_when_database_url_empty(monkeypatch):
+    monkeypatch.setattr(db.settings, "database_url", "")
+    assert await db._get_pool() is None
+
+
+async def test_get_pool_soft_degrades_when_connection_fails(monkeypatch, capsys):
+    """create_pool() connects eagerly, so a DB outage / cold-start / SSL error
+    raises at pool init — before any guarded query. It must be caught and
+    soft-degraded to None, otherwise the exception propagates through every db
+    helper and silently drops a whole source from the /similar fan-out."""
+    monkeypatch.setattr(db.settings, "database_url", "postgres://x")
+    db._pool_init_failed = False
+    with patch.object(
+        db.asyncpg, "create_pool", AsyncMock(side_effect=Exception("cold start"))
+    ):
+        assert await db._get_pool() is None
+        # _pool stays None so the next request retries once the DB recovers.
+        assert db._pool is None
+    assert "pool init failed" in capsys.readouterr().out
+
+
+async def test_get_pool_logs_once_per_outage(monkeypatch, capsys):
+    """Repeated failures within an outage log a single line, not one per call."""
+    monkeypatch.setattr(db.settings, "database_url", "postgres://x")
+    db._pool_init_failed = False
+    with patch.object(
+        db.asyncpg, "create_pool", AsyncMock(side_effect=Exception("down"))
+    ):
+        for _ in range(5):
+            assert await db._get_pool() is None
+    assert capsys.readouterr().out.count("pool init failed") == 1
