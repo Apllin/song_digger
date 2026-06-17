@@ -166,13 +166,22 @@ async function saveTracks(
   //    score/sources are fixed for that pair within a single search, so
   //    skipDuplicates is the correct semantics — no UPDATE branch needed.
   await prisma.searchResult.createMany({
-    data: tracks.map((t) => ({
-      searchQueryId: searchId,
-      trackId: urlToRow.get(t.sourceUrl)!.id,
-      score: t.score ?? null,
-      sources: uniqueSources(t),
-      features: buildFeatures(t),
-    })),
+    data: tracks.flatMap((t) => {
+      // A row is always present after step 1's insert + step 2's select; guard
+      // anyway so a single missing mapping skips that candidate instead of
+      // throwing and aborting the whole save (which would strand the search).
+      const row = urlToRow.get(t.sourceUrl);
+      if (!row) return [];
+      return [
+        {
+          searchQueryId: searchId,
+          trackId: row.id,
+          score: t.score ?? null,
+          sources: uniqueSources(t),
+          features: buildFeatures(t),
+        },
+      ];
+    }),
     skipDuplicates: true,
   });
 
@@ -222,28 +231,41 @@ async function runSearch(
   const pythonDurationMs = performance.now() - pythonStart;
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
-  const weights = await getActiveWeights();
 
-  // Fuse first to get the deduped candidate set (one row per identity), then
-  // eagerly resolve BPM/key for all of them so the audio bonus is applied to
-  // the whole list before the final sort — not on a later background pass.
-  // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
-  const seed = { artist, title: track };
-  const fused = rrfFuse(pythonResult.source_lists, weights);
-  const { audio, attemptedUrls } = await resolveAudioFeatures(
-    cacheKeyFor(artist, track),
-    seed,
-    fused,
-    pythonServiceUrl,
-  );
-  const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
-  const playable = await enrichMissingCovers(aggregated);
-  await saveTracks(searchId, playable, seed, audio, attemptedUrls);
+  // Everything past the Python fan-out (weights, fusion, eager BPM/key
+  // resolution, cover enrichment, persistence) must either reach
+  // `status: "done"` or flip the row to "error". Without this guard a throw in
+  // any of these steps escaped uncaught, leaving the SearchQuery pinned at
+  // "running" forever — the client polls a search that never completes and
+  // never errors. Mark error and rethrow so the request fails cleanly.
+  try {
+    const weights = await getActiveWeights();
 
-  await prisma.searchQuery.update({
-    where: { id: searchId },
-    data: { status: "done" },
-  });
+    // Fuse first to get the deduped candidate set (one row per identity), then
+    // eagerly resolve BPM/key for all of them so the audio bonus is applied to
+    // the whole list before the final sort — not on a later background pass.
+    // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
+    const seed = { artist, title: track };
+    const fused = rrfFuse(pythonResult.source_lists, weights);
+    const { audio, attemptedUrls } = await resolveAudioFeatures(
+      cacheKeyFor(artist, track),
+      seed,
+      fused,
+      pythonServiceUrl,
+    );
+    const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
+    const playable = await enrichMissingCovers(aggregated);
+    await saveTracks(searchId, playable, seed, audio, attemptedUrls);
+
+    await prisma.searchQuery.update({
+      where: { id: searchId },
+      data: { status: "done" },
+    });
+  } catch (err) {
+    console.error("[Search] post-fetch stage failed:", err);
+    await prisma.searchQuery.update({ where: { id: searchId }, data: { status: "error" } });
+    throw new HttpError(500, { message: "Search failed while building results.", cause: err });
+  }
 
   return { pythonDurationMs, sourcesUsed };
 }
