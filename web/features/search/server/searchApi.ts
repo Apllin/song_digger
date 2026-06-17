@@ -48,17 +48,18 @@ function uniqueSources(t: FusedCandidate): string[] {
 // Reads one page of a completed search straight from the persisted
 // SearchResult rows. The full fused+enriched list lives in Postgres after
 // `runSearch` (or a previous cache-fill), so paging is a cheap skip/take —
-// no Python fan-out, no re-fusion. Ordering pins `id` as a tiebreaker so a
-// row never straddles a page boundary across requests. Dislike filtering is
-// applied client-side over the returned page; this stays user-agnostic so the
-// page is shareable/cacheable.
+// no Python fan-out, no re-fusion. Orders by the persisted `rank` (the
+// post-aggregation RRF + artist-diversification order) so the 2-consecutive
+// cap holds across pages; `id` is a stable tiebreaker so a row never straddles
+// a page boundary. Dislike filtering is applied client-side over the returned
+// page; this stays user-agnostic so the page is shareable/cacheable.
 async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: number) {
   const where = { searchQueryId: searchId };
   const [items, rows] = await Promise.all([
     prisma.searchResult.count({ where }),
     prisma.searchResult.findMany({
       where,
-      orderBy: [{ score: "desc" }, { id: "asc" }],
+      orderBy: [{ rank: "asc" }, { id: "asc" }],
       skip: (page - 1) * perPage,
       take: perPage,
       include: { track: true },
@@ -166,7 +167,11 @@ async function saveTracks(
   //    score/sources are fixed for that pair within a single search, so
   //    skipDuplicates is the correct semantics — no UPDATE branch needed.
   await prisma.searchResult.createMany({
-    data: tracks.flatMap((t) => {
+    // `tracks` is the final post-aggregation order (RRF + artist
+    // diversification). Persist that index as `rank` so paged reads preserve it
+    // — score alone re-clusters same-artist tracks. Skipped rows leave gaps in
+    // rank; relative order is unaffected.
+    data: tracks.flatMap((t, i) => {
       // A row is always present after step 1's insert + step 2's select; guard
       // anyway so a single missing mapping skips that candidate instead of
       // throwing and aborting the whole save (which would strand the search).
@@ -177,6 +182,7 @@ async function saveTracks(
           searchQueryId: searchId,
           trackId: row.id,
           score: t.score ?? null,
+          rank: i,
           sources: uniqueSources(t),
           features: buildFeatures(t),
         },
