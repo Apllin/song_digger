@@ -20,20 +20,38 @@ from app.config import settings
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
+_pool_init_failed = False  # gates repeated soft-degrade logs during an outage
 
 
 async def _get_pool() -> asyncpg.Pool | None:
-    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty."""
-    global _pool
+    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty OR the
+    connection can't be established.
+
+    `create_pool(min_size=1)` connects eagerly, so a DB outage / cold-start /
+    SSL-config error raises here — before any guarded query block. Left
+    unguarded it propagates through every db helper and silently wipes a whole
+    source in the /similar fan-out (Last.fm fallback, trackid.net, lastfm hop).
+    Catch it and soft-degrade exactly as for an empty DATABASE_URL; `_pool`
+    stays None so the next request retries once the DB is reachable again."""
+    global _pool, _pool_init_failed
     if not settings.database_url:
         return None
     async with _pool_lock:
         if _pool is None:
-            _pool = await asyncpg.create_pool(
-                settings.database_url,
-                min_size=1,
-                max_size=5,
-            )
+            try:
+                _pool = await asyncpg.create_pool(
+                    settings.database_url,
+                    min_size=1,
+                    max_size=5,
+                )
+                _pool_init_failed = False
+            except Exception as e:
+                # Log once per outage, not once per cache call — a single
+                # /similar fan-out calls this many times.
+                if not _pool_init_failed:
+                    print(f"[db] pool init failed, soft-degrading: {e}")
+                    _pool_init_failed = True
+                return None
     return _pool
 
 

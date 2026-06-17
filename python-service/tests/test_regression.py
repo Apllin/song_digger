@@ -40,8 +40,8 @@ async def test_find_by_artist_and_track_survives_cosine_dns_error():
               side_effect=Exception("[Errno 8] nodename nor servname provided")),
         patch("app.api.routes.similar._ytm.find_similar", new_callable=AsyncMock,
               return_value=[ytm_track]),
-        patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
-              return_value=[]),
+        patch("app.api.routes.similar._ytm.resolve_seed", new_callable=AsyncMock,
+              return_value={"videoId": "v", "artist": "Surgeon", "title": "Flatliner"}),
     ):
         source_lists, _source_artist = await _find_by_artist_and_track(
             "Surgeon", "Flatliner", limit=5
@@ -89,7 +89,7 @@ async def test_cosine_track_miss_does_not_fall_back_to_artist_seed():
     with (
         patch("app.api.routes.similar._cosine.find_similar", new=cosine_mock),
         patch("app.api.routes.similar._ytm.find_similar", new_callable=AsyncMock, return_value=[]),
-        patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock, return_value=[]),
+        patch("app.api.routes.similar._ytm.resolve_seed", new_callable=AsyncMock, return_value=None),
         patch("app.api.routes.similar._yandex.find_similar", new_callable=AsyncMock, return_value=[]),
         patch("app.api.routes.similar._lastfm.find_similar", new_callable=AsyncMock, return_value=[]),
         patch("app.api.routes.similar._trackidnet.find_similar", new_callable=AsyncMock, return_value=[]),
@@ -109,23 +109,23 @@ async def test_cosine_track_miss_does_not_fall_back_to_artist_seed():
 async def test_find_by_artist_and_track_returns_ytm_when_cosine_fails():
     """YTM results from OTHER artists must reach the caller even when CosineClub is down.
 
-    ytm_source_search identifies "Surgeon" as the source → source_artist = "Surgeon".
+    resolve_seed identifies "Surgeon" as the source → source_artist = "Surgeon".
     The similar track by "Oscar Mulero" is a different artist, so it passes the filter.
     """
     ytm_track = make_track(
         title="Some Track", artist="Oscar Mulero", source="youtube_music",
         sourceUrl="https://music.youtube.com/watch?v=xyz"
     )
-    # Simulate ytm search_songs returning the source track with correct artist
-    ytm_source_result = [{"artists": [{"name": "Surgeon"}], "title": "Flatliner"}]
+    # Simulate the resolved YTM seed for the queried track with the correct artist
+    ytm_seed = {"videoId": "seedvid", "artist": "Surgeon", "title": "Flatliner"}
 
     with (
         patch("app.api.routes.similar._cosine.find_similar", new_callable=AsyncMock,
               side_effect=Exception("DNS failure")),
         patch("app.api.routes.similar._ytm.find_similar", new_callable=AsyncMock,
               return_value=[ytm_track]),
-        patch("app.api.routes.similar._ytm.search_songs", new_callable=AsyncMock,
-              return_value=ytm_source_result),
+        patch("app.api.routes.similar._ytm.resolve_seed", new_callable=AsyncMock,
+              return_value=ytm_seed),
     ):
         source_lists, *_ = await _find_by_artist_and_track("Surgeon", "Flatliner", limit=5)
 

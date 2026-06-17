@@ -38,17 +38,46 @@ class CosineClubAdapter(AbstractAdapter):
             seed_id = await self._search_seed_id(query)
             if not seed_id:
                 return []
-            resp = await self._client.get(
-                f"/v1/tracks/{seed_id}/similar",
-                params={"limit": limit},
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            similar = (payload.get("data") or {}).get("similar_tracks") or []
-            return [self._parse(t) for t in similar]
+            return await self._fetch_similar(seed_id, limit)
         except httpx.HTTPError as e:
             print(f"[CosineClub] find_similar error: {e}")
             return []
+
+    async def find_similar_by_url(self, url: str, limit: int = 20) -> list[TrackMeta]:
+        """Seed Cosine from a track URL (YTM/YouTube/Bandcamp/SoundCloud) — TRA-25.
+
+        Cosine parses the pasted URL and resolves the exact track even when it's
+        absent from the catalog, so the small-DB miss that text `find_similar`
+        hits is bypassed. No fuzzy seed-match validation: the URL pins the
+        track, so the top search hit is taken directly.
+        """
+        if not settings.cosine_club_api_key or not url:
+            return []
+        try:
+            resp = await self._client.get(
+                "/v1/search",
+                params={"q": url, "limit": 1},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data") or []
+            seed_id = data[0].get("id") if data else None
+            if not seed_id:
+                return []
+            return await self._fetch_similar(seed_id, limit)
+        except httpx.HTTPError as e:
+            print(f"[CosineClub] find_similar_by_url error: {e}")
+            return []
+
+    async def _fetch_similar(self, seed_id: str, limit: int) -> list[TrackMeta]:
+        """Fetch the similar-track list for a resolved seed id."""
+        resp = await self._client.get(
+            f"/v1/tracks/{seed_id}/similar",
+            params={"limit": limit},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        similar = (payload.get("data") or {}).get("similar_tracks") or []
+        return [self._parse(t) for t in similar]
 
     async def search_suggestions(self, query: str, limit: int = 10) -> list[str]:
         """Return 'Artist - Title' strings for autocomplete."""
