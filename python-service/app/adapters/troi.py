@@ -30,6 +30,10 @@ DEFAULT_LIMIT = 50
 # must not stall the /similar gather.
 RUN_TIMEOUT_SECONDS = 20.0
 MB_RECORDING_URL = "https://musicbrainz.org/recording/"
+# lb-radio emits this in user_feedback() when the seed artist has no
+# collaborative-filtering neighbours in ListenBrainz — its cue that the run
+# fell back to non-similarity fill. Matched case-insensitively.
+_NO_SIMILARS_MARKER = "no similar artists"
 
 # Similarity moves slowly and a run is expensive — cache prompt outputs for a
 # long TTL. Fresh reads honour the TTL; the serve-stale path ignores it.
@@ -149,6 +153,16 @@ def _run_lb_radio(mode: str, prompt: str, limit: int) -> list[dict]:
     )
     playlist = patch.generate_playlist()
     if playlist is None or not playlist.playlists:
+        return []
+
+    # Honesty guard: when ListenBrainz has no collaborative-filtering similar
+    # artists for the seed (common for the underground catalogue we target),
+    # lb-radio falls back to the seed's own tracks / generic tag fill. That is
+    # genre noise, not similarity — surfacing it would misrepresent Troi as a
+    # similarity source. Detect the signal in the patch's own feedback and
+    # contribute nothing instead. Validated on "Joe Milli" (TRA-28).
+    feedback = " ".join(patch.user_feedback() or []).lower()
+    if _NO_SIMILARS_MARKER in feedback:
         return []
 
     rows: list[dict] = []

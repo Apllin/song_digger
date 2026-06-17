@@ -209,3 +209,54 @@ async def test_empty_prompt_short_circuits(_enabled):
 
 async def test_random_techno_track_is_none():
     assert await TroiAdapter().random_techno_track() is None
+
+
+# ── honesty guard: _run_lb_radio drops non-similarity fallback ────────────────
+
+from types import SimpleNamespace
+
+from app.adapters.troi import _run_lb_radio
+
+
+def _fake_patch(feedback: list[str], recordings: list[dict]):
+    """Build a fake LBRadioPatch class whose instances expose the bits
+    _run_lb_radio reads: generate_playlist() and user_feedback()."""
+    recs = [
+        SimpleNamespace(mbid=r["mbid"], name=r["title"], artist_credit=SimpleNamespace(name=r["artist"]))
+        for r in recordings
+    ]
+    playlist = SimpleNamespace(playlists=[SimpleNamespace(recordings=recs)])
+
+    class _FakePatch:
+        def __init__(self, args):
+            pass
+
+        def generate_playlist(self):
+            return playlist
+
+        def user_feedback(self):
+            return feedback
+
+    return _FakePatch
+
+
+def test_run_lb_radio_drops_no_similar_artists_fallback():
+    # lb-radio produced recordings but flagged the seed has no CF neighbours —
+    # that's genre/own-artist fill, not similarity. Guard must return [].
+    fake = _fake_patch(
+        feedback=["Using seed artist Joe Milli only, since this artist has no similar artists (yet)."],
+        recordings=[{"mbid": "m1", "title": "Flute Dub", "artist": "Joe Milli"}],
+    )
+    with patch("troi.patches.lb_radio.LBRadioPatch", fake):
+        assert _run_lb_radio("hard", "artist:(Joe Milli)", 10) == []
+
+
+def test_run_lb_radio_keeps_real_cf_similars():
+    # Clean feedback (real CF neighbours) → recordings are surfaced.
+    fake = _fake_patch(
+        feedback=["artist: using artist Aphex Twin and similar artists."],
+        recordings=[{"mbid": "m1", "title": "The Pining", "artist": "Clark"}],
+    )
+    with patch("troi.patches.lb_radio.LBRadioPatch", fake):
+        rows = _run_lb_radio("hard", "artist:(Aphex Twin)", 10)
+    assert [r["artist"] for r in rows] == ["Clark"]
