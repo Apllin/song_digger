@@ -23,7 +23,6 @@ import { getActiveWeights } from "@/lib/modelWeights";
 import { parseQuery } from "@/lib/parse-query";
 import { prisma } from "@/lib/prisma";
 import { findSimilar } from "@/lib/python-api/generated/clients/findSimilar";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const SearchBodySchema = z.object({
   input: z.string().trim().min(1).max(500),
@@ -206,14 +205,13 @@ async function runSearch(
   input: string,
   artist: string,
   track: string | null,
-  pythonServiceUrl: string,
 ): Promise<{ pythonDurationMs: number; sourcesUsed: string[] }> {
   const pythonStart = performance.now();
   let pythonResult;
   try {
     pythonResult = await findSimilar(
       { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000), headers: pythonServiceHeaders() },
+      { signal: AbortSignal.timeout(90_000) },
     );
   } catch (err) {
     console.error("[Search] Python stage failed:", err);
@@ -231,12 +229,7 @@ async function runSearch(
   // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
   const seed = { artist, title: track };
   const fused = rrfFuse(pythonResult.source_lists, weights);
-  const { audio, attemptedUrls } = await resolveAudioFeatures(
-    cacheKeyFor(artist, track),
-    seed,
-    fused,
-    pythonServiceUrl,
-  );
+  const { audio, attemptedUrls } = await resolveAudioFeatures(cacheKeyFor(artist, track), seed, fused);
   const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
   const playable = await enrichMissingCovers(aggregated);
   await saveTracks(searchId, playable, seed, audio, attemptedUrls);
@@ -279,13 +272,7 @@ export const searchApi = new Hono<AppEnv>()
     });
     const searchQueryId = SearchQueryIdSchema.parse(searchQuery.id);
 
-    const { pythonDurationMs, sourcesUsed } = await runSearch(
-      searchQueryId,
-      input,
-      artist,
-      track,
-      c.var.pythonServiceUrl,
-    );
+    const { pythonDurationMs, sourcesUsed } = await runSearch(searchQueryId, input, artist, track);
     const m = c.var.metrics;
     if (m) {
       m.cacheHit = false;

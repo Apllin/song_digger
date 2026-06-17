@@ -7,12 +7,17 @@ from app.api.routes.discogs import router as discogs_router
 from app.api.routes.ytm_playlist import router as ytm_playlist_router
 from app.api.routes.train import router as train_router
 from app.api.routes.enrich import router as enrich_router
+from app.config import settings
 from app.core.auth_middleware import AuthMiddleware
 from app.core.metrics import MetricsMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not settings.python_service_secret:
+        raise RuntimeError(
+            "PYTHON_SERVICE_SECRET is required to start the python-service. Set it in .env."
+        )
     yield
     from app.api.routes.similar import _cosine, _soundcloud, _trackidnet
     from app.api.routes.discogs import _discogs

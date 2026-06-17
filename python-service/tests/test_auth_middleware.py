@@ -12,11 +12,20 @@ def anyio_backend():
     return "asyncio"
 
 
-async def test_no_secret_allows_request_without_header():
-    """Secret unset (empty string) → fail-open, all requests pass."""
+async def test_health_bypasses_auth_without_secret(monkeypatch):
+    """/health is always reachable, even with no secret configured."""
+    monkeypatch.setattr(settings, "python_service_secret", "")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/health")
     assert resp.status_code == 200
+
+
+async def test_no_secret_rejects_non_health_request(monkeypatch):
+    """Secret unset → fail-closed: non-health requests get a loud 500."""
+    monkeypatch.setattr(settings, "python_service_secret", "")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/similar", content=b"{}")
+    assert resp.status_code == 500
 
 
 async def test_secret_set_rejects_without_header(monkeypatch):

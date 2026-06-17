@@ -2,7 +2,6 @@ import type { AudioFeatures } from "@/lib/aggregator";
 import { prisma } from "@/lib/prisma";
 import { enrichAudioFeatures } from "@/lib/python-api/generated/clients/enrichAudioFeatures";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 type Seed = { artist: string; title: string | null };
 type Candidate = { sourceUrl: string; artist: string; title: string; source: string };
@@ -40,7 +39,6 @@ export async function resolveAudioFeatures(
   cacheKey: string,
   seed: Seed,
   candidates: Candidate[],
-  pythonServiceUrl: string,
 ): Promise<ResolvedAudioFeatures> {
   const urls = candidates.map((c) => c.sourceUrl);
   const [seedRow, rows] = await Promise.all([
@@ -106,10 +104,7 @@ export async function resolveAudioFeatures(
 
   let resp;
   try {
-    resp = await enrichAudioFeatures(
-      { tracks: reqTracks },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS), headers: pythonServiceHeaders() },
-    );
+    resp = await enrichAudioFeatures({ tracks: reqTracks }, { signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS) });
   } catch (err) {
     console.error("[enrichment] eager /enrich failed:", err);
     return { audio, attemptedUrls };

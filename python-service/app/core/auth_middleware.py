@@ -1,9 +1,10 @@
 """Shared-secret middleware for the python-service.
 
-When PYTHON_SERVICE_SECRET is unset the middleware is a no-op (fail-open),
-matching the repo's soft-degradation convention for optional credentials.
-When set, every request except GET /health must carry
-`x-internal-auth: <secret>` or receive a 401.
+Fail-closed: every request except GET /health must carry
+`x-internal-auth: <secret>` or receive a 401. A missing secret is a
+misconfiguration (the app refuses to start without it — see app.main), so
+a request that reaches the middleware with no secret configured is a loud
+500 rather than a silent pass-through.
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        secret = settings.python_service_secret
-        if not secret:
-            return await call_next(request)
-
         if request.url.path == "/health":
             return await call_next(request)
+
+        secret = settings.python_service_secret
+        if not secret:
+            return JSONResponse({"detail": "server auth misconfigured"}, status_code=500)
 
         provided = request.headers.get("x-internal-auth", "")
         if not hmac.compare_digest(provided, secret):

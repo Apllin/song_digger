@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-client = TestClient(app)
+# Fail-closed auth: the conftest autouse fixture sets this same secret on the
+# settings object, so requests through the middleware pass.
+client = TestClient(app, headers={"x-internal-auth": "test-secret"})
 
 
 def _track(url: str, title: str = "T", artist: str = "A", bpm=None, key=None) -> dict:

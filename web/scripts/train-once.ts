@@ -2,9 +2,10 @@ import process from "node:process";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, SimilaritySource } from "../app/generated/prisma/client.ts";
 import { type TrackFeatures, TrackFeaturesSchema } from "../lib/aggregator.ts";
-import { pythonServiceHeaders } from "../lib/python-api/headers.ts";
+import { trainWeights } from "../lib/python-api/generated/clients/trainWeights.ts";
+// Side-effect import: configures the python-service client (baseURL + auth) at startup.
+import "../lib/python-api/client.ts";
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
 const MIN_SAMPLES = 20;
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -13,14 +14,6 @@ const prisma = new PrismaClient({ adapter });
 interface TrainSample {
   features: TrackFeatures;
   is_similar: boolean;
-}
-
-interface TrainResult {
-  sample_size: number;
-  rank_decay_k: number;
-  cosine_score_weight: number;
-  num_sources_weight: number;
-  source_weights: Record<SimilaritySource, number>;
 }
 
 async function main() {
@@ -51,18 +44,7 @@ async function main() {
     throw new Error(`Only ${samples.length} samples have feature data (need ${MIN_SAMPLES}).`);
   }
 
-  const res = await fetch(`${PYTHON_SERVICE_URL}/train`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...pythonServiceHeaders() },
-    body: JSON.stringify({ samples }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`python /train failed ${res.status}: ${body}`);
-  }
-
-  const result = (await res.json()) as TrainResult;
+  const result = await trainWeights({ samples });
   console.log("python /train ok:", result);
 
   const latest = await prisma.modelWeights.findFirst({
