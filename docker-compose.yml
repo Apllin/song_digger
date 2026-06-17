@@ -27,6 +27,12 @@ services:
       - "8000:8000"
     env_file:
       - ./.env
+    environment:
+      # Reach FlareSolverr over the compose-internal network (overrides .env).
+      # Empty/unset → the Discogs collaborative source soft-degrades to no owners.
+      DISCOGS_STATS_UNBLOCKER_URL: http://flaresolverr:8191/v1
+    depends_on:
+      - flaresolverr
     healthcheck:
       test:
         ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
@@ -55,3 +61,14 @@ services:
       # Web reaches python-service via the compose-internal hostname, not
       # localhost. DATABASE_URL is inherited from .env (Neon).
       PYTHON_SERVICE_URL: http://python-service:8000
+
+  # Solves the Cloudflare challenge on the Discogs www stats page so the
+  # collaborative source can read a release's Have/Want collectors. Runs a
+  # headless Chromium (~0.5-1GB RAM). NOT publicly exposed — it will fetch any
+  # URL it's handed (SSRF risk), so it stays on the compose-internal network
+  # with no published ports; only python-service talks to it.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info

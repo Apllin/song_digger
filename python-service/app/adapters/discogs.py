@@ -1,10 +1,69 @@
 import asyncio
+import re
 import unicodedata
 import httpx
 from app.config import settings
 from app.core.db import fetch_external_cache, upsert_external_cache
+from app.core.models import TrackMeta
 
 BASE_URL = "https://api.discogs.com"
+WWW_URL = "https://www.discogs.com"
+
+# Collaborative-filtering source: people who Have/Want the seed → what else is
+# in their collection, filtered to the seed's Discogs styles. Owners can only
+# be read off the Cloudflare-protected www stats page, so the build is offline
+# (scripts/warm_discogs_similar.py) and find_similar serves the warmed cache.
+_COLLAB_MAX_USERS = 3            # collectors sampled per seed (Have first, top up from Want)
+_COLLAB_TRACKS_PER_USER = 3      # max releases taken from one collector
+_COLLAB_OUTPUT_LIMIT = 9         # _COLLAB_MAX_USERS * _COLLAB_TRACKS_PER_USER
+_COLLAB_CANDIDATE_CAP = 9        # bound over-fetch when collectors are private/empty/off-genre
+_COLLAB_TTL = 30 * 86400
+
+# Style families: members are one symmetric cluster — they match each other in
+# both directions. Styles not listed match only themselves. Lowercased.
+STYLE_FAMILIES: list[set[str]] = [
+    {"acid", "acid house"},
+    {"deep house", "house", "tech house"},
+    {"dub", "dub techno"},
+    {"electro", "electro house"},
+    {"ambient", "drone"},
+    {"disco", "euro-disco"},
+    {"trance", "progressive trance", "psy-trance"},
+    {"happy hardcore", "hard house", "hard techno", "hard trance", "hardcore",
+     "hardstyle", "jumpstyle", "schranz", "gabber", "industrial"},
+]
+# style → stable family key (alphabetically-first member); unlisted → itself.
+_STYLE_TO_FAMILY: dict[str, str] = {
+    style: f"fam:{min(family)}" for family in STYLE_FAMILIES for style in family
+}
+
+
+def _fam(style: str) -> str:
+    """Canonical family key for a style (or the style itself when unlisted)."""
+    return _STYLE_TO_FAMILY.get(style, style)
+
+
+# Directional broadening (one-way): a SEED whose style is in the key family also
+# matches candidates in the listed broader families — but NOT the reverse, since
+# the targets are more abstract umbrellas. e.g. a House seed matches Techno
+# candidates; a Techno seed does not match House. Keyed by family key.
+STYLE_BROADENS: dict[str, set[str]] = {
+    _fam("house"): {_fam("techno")},                              # House (incl. Tech House) → Techno
+    _fam("minimal techno"): {_fam("techno")},                     # Minimal Techno → Techno
+    _fam("minimal"): {_fam("minimal techno"), _fam("techno")},    # Minimal → Minimal Techno, Techno
+}
+
+# The stats page renders three `release_stats_group` blocks (Ratings, Have,
+# Want), each an <h2> heading + a <ul> of collectors. The group div is
+# class="release_stats_group" — the inner list is "..._list", so this exact
+# marker splits on groups only. Usernames sit in <span class="linked_username">.
+_GROUP_MARKER = 'class="release_stats_group"'
+_H2_RE = re.compile(r"<h2[^>]*>(.*?)</h2>", re.S)
+_USERNAME_RE = re.compile(r'class="linked_username">([^<]+)</span>')
+# Heading keywords are localized; match the buckets we care about across RU/EN
+# (Ratings and any other group fall through and are ignored).
+_WANT_MARKERS = ("желаем", "want")
+_HAVE_MARKERS = ("есть у", "have", "коллекци", "collection")
 
 # Discogs is a community-edited DB (Wikipedia-style). Tracklists/metadata get
 # corrected after publish — most edits land in the first weeks. 30d catches
@@ -74,6 +133,82 @@ def _dedupe_by_title_artist(releases: list[dict]) -> list[dict]:
     return list(groups.values()) + ungrouped
 
 
+def _split_query(query: str) -> tuple[str, str]:
+    """The /similar route passes "Artist - Track"; artist-only mode passes the
+    bare artist. Returns (artist, track) with track="" when no track is given."""
+    if " - " in query:
+        artist, _, track = query.partition(" - ")
+        return artist.strip(), track.strip()
+    return query.strip(), ""
+
+
+def _parse_stats_usernames(html: str) -> dict[str, list[str]]:
+    """Extract Have/Want collector usernames from a release stats page.
+
+    Classifies each `release_stats_group` block by its <h2> heading and pulls
+    usernames from the `linked_username` spans, so the caller can prefer owners
+    and top up from wanters. The Ratings group (and any unrecognized group) is
+    skipped. Headings are localized — see `_WANT_MARKERS` / `_HAVE_MARKERS`.
+
+    Note: the page only renders a preview per group (e.g. "Не показано еще 8"),
+    which is plenty for the few collectors we sample but is NOT the full list."""
+    have: list[str] = []
+    want: list[str] = []
+    for chunk in html.split(_GROUP_MARKER)[1:]:
+        h2 = _H2_RE.search(chunk)
+        heading = (h2.group(1) if h2 else "").lower()
+        if any(m in heading for m in _WANT_MARKERS):
+            bucket = want
+        elif any(m in heading for m in _HAVE_MARKERS):
+            bucket = have
+        else:
+            continue  # Ratings / other groups carry no owner signal
+        for m in _USERNAME_RE.finditer(chunk):
+            name = m.group(1).strip()
+            if name and name not in bucket:
+                bucket.append(name)
+    return {"have": have, "want": want}
+
+
+def _style_families(styles: set[str]) -> set[str]:
+    """Collapse styles to their family key so related styles share one bucket.
+    Input must be lowercased; unlisted styles map to themselves."""
+    return {_fam(s) for s in styles}
+
+
+def _seed_match_targets(seed_styles: set[str]) -> set[str]:
+    """Family keys a seed matches: its own families plus their one-way
+    broadenings (e.g. a House seed also reaches Techno). See STYLE_BROADENS."""
+    fams = _style_families(seed_styles)
+    targets = set(fams)
+    for f in fams:
+        targets |= STYLE_BROADENS.get(f, set())
+    return targets
+
+
+def _track_from_collection_item(basic: dict) -> TrackMeta | None:
+    """Map a collection release's `basic_information` block to a TrackMeta.
+    Returns None when the release has no id (no stable sourceUrl)."""
+    rid = basic.get("id")
+    if not rid:
+        return None
+    artists = ", ".join(
+        a.get("name", "").strip() for a in basic.get("artists", []) if a.get("name")
+    )
+    labels = basic.get("labels") or []
+    styles = basic.get("styles") or []
+    genres = basic.get("genres") or []
+    return TrackMeta(
+        title=basic.get("title") or "Unknown",
+        artist=artists or "Unknown",
+        source="discogs",
+        sourceUrl=f"{WWW_URL}/release/{rid}",
+        coverUrl=basic.get("cover_image") or basic.get("thumb") or None,
+        genre=(styles[0] if styles else (genres[0] if genres else None)),
+        label=(labels[0].get("name") if labels else None),
+    )
+
+
 class DiscogsAdapter:
     """
     Fetches artist discography (releases + tracklists) via Discogs REST API.
@@ -97,9 +232,17 @@ class DiscogsAdapter:
             headers=headers,
             timeout=20.0,
         )
+        # Separate client for the www stats page (different host, no Discogs
+        # auth header) — routed through an unblocker since www is Cloudflare-gated.
+        self._stats_client = httpx.AsyncClient(
+            headers={"User-Agent": "TrackDigger/1.0"},
+            timeout=30.0,
+            follow_redirects=True,
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
+        await self._stats_client.aclose()
 
     async def _get(self, path: str, **kwargs) -> httpx.Response:
         """GET with automatic retry on 429 and transient 5xx (up to 3 attempts)."""
@@ -471,4 +614,174 @@ class DiscogsAdapter:
             cache_key=cache_key,
             payload=out,
         )
+        return out
+
+    # ── Collaborative similars ────────────────────────────────────────────────
+
+    async def find_similar(self, query: str, limit: int) -> list[TrackMeta]:
+        """Hot-path collaborative similars — reads the warm cache ONLY.
+
+        The owner list lives behind Cloudflare and the collection fan-out is
+        slow, so the actual build runs offline (`build_collaborative`, driven by
+        scripts/warm_discogs_similar.py). A cold seed returns [] rather than
+        adding the scrape + N collection calls to the /similar critical path.
+        """
+        if not settings.discogs_token:
+            return []
+        cached = await fetch_external_cache(
+            source="discogs_similar",
+            cache_key=_normalize_query(query),
+            ttl_seconds=_COLLAB_TTL,
+        )
+        if not cached:
+            return []
+        return [TrackMeta(**t) for t in cached][:limit]
+
+    async def build_collaborative(
+        self, query: str, limit: int = _COLLAB_OUTPUT_LIMIT
+    ) -> list[TrackMeta]:
+        """Offline build: seed → Have/Want collectors → their on-genre releases.
+
+        Resolves the seed release, samples up to `_COLLAB_MAX_USERS` collectors
+        (Have first, topping up from Want), and pulls up to
+        `_COLLAB_TRACKS_PER_USER` releases per collector whose Discogs styles
+        overlap the seed's. Writes the result to the `discogs_similar` cache and
+        returns it. Soft-degrades to [] (token / seed / owner-list unavailable).
+        """
+        if not settings.discogs_token:
+            return []
+        artist, track = _split_query(query)
+        try:
+            release_id, seed_styles, seed_genres = await self._resolve_seed(artist, track)
+        except httpx.HTTPError as e:
+            print(f"[Discogs] seed resolve failed q={query!r}: {e}")
+            return []
+        if not release_id:
+            return []
+
+        seed_targets = _seed_match_targets(seed_styles)
+        users = await self._fetch_release_users(release_id)
+        candidates = (users.get("have", []) + users.get("want", []))[:_COLLAB_CANDIDATE_CAP]
+
+        tracks: list[TrackMeta] = []
+        seen_urls: set[str] = set()
+        used = 0
+        for username in candidates:
+            if used >= _COLLAB_MAX_USERS or len(tracks) >= limit:
+                break
+            matches = await self._collection_matches(
+                username, seed_targets, seed_genres, release_id
+            )
+            if not matches:
+                continue  # private / empty / off-genre — try the next collector
+            used += 1
+            for t in matches:
+                if t.sourceUrl in seen_urls:
+                    continue
+                seen_urls.add(t.sourceUrl)
+                tracks.append(t)
+                if len(tracks) >= limit:
+                    break
+
+        result = tracks[:limit]
+        # Cache write is best-effort: a DB outage must not discard the work we
+        # just did (the /similar read path is already DB-guarded by the route).
+        try:
+            await upsert_external_cache(
+                source="discogs_similar",
+                cache_key=_normalize_query(query),
+                payload=[t.model_dump() for t in result],
+            )
+        except Exception as e:
+            print(f"[Discogs] cache write skipped (db unavailable): {e}")
+        return result
+
+    async def _resolve_seed(self, artist: str, track: str) -> tuple[int | None, set[str], set[str]]:
+        """Resolve a query to a Discogs release, reading styles/genres straight
+        off the search result (no extra release fetch). Returns (id, styles, genres).
+
+        The user gives "artist - track", so we match by the `track` param —
+        Discogs returns the release that *contains* that track (searching `q`
+        would only match release titles). Falls back to a release-title match
+        when the term isn't a track (e.g. an EP name). Artist-only queries seed
+        from the artist's most relevant release."""
+        if not artist and not track:
+            return None, set(), set()
+        seed = await self._search_release(artist, {"track": track} if track else {})
+        if seed[0] is None and track:
+            seed = await self._search_release(artist, {"release_title": track})
+        return seed
+
+    async def _search_release(self, artist: str, extra: dict) -> tuple[int | None, set[str], set[str]]:
+        params: dict = {"type": "release", "per_page": 5}
+        if artist:
+            params["artist"] = artist
+        params.update(extra)
+        resp = await self._get("/database/search", params=params)
+        for r in resp.json().get("results", []):
+            rid = r.get("id")
+            if rid:
+                styles = {s.lower() for s in (r.get("style") or [])}
+                genres = {g.lower() for g in (r.get("genre") or [])}
+                return rid, styles, genres
+        return None, set(), set()
+
+    async def _fetch_release_users(self, release_id: int) -> dict[str, list[str]]:
+        """Have/Want collector usernames for a release, read off the Cloudflare-
+        gated www stats page via a FlareSolverr endpoint (DISCOGS_STATS_UNBLOCKER_URL,
+        e.g. http://flaresolverr:8191/v1). FlareSolverr solves the challenge in a
+        real browser and returns the rendered HTML in solution.response.
+        Soft-degrades to empty lists when unset or on any fetch/parse error."""
+        endpoint = settings.discogs_stats_unblocker_url
+        if not endpoint:
+            return {"have": [], "want": []}
+        stats_url = f"{WWW_URL}/release/stats/{release_id}"
+        try:
+            resp = await self._stats_client.post(
+                endpoint,
+                json={"cmd": "request.get", "url": stats_url, "maxTimeout": 60000},
+            )
+            resp.raise_for_status()
+            html = resp.json()["solution"]["response"]
+            return _parse_stats_usernames(html)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as e:
+            print(f"[Discogs] stats fetch failed release={release_id}: {e}")
+            return {"have": [], "want": []}
+
+    async def _collection_matches(
+        self,
+        username: str,
+        seed_targets: set[str],
+        seed_genres: set[str],
+        exclude_release_id: int,
+    ) -> list[TrackMeta]:
+        """Up to `_COLLAB_TRACKS_PER_USER` releases from a collector whose style
+        family is in the seed's match targets (own families + one-way broadenings),
+        newest-added first. Genre overlap is the fallback when the seed has no
+        styles. Skips the seed itself."""
+        try:
+            resp = await self._get(
+                f"/users/{username}/collection/folders/0/releases",
+                params={"per_page": 100, "sort": "added", "sort_order": "desc"},
+            )
+        except httpx.HTTPError as e:
+            print(f"[Discogs] collection fetch failed user={username}: {e}")
+            return []
+        out: list[TrackMeta] = []
+        for item in resp.json().get("releases", []):
+            if len(out) >= _COLLAB_TRACKS_PER_USER:
+                break
+            basic = item.get("basic_information") or {}
+            if basic.get("id") == exclude_release_id:
+                continue
+            styles = {s.lower() for s in (basic.get("styles") or [])}
+            genres = {g.lower() for g in (basic.get("genres") or [])}
+            if seed_targets:
+                if not (_style_families(styles) & seed_targets):
+                    continue
+            elif seed_genres and not (genres & seed_genres):
+                continue
+            track = _track_from_collection_item(basic)
+            if track is not None:
+                out.append(track)
         return out
