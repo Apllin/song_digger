@@ -363,10 +363,9 @@ async def _find_by_artist_only(
     response_model=SimilarResponse,
 )
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
-    # No caching here: the single /similar cache layer is the web-side
-    # search-response cache (ExternalApiCache source="search_response", keyed by
-    # SEARCH_CACHE_VERSION) that wraps this call. The python service is a
-    # stateless compute step — see docs/dev/architecture.md.
+    # No caching here: the single cache layer is the web-side SearchQuery result
+    # cache (keyed by the versioned cacheKey) that wraps this call. The python
+    # service is a stateless compute step — see docs/dev/architecture.md.
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(
             req.artist, req.track, req.limit_per_source

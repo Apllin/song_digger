@@ -52,7 +52,7 @@ const EMPTY_AUDIO = {
   attemptedUrls: new Set<string>(),
 };
 
-function postSearch(input: string): Promise<Response> {
+async function postSearch(input: string): Promise<Response> {
   return searchApi.request("/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -75,13 +75,33 @@ describe("search cache (SearchQuery layer)", () => {
         id: "r1",
         score: 0.9,
         sources: ["youtube_music"],
-        track: { id: "t1", title: "A", artist: "X", source: "youtube_music", sourceUrl: "https://y/1", coverUrl: null, embedUrl: null, bpm: null, musicalKey: null },
+        track: {
+          id: "t1",
+          title: "A",
+          artist: "X",
+          source: "youtube_music",
+          sourceUrl: "https://y/1",
+          coverUrl: null,
+          embedUrl: null,
+          bpm: null,
+          musicalKey: null,
+        },
       },
       {
         id: "r2",
         score: 0.8,
         sources: ["lastfm"],
-        track: { id: "t2", title: "B", artist: "Y", source: "lastfm", sourceUrl: "https://l/2", coverUrl: null, embedUrl: null, bpm: null, musicalKey: null },
+        track: {
+          id: "t2",
+          title: "B",
+          artist: "Y",
+          source: "lastfm",
+          sourceUrl: "https://l/2",
+          coverUrl: null,
+          embedUrl: null,
+          bpm: null,
+          musicalKey: null,
+        },
       },
     ]);
 

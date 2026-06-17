@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEARCH_CACHE_SOURCE, SEARCH_CACHE_TTL_SECONDS, SEARCH_CACHE_VERSION, searchCacheKey } from "./searchCache";
+import { SEARCH_CACHE_TTL_SECONDS, SEARCH_CACHE_VERSION, searchCacheKey } from "./searchCache";
 
 describe("searchCacheKey", () => {
   it("prefixes with the version constant", () => {
@@ -41,10 +41,6 @@ describe("searchCacheKey", () => {
 });
 
 describe("search cache invariants", () => {
-  it("source identifier is stable (never refactor without flushing the table)", () => {
-    expect(SEARCH_CACHE_SOURCE).toBe("search_response");
-  });
-
   it("TTL is 14 days in seconds", () => {
     expect(SEARCH_CACHE_TTL_SECONDS).toBe(14 * 24 * 60 * 60);
   });

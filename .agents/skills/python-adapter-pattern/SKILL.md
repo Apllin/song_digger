@@ -126,7 +126,7 @@ Don't dedupe inside the adapter. The `/similar` route applies `_dedup_within_sou
 ### What never to do
 
 - **Don't make multiple requests to dedupe results.** If the API returns 50 with some duplicates, return all 50. The downstream filter handles it.
-- **Don't cache inside the adapter.** The single cache layer is the web-side search-response cache (`ExternalApiCache` `source="search_response"`) that wraps the whole `/similar` call. Adapters are pure async functions from `ParsedQuery` to `list[TrackMeta]` — the per-adapter caches (Troi prompt outputs, Last.fm artist similars / top tracks, trackid seed/playlist/set) were all removed in favour of that one layer.
+- **Don't cache inside the adapter.** The single cache layer is the web-side `SearchQuery` result cache (keyed by the versioned search cacheKey) that wraps the whole `/similar` call. Adapters are pure async functions from `ParsedQuery` to `list[TrackMeta]` — the per-adapter caches (Troi prompt outputs, Last.fm artist similars / top tracks, trackid seed/playlist/set) were all removed in favour of that one layer.
 - **Don't enrich.** If the API returns a similarity score, populate `score`. Don't call other adapters to fill gaps — the post-Stage-F philosophy is "trust the adapters" and there is no inline-enrichment pass anymore.
 - **Don't hardcode URLs in production code.** Constants at module top (`API_BASE`, `LIMIT`, `MIN_MATCH`) are fine. Per-call URLs use these constants.
 
