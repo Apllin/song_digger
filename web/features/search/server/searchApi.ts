@@ -191,7 +191,13 @@ async function saveTracks(
   if (seed.title != null && audio.seedBpm != null) {
     await prisma.searchQuery.update({
       where: { id: searchId },
-      data: { seedBpm: audio.seedBpm, seedMusicalKey: audio.seedMusicalKey ?? undefined },
+      data: {
+        seedBpm: audio.seedBpm,
+        seedMusicalKey: audio.seedMusicalKey ?? undefined,
+        // Persist the seed's Beatport genre so the trainer's genre buckets get
+        // real signal (was always null before → everything fell into "other").
+        seedGenre: audio.seedGenre ?? undefined,
+      },
     });
   }
 }
