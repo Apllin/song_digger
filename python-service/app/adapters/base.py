@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 
 
 class AbstractAdapter(ABC):
@@ -9,6 +9,6 @@ class AbstractAdapter(ABC):
     """
 
     @abstractmethod
-    async def find_similar(self, query: str, limit: int) -> list[TrackMeta]:
-        """Return tracks similar to `query` (track name or URL)."""
+    async def find_similar(self, query: ParsedQuery, limit: int) -> list[TrackMeta]:
+        """Return tracks similar to `query` (a parsed artist/track)."""
         ...

@@ -4,6 +4,7 @@ import type { AppEnv } from "./types";
 
 import { authApi } from "@/features/auth/server/authApi";
 import { bandcampAudioApi } from "@/features/bandcampAudio/server/bandcampAudioApi";
+import { coverApi } from "@/features/cover/server/coverApi";
 import { discographyApi } from "@/features/discography/server/discographyApi";
 import { dislikeApi } from "@/features/dislike/server/dislikeApi";
 import { embedApi } from "@/features/embed/server/embedApi";
@@ -29,6 +30,7 @@ export const app = new Hono<AppEnv>()
   })
   .route("/", authApi)
   .route("/", bandcampAudioApi)
+  .route("/", coverApi)
   .route("/", discographyApi)
   .route("/", dislikeApi)
   .route("/", feedbackApi)

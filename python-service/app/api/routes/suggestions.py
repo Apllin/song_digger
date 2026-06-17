@@ -152,14 +152,6 @@ def _dedupe_ordered(items: list[str]) -> list[str]:
     return out
 
 
-# After a track title, only these markers signal a legitimate suffix
-# (remix, version, featured artist). Anything else means a different track.
-_TITLE_SUFFIX_RE = re.compile(
-    r"^\s+([(\[\-/&,]|feat\b|ft\b|featuring\b|vs\b|with\b)",
-    re.IGNORECASE,
-)
-
-
 def _normalize_text(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
@@ -169,8 +161,13 @@ def _filter_track_matches(
 ) -> list[str]:
     """
     Keep "Artist - Title" suggestions whose artist contains the searched artist
-    and whose title is the searched title — optionally followed by a remix /
-    version / feature suffix (paren, bracket, dash, feat, ...).
+    and whose title *starts with* the searched title.
+
+    This is prefix (autocomplete) matching: the user is mid-typing, so the
+    title query is a prefix, not a complete title. "Joe Milli - M" must surface
+    "Joe Milli - Mantra"; "Surgeon - Flatliner" surfaces both the exact track
+    and "Flatliner (Regis Remix)" / "Flatliner Two". Unrelated titles
+    ("Magneze") and unrelated artists are still dropped.
     """
     artist_n = _normalize_text(artist_query)
     title_n = _normalize_text(title_query)
@@ -181,11 +178,7 @@ def _filter_track_matches(
         s_artist, _, s_title = s.partition(" - ")
         if artist_n not in _normalize_text(s_artist):
             continue
-        s_title_n = _normalize_text(s_title)
-        if not s_title_n.startswith(title_n):
-            continue
-        rest = s_title_n[len(title_n):]
-        if not rest or _TITLE_SUFFIX_RE.match(rest):
+        if _normalize_text(s_title).startswith(title_n):
             out.append(s)
     return out
 
@@ -224,20 +217,23 @@ async def get_suggestions(q: str) -> list[str]:
         title_part = parts[1].strip()
 
         if artist_part and title_part:
-            # MusicBrainz structured Lucene query (best for exact completions)
-            # + YTM song search as parallel fallback.
-            # Cosine.club intentionally skipped — audio similarity, not text.
-            mb_results, ytm_results = await asyncio.gather(
-                _mb_recording_search(artist_part, title_part),
+            # YTM song search leads — its catalogue covers the underground /
+            # electronic long tail TrackDigger targets, where MusicBrainz is
+            # sparse. MB recording search runs in parallel as a structured
+            # supplement. Cosine.club intentionally skipped — audio similarity,
+            # not text. Searching YTM by the full "Artist - prefix" string still
+            # returns the artist's tracks, which the prefix filter then narrows.
+            ytm_results, mb_results = await asyncio.gather(
                 _ytm_song_search(q),
+                _mb_recording_search(artist_part, title_part),
                 return_exceptions=True,
             )
 
             combined: list[str] = []
-            if isinstance(mb_results, list):
-                combined.extend(mb_results)
             if isinstance(ytm_results, list):
                 combined.extend(ytm_results)
+            if isinstance(mb_results, list):
+                combined.extend(mb_results)
 
             if not combined:
                 fallback = await _ytm.get_suggestions(q)

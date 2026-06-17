@@ -1,7 +1,7 @@
 import httpx
 from app.adapters.base import AbstractAdapter
 from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 from app.config import settings
 
 
@@ -27,7 +27,7 @@ class CosineClubAdapter(AbstractAdapter):
             timeout=15.0,
         )
 
-    async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:
+    async def find_similar(self, query: ParsedQuery, limit: int = 20) -> list[TrackMeta]:
         """
         Two-step: search for the query, then fetch similar by track id.
         Returns [] if the search has no relevant hit or any step fails.
@@ -35,7 +35,7 @@ class CosineClubAdapter(AbstractAdapter):
         if not settings.cosine_club_api_key:
             return []
         try:
-            seed_id = await self._search_seed_id(query)
+            seed_id = await self._search_seed_id(query.search_string)
             if not seed_id:
                 return []
             resp = await self._client.get(

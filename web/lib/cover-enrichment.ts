@@ -12,13 +12,11 @@
 // rare enough that retry on next search is cheap, and skipping negatives
 // keeps the cache table small.
 
-import type { FusedCandidate } from "@/lib/aggregator";
 import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 
 const ITUNES_ENDPOINT = "https://itunes.apple.com/search";
 const REQUEST_TIMEOUT_MS = 1500;
-const CONCURRENCY = 6;
 const CACHE_SOURCE = "itunes_cover";
 
 interface ITunesResult {
@@ -37,7 +35,10 @@ function coverCacheKey(artist: string, title: string): string {
   return `${normalizeArtist(artist)}|${normalizeTitle(title)}`;
 }
 
-async function lookupOne(artist: string, title: string): Promise<string | null> {
+// Resolve a single cover via iTunes (cache-first). Called on-demand from the
+// client (`/api/cover`) for tracks an adapter left without artwork — cover
+// enrichment is presentation, not ranking, so it stays off the search hot path.
+export async function lookupCover(artist: string, title: string): Promise<string | null> {
   const term = `${artist} ${title}`.trim();
   if (!term) return null;
 
@@ -70,29 +71,4 @@ async function lookupOne(artist: string, title: string): Promise<string | null> 
   } finally {
     clearTimeout(timer);
   }
-}
-
-export async function enrichMissingCovers(candidates: FusedCandidate[]): Promise<FusedCandidate[]> {
-  const targets = candidates
-    .map((c, i) => ({ candidate: c, index: i }))
-    .filter(({ candidate }) => candidate.coverUrl == null);
-  if (!targets.length) return candidates;
-
-  const covers = new Map<number, string>();
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < targets.length) {
-      const i = cursor++;
-      const { candidate, index } = targets[i]!;
-      const found = await lookupOne(candidate.artist, candidate.title);
-      if (found) covers.set(index, found);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker));
-
-  if (!covers.size) return candidates;
-  return candidates.map((c, i) => {
-    const cover = covers.get(i);
-    return cover ? { ...c, coverUrl: cover } : c;
-  });
 }

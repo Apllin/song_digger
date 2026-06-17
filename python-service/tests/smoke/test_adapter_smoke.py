@@ -23,10 +23,16 @@ from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.config import settings
+from app.core.models import ParsedQuery
 
 pytestmark = pytest.mark.smoke
 
 MIN_HITS_THRESHOLD = 3  # ≥1 result for at least this many of 4 seeds
+
+
+def _parse(q: str) -> ParsedQuery:
+    artist, _, track = q.partition(" - ")
+    return ParsedQuery(artist=artist.strip(), track=(track.strip() or None))
 
 
 async def _run_seeds(adapter, seed_queries: list[str]) -> dict[str, int]:
@@ -35,7 +41,7 @@ async def _run_seeds(adapter, seed_queries: list[str]) -> dict[str, int]:
     return [] per the python-adapter-pattern)."""
     counts: dict[str, int] = {}
     for q in seed_queries:
-        results = await adapter.find_similar(q, 30)
+        results = await adapter.find_similar(_parse(q), 30)
         counts[q] = len(results)
     return counts
 
@@ -93,8 +99,6 @@ async def test_lastfm_smoke(popular_seed_queries):
 # ── trackid.net ───────────────────────────────────────────────────────────────
 
 async def test_trackidnet_smoke(popular_seed_queries):
-    if not settings.trackidnet_enabled:
-        pytest.skip("TRACKIDNET_ENABLED=false")
     counts = await _run_seeds(TrackidnetAdapter(), popular_seed_queries)
     print(f"\n[Trackid smoke] {counts}")
     # Trackid relies on co-occurrence in DJ playlist tracklists, which is
@@ -121,11 +125,10 @@ async def test_returned_tracks_have_required_fields(popular_seed_queries):
         adapters.append(("yandex_music", YandexMusicAdapter()))
     if settings.lastfm_api_key:
         adapters.append(("lastfm", LastfmAdapter()))
-    if settings.trackidnet_enabled:
-        adapters.append(("trackidnet", TrackidnetAdapter()))
+    adapters.append(("trackidnet", TrackidnetAdapter()))
 
     for source_name, adapter in adapters:
-        results = await adapter.find_similar(seed, 10)
+        results = await adapter.find_similar(_parse(seed), 10)
         if not results:
             continue  # smoke-failure for this source is asserted in the per-adapter test
         for t in results[:3]:

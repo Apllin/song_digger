@@ -16,6 +16,7 @@ import httpx
 import pytest
 
 from app.adapters.cosine_club import CosineClubAdapter
+from app.core.models import ParsedQuery
 
 
 def _ok_response(payload: dict) -> MagicMock:
@@ -37,14 +38,14 @@ async def test_missing_api_key_returns_empty_without_network(monkeypatch):
     adapter = CosineClubAdapter()
     # If the adapter tried to GET, this would raise (no _client.get patch set).
     adapter._client.get = AsyncMock(side_effect=AssertionError("must not call"))
-    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses')) == []
 
 
 async def test_search_no_hits_returns_empty(monkeypatch):
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
     adapter = CosineClubAdapter()
     _patch_get(adapter, lambda url, **_: _ok_response({"data": []}))
-    assert await adapter.find_similar("Some Unknown - Track") == []
+    assert await adapter.find_similar(ParsedQuery('Some Unknown', 'Track')) == []
 
 
 # ── happy path ───────────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ async def test_two_step_search_then_similar_returns_parsed_tracks(monkeypatch):
 
     _patch_get(adapter, _get)
 
-    results = await adapter.find_similar("Oscar Mulero - Horses", limit=20)
+    results = await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'), limit=20)
 
     assert len(results) == 2
     assert results[0].title == "Faceless"
@@ -120,7 +121,7 @@ async def test_http_error_during_similar_returns_empty(monkeypatch, capsys):
         raise httpx.HTTPError("upstream 502")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("X - Y") == []
+    assert await adapter.find_similar(ParsedQuery('X', 'Y')) == []
     assert "[CosineClub]" in capsys.readouterr().out
 
 
@@ -132,7 +133,7 @@ async def test_http_error_during_search_returns_empty(monkeypatch, capsys):
         raise httpx.ConnectError("dns fail")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("X - Y") == []
+    assert await adapter.find_similar(ParsedQuery('X', 'Y')) == []
     assert "[CosineClub]" in capsys.readouterr().out
 
 
@@ -188,7 +189,7 @@ async def test_seed_rejects_off_topic_first_hit_and_skips_similar_call(
         raise AssertionError(f"must not GET {url} — seed rejected")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("Ignez - A Love Dream") == []
+    assert await adapter.find_similar(ParsedQuery('Ignez', 'A Love Dream')) == []
     # Only the search was issued, no /similar call.
     assert calls == ["/v1/search"]
     out = capsys.readouterr().out
@@ -213,7 +214,7 @@ async def test_seed_picks_second_candidate_when_first_is_off_topic(monkeypatch):
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar("Oscar Mulero - Horses")
+    out = await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'))
     assert len(out) == 1
     assert out[0].artist == "Reeko"
 
@@ -237,7 +238,7 @@ async def test_seed_match_tolerates_diacritics_and_collaborators(monkeypatch):
     _patch_get(adapter, _get)
     # Diacritic in query, collaborator suffix on candidate, parens on title —
     # all should still match.
-    assert await adapter.find_similar("Óscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Óscar Mulero', 'Horses')) == []
     # The empty similars list is the assertion above; the important part is we
     # *reached* the /similar call (no AssertionError was raised).
 
@@ -270,8 +271,7 @@ async def test_version_specific_query_prefers_version_specific_seed(monkeypatch)
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar(
-        "Nina Kraviz, David Löhlein - Bailando (NK & David Löhlein Version)"
+    out = await adapter.find_similar(ParsedQuery('Nina Kraviz, David Löhlein', 'Bailando (NK & David Löhlein Version)')
     )
     assert len(out) == 1
     assert out[0].artist == "Y"
@@ -301,7 +301,7 @@ async def test_bare_title_query_still_picks_bare_seed(monkeypatch):
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar("Nina Kraviz, David Löhlein - Bailando")
+    out = await adapter.find_similar(ParsedQuery('Nina Kraviz, David Löhlein', 'Bailando'))
     assert len(out) == 1
 
 
@@ -326,7 +326,7 @@ async def test_bare_artist_query_picks_first_track_by_that_artist(monkeypatch):
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar("Oscar Mulero")
+    out = await adapter.find_similar(ParsedQuery('Oscar Mulero'))
     assert len(out) == 1
     assert out[0].artist == "Reeko"
 
@@ -355,7 +355,7 @@ async def test_bare_artist_query_prefers_exact_artist_over_substring(monkeypatch
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar("Rill")
+    out = await adapter.find_similar(ParsedQuery('Rill'))
     assert len(out) == 1
     assert out[0].artist == "Y"
 
@@ -380,7 +380,7 @@ async def test_bare_artist_query_accepts_collab_with_exact_entity(monkeypatch):
         raise AssertionError(f"unexpected url: {url}")
 
     _patch_get(adapter, _get)
-    out = await adapter.find_similar("Rill")
+    out = await adapter.find_similar(ParsedQuery('Rill'))
     assert len(out) == 1
     assert out[0].artist == "Y"
 
@@ -403,7 +403,7 @@ async def test_bare_artist_query_returns_empty_when_no_artist_match(
         raise AssertionError(f"must not GET {url} — seed rejected")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("Chontane") == []
+    assert await adapter.find_similar(ParsedQuery('Chontane')) == []
     assert calls == ["/v1/search"]
     assert "no seed matched" in capsys.readouterr().out
 
@@ -423,5 +423,5 @@ async def test_artist_title_query_requires_exact_title_match(monkeypatch, capsys
         raise AssertionError(f"must not GET {url} — seed rejected")
 
     _patch_get(adapter, _get)
-    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses')) == []
     assert "no seed matched" in capsys.readouterr().out

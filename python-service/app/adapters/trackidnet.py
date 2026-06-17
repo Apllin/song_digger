@@ -45,23 +45,7 @@ from typing import Any, Callable
 import httpx
 
 from app.adapters.base import AbstractAdapter
-from app.config import settings
-from app.core.db import fetch_external_cache, upsert_external_cache
-from app.core.models import TrackMeta
-
-# DJ-set tracklists are immutable once detected — trackid's bots may add
-# detections to a process over time, but the slug→tracklist payload is
-# anchored on a process-id so cached entries stay accurate. 30d strikes a
-# balance between capturing reprocessing edits and reducing scraper load.
-_TRACKIDNET_SET_TTL = 30 * 86400
-# Seed-search ranks by playCount; the catalogue is stable enough that a
-# week-old "best match" stays valid. Negative misses are not cached — a
-# track absent today may appear next week as bots index more sets.
-_TRACKIDNET_SEED_TTL = 7 * 86400
-# Playlists-list grows as new sets are detected. Sorted "freshest first",
-# so a stale cache costs us recent DJ context. 24h keeps the freshness
-# signal intact while removing one HTTP per warm request.
-_TRACKIDNET_PLAYLISTS_TTL = 86400
+from app.core.models import ParsedQuery, TrackMeta
 
 API_BASE = "https://trackid.net/api/public"
 USER_AGENT = (
@@ -83,39 +67,19 @@ DEFAULT_LIMIT = 50
 # anchors (typically 2-3 tracks by the queried artist), yielding ~15 unique
 # adjacent artists in the aggregated output.
 MAX_KEYWORD_PLAYLISTS = 10
-# Keyword listing grows as new sets are detected (same shape as
-# playlists-list). 24h keeps freshness signal intact.
-_TRACKIDNET_KEYWORD_TTL = 86400
-
-
-def _seed_cache_key(artist: str, track: str) -> str:
-    return f"{artist.lower().strip()}|{track.lower().strip()}"
 
 
 class TrackidnetAdapter(AbstractAdapter):
     SOURCE = "trackidnet"
 
     async def find_similar(
-        self, query: str, limit: int = DEFAULT_LIMIT
+        self, query: ParsedQuery, limit: int = DEFAULT_LIMIT
     ) -> list[TrackMeta]:
-        if not settings.trackidnet_enabled:
-            return []
-
-        artist, track = _split_query(query)
+        artist, track = query.artist, query.track
         if not artist:
             return []
         if not track:
             return await self._find_by_artist_keyword(artist, limit)
-
-        # Try cache-only path first to skip opening an HTTP session entirely
-        # when both seed and playlists are warm. Per-slug tracklists also
-        # short-circuit on cache hits inside _fetch_tracklists.
-        seed_key = _seed_cache_key(artist, track)
-        seed = await fetch_external_cache(
-            source="trackidnet_seed",
-            cache_key=seed_key,
-            ttl_seconds=_TRACKIDNET_SEED_TTL,
-        )
 
         async with httpx.AsyncClient(
             timeout=TIMEOUT_SECONDS,
@@ -125,44 +89,19 @@ class TrackidnetAdapter(AbstractAdapter):
                 "Referer": "https://trackid.net/",
             },
         ) as client:
-            if seed is None:
-                seed = await _find_seed_track(client, artist, track)
-                if not seed or seed.get("id") is None:
-                    # Negative result: skip cache write — caller may succeed
-                    # on a future request when the catalogue grows.
-                    return []
-                # Persist only the fields downstream actually reads.
-                await upsert_external_cache(
-                    source="trackidnet_seed",
-                    cache_key=seed_key,
-                    payload={"id": seed["id"], "slug": seed.get("slug") or ""},
-                )
-            elif seed.get("id") is None:
+            seed = await _find_seed_track(client, artist, track)
+            if not seed or seed.get("id") is None:
                 return []
 
             # Use slug, not id, as the lookup key — trackid.net's
             # /audiostreams?musicTrackId=… index does not surface every
             # detected playlist for niche tracks (TRA-19), whereas the
-            # ?musicTrackSlug=… query does. Cache key follows the slug too.
+            # ?musicTrackSlug=… query does.
             seed_slug = seed.get("slug") or ""
-            playlist_slugs = await fetch_external_cache(
-                source="trackidnet_playlists",
-                cache_key=seed_slug,
-                ttl_seconds=_TRACKIDNET_PLAYLISTS_TTL,
-            )
-            if playlist_slugs is None:
-                playlist_slugs = await _list_playlists(client, seed_slug)
-                if not playlist_slugs:
-                    return []
-                await upsert_external_cache(
-                    source="trackidnet_playlists",
-                    cache_key=seed_slug,
-                    payload=playlist_slugs,
-                )
-            elif not playlist_slugs:
+            playlist_slugs = await _list_playlists(client, seed_slug)
+            if not playlist_slugs:
                 return []
 
-            seed_slug = seed.get("slug") or ""
             coocc = await _aggregate_incrementally(
                 client,
                 playlist_slugs,
@@ -197,21 +136,8 @@ class TrackidnetAdapter(AbstractAdapter):
                 "Referer": "https://trackid.net/",
             },
         ) as client:
-            slugs = await fetch_external_cache(
-                source="trackidnet_keyword",
-                cache_key=artist_lc,
-                ttl_seconds=_TRACKIDNET_KEYWORD_TTL,
-            )
-            if slugs is None:
-                slugs = await _search_audiostreams_by_keyword(client, artist)
-                if not slugs:
-                    return []
-                await upsert_external_cache(
-                    source="trackidnet_keyword",
-                    cache_key=artist_lc,
-                    payload=slugs,
-                )
-            elif not slugs:
+            slugs = await _search_audiostreams_by_keyword(client, artist)
+            if not slugs:
                 return []
 
             slugs = slugs[:MAX_KEYWORD_PLAYLISTS]
@@ -229,19 +155,6 @@ class TrackidnetAdapter(AbstractAdapter):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" → (artist, track). Returns (query, None) when
-    no separator. Adapters needing a track must short-circuit on (artist, None)."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    if not track:
-        return artist, None
-    return artist, track
-
 
 async def _find_seed_track(
     client: httpx.AsyncClient, artist: str, track: str
@@ -355,33 +268,15 @@ async def _fetch_tracklists(
     """Fetch each /audiostreams/<slug> concurrently, bounded by a
     semaphore so we don't open MAX_PLAYLISTS sockets at once and look
     like a scraper from trackid's side. Failed fetches drop out silently.
-
-    Cache: each slug → tracklist payload is keyed on the slug for 30d.
-    The semaphore is acquired AFTER the cache check on purpose — cached
-    hits don't count against the rate limit they're protecting.
     """
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
     async def _one(slug: str) -> dict | None:
-        cached = await fetch_external_cache(
-            source="trackidnet_set",
-            cache_key=slug,
-            ttl_seconds=_TRACKIDNET_SET_TTL,
-        )
-        if cached is not None:
-            return cached
         async with sem:
             try:
                 resp = await client.get(f"{API_BASE}/audiostreams/{slug}")
                 resp.raise_for_status()
-                data = (resp.json() or {}).get("result")
-                if data is not None:
-                    await upsert_external_cache(
-                        source="trackidnet_set",
-                        cache_key=slug,
-                        payload=data,
-                    )
-                return data
+                return (resp.json() or {}).get("result")
             except (httpx.HTTPError, ValueError) as e:
                 print(f"[Trackidnet] audiostream {slug} failed: {e}")
                 return None

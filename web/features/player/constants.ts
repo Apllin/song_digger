@@ -11,4 +11,5 @@ export const SOURCE_LABELS: Record<TrackSource, string> = {
   soundcloud: "SoundCloud",
   lastfm: "Last.fm",
   discogs: "Discogs",
+  troi: "ListenBrainz",
 };

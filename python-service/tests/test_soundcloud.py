@@ -8,26 +8,8 @@ from app.adapters.soundcloud import (
     SoundCloudAdapter,
     _clean_title,
     _pick_seed,
-    _split_query,
 )
-
-
-# ── _split_query ──────────────────────────────────────────────────────────────
-
-def test_split_query_artist_track():
-    assert _split_query("Ignez - Lightworker") == ("Ignez", "Lightworker")
-
-
-def test_split_query_artist_only():
-    assert _split_query("Surgeon") == ("Surgeon", None)
-
-
-def test_split_query_artist_only():
-    assert _split_query("Dani Duran") == ("Dani Duran", None)
-
-
-def test_split_query_trailing_separator():
-    assert _split_query("Ignez - ") == ("Ignez", None)
+from app.core.models import ParsedQuery
 
 
 # ── _clean_title ──────────────────────────────────────────────────────────────
@@ -196,4 +178,4 @@ async def test_find_similar_returns_empty_when_no_seed_matches(monkeypatch):
     _mock_async_client(html, monkeypatch)
     adapter = SoundCloudAdapter()
 
-    assert await adapter.find_similar("Ignez - Lightworker", limit=5) == []
+    assert await adapter.find_similar(ParsedQuery('Ignez', 'Lightworker'), limit=5) == []

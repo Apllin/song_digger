@@ -1,7 +1,7 @@
 import asyncio
 import unicodedata
 from fastapi import APIRouter
-from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
+from app.core.models import ParsedQuery, SimilarRequest, SimilarResponse, SourceList, TrackMeta
 from app.core.title_norm import strip_recording_suffixes
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
@@ -9,6 +9,7 @@ from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.soundcloud import SoundCloudAdapter
+from app.adapters.troi import TroiAdapter
 from app.services.lastfm_hop import expand_via_similar_artists
 
 router = APIRouter()
@@ -19,6 +20,7 @@ _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 _soundcloud = SoundCloudAdapter()
+_troi = TroiAdapter()
 
 # Trackidnet does up to 12 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 10 detail fetches with Semaphore(5) inside the
@@ -34,7 +36,29 @@ TRACKIDNET_TIMEOUT = 25.0
 LASTFM_HOP_TIMEOUT = 5.0
 
 
-async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
+# Troi runs the lb-radio patch (sync, off-loaded to a thread) over several
+# sequential MB/LB calls. Cold path is a few seconds; the adapter caches with a
+# long TTL and trips a circuit breaker on a down backend, so the slow path is
+# rare. Cap here so one cold/slow run can't stall the /similar fan-out.
+TROI_TIMEOUT = 15.0
+
+
+async def _troi_safe(query: ParsedQuery, limit: int) -> list[TrackMeta]:
+    """Run Troi with a hard timeout. The adapter already soft-degrades and
+    breaks internally — this is the outer fan-out latency cap."""
+    try:
+        return await asyncio.wait_for(
+            _troi.find_similar(query, limit), timeout=TROI_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        print(f"[Troi] timed out after {TROI_TIMEOUT}s, skipping")
+        return []
+    except Exception as e:
+        print(f"[Troi] error: {e}")
+        return []
+
+
+async def _trackidnet_safe(query: ParsedQuery, limit: int) -> list[TrackMeta]:
     """Run trackid.net with a hard timeout — cold-cache scrape can take several seconds."""
     try:
         return await asyncio.wait_for(
@@ -156,10 +180,10 @@ async def _lastfm_hop_safe(
 async def _find_by_artist_and_track(
     artist: str, track: str, limit: int
 ) -> tuple[list[SourceList], str | None]:
-    full_query = f"{artist} - {track}"
+    query = ParsedQuery(artist=artist, track=track)
     # Word-swapped retry for "Track - Artist" input order — see Phase 2. No
     # artist-only Cosine fallback: if Cosine lacks the track, it contributes nothing.
-    reversed_query = f"{track} - {artist}"
+    reversed_query = ParsedQuery(artist=track, track=artist)
 
     # Phase 1: all external sources in parallel.
     (
@@ -169,15 +193,17 @@ async def _find_by_artist_and_track(
         lastfm_tracks,
         trackidnet_tracks,
         soundcloud_tracks,
+        troi_tracks,
         ytm_source_search,
     ) = await asyncio.gather(
-        _cosine.find_similar(full_query, limit),
-        _ytm.find_similar(full_query, limit),
-        _yandex.find_similar(full_query, limit),
-        _lastfm.find_similar(full_query, limit),
-        _trackidnet_safe(full_query, limit),
-        _soundcloud.find_similar(full_query, limit),
-        _ytm.search_songs(full_query, limit=1),
+        _cosine.find_similar(query, limit),
+        _ytm.find_similar(query, limit),
+        _yandex.find_similar(query, limit),
+        _lastfm.find_similar(query, limit),
+        _trackidnet_safe(query, limit),
+        _soundcloud.find_similar(query, limit),
+        _troi_safe(query, limit),
+        _ytm.search_songs(query.search_string, limit=1),
         return_exceptions=True,
     )
 
@@ -187,6 +213,7 @@ async def _find_by_artist_and_track(
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
     soundcloud_tracks = soundcloud_tracks if isinstance(soundcloud_tracks, list) else []
+    troi_tracks = troi_tracks if isinstance(troi_tracks, list) else []
     ytm_source_search = ytm_source_search if isinstance(ytm_source_search, list) else []
 
     # Derive source artist from the YTM *search result* for the queried track —
@@ -203,7 +230,7 @@ async def _find_by_artist_and_track(
     cosine_confident = _cosine_is_confident(cosine_tracks)
 
     # Phase 2: retry Cosine with the words swapped (handles "Track - Artist" input).
-    if not cosine_confident and reversed_query != full_query:
+    if not cosine_confident and reversed_query != query:
         try:
             reversed_cosine = await _cosine.find_similar(reversed_query, limit)
         except Exception as e:
@@ -254,6 +281,7 @@ async def _find_by_artist_and_track(
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
+        SourceList(source="troi", tracks=_dedup_within_source(_filter_artist(troi_tracks))),
     ]
 
     return source_lists, source_artist
@@ -268,19 +296,22 @@ async def _find_by_artist_only(
     artist-only search, so it is queried with the artist's top track and
     contributes nothing without an exact catalogue match.
     """
+    query = ParsedQuery(artist=artist)
     (
         ytm_artist,
         yandex_artist,
         soundcloud_artist,
         lastfm_artist,
         trackidnet_artist,
+        troi_artist,
         top_songs,
     ) = await asyncio.gather(
         _ytm.find_similar_by_artist(artist, limit),
-        _yandex.find_similar(artist, limit),
-        _soundcloud.find_similar(artist, limit),
-        _lastfm.find_similar(artist, limit),
-        _trackidnet_safe(artist, limit),
+        _yandex.find_similar(query, limit),
+        _soundcloud.find_similar(query, limit),
+        _lastfm.find_similar(query, limit),
+        _trackidnet_safe(query, limit),
+        _troi_safe(query, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
@@ -290,13 +321,14 @@ async def _find_by_artist_only(
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
     lastfm_tracks: list[TrackMeta] = lastfm_artist if isinstance(lastfm_artist, list) else []
     trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
+    troi_tracks: list[TrackMeta] = troi_artist if isinstance(troi_artist, list) else []
 
     # Cosine.club has no artist-only search — seed it with the artist's top track.
     cosine_tracks: list[TrackMeta] = []
     if isinstance(top_songs, list) and top_songs:
         top_title = top_songs[0].get("title", "")
         if top_title:
-            seeded = await _cosine.find_similar(f"{artist} - {top_title}", limit)
+            seeded = await _cosine.find_similar(ParsedQuery(artist=artist, track=top_title), limit)
             if isinstance(seeded, list):
                 cosine_tracks = seeded
 
@@ -319,6 +351,7 @@ async def _find_by_artist_only(
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
+        SourceList(source="troi", tracks=_dedup_within_source(_filter_artist(troi_tracks))),
     ]
 
     return source_lists, artist
@@ -330,6 +363,9 @@ async def _find_by_artist_only(
     response_model=SimilarResponse,
 )
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
+    # No caching here: the single cache layer is the web-side SearchQuery result
+    # cache (keyed by the versioned cacheKey) that wraps this call. The python
+    # service is a stateless compute step — see docs/dev/architecture.md.
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(
             req.artist, req.track, req.limit_per_source
@@ -339,7 +375,4 @@ async def find_similar(req: SimilarRequest) -> SimilarResponse:
             req.artist, req.limit_per_source
         )
 
-    return SimilarResponse(
-        source_lists=source_lists,
-        source_artist=source_artist,
-    )
+    return SimilarResponse(source_lists=source_lists, source_artist=source_artist)

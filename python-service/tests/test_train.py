@@ -11,9 +11,16 @@ import pytest
 
 from app.api.routes.train import (
     AUDIO_WEIGHT_CLIP,
+    BPM_RANGE_PRESENT_IDX,
+    BPM_RANGE_START,
+    GENRE_FEATURES_START,
+    GENRE_SOURCE_INTERACTION_START,
     MIN_SAMPLES,
     SOURCE_WEIGHT_CLIP,
     SOURCES,
+    TOTAL_FEATURES,
+    _N_BPM_RANGE,
+    _N_GENRE,
     _build_feature_vector,
     train_weights,
 )
@@ -123,21 +130,20 @@ async def test_modest_signal_produces_modest_weights():
 
 
 def test_feature_vector_length():
-    """Feature vector must be exactly 90 elements."""
+    """Feature vector length must match the derived TOTAL_FEATURES layout."""
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True).features
     vec = _build_feature_vector(f)
-    # 7 sources + 1 cosine + 1 numSources + 1 bpmDelta + 1 bpmCompat + 1 bpmPresent
-    # + 1 keyCompat + 1 keyPresent + 7 genre + 4 bpmRange + 1 bpmRangePresent
-    # + 49 genre×source + 7 genre×cosine + 4 bpmRange×bpmDelta + 4 bpmRange×bpmCompat = 90
-    assert len(vec) == 90
+    # N sources + 7 scalars + 7 genre + 4 bpmRange + 1 bpmRangePresent
+    # + N×7 genre×source + 7 genre×cosine + 4 bpmRange×bpmDelta + 4 bpmRange×bpmCompat
+    assert len(vec) == TOTAL_FEATURES
 
 
 def test_feature_vector_genre_one_hot_techno():
-    """Genre one-hot at position 14-20 is [1,0,0,0,0,0,0] for techno."""
+    """Genre one-hot slice is [1,0,0,0,0,0,0] for techno."""
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True,
                 seed_genre="Techno").features
     vec = _build_feature_vector(f)
-    genre_slice = vec[14:21]
+    genre_slice = vec[GENRE_FEATURES_START:GENRE_FEATURES_START + _N_GENRE]
     assert genre_slice[0] == 1.0  # techno is first bucket
     assert sum(genre_slice) == 1.0
 
@@ -147,7 +153,7 @@ def test_feature_vector_genre_unknown_falls_to_other():
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True,
                 seed_genre="Polka").features
     vec = _build_feature_vector(f)
-    genre_slice = vec[14:21]
+    genre_slice = vec[GENRE_FEATURES_START:GENRE_FEATURES_START + _N_GENRE]
     assert genre_slice[-1] == 1.0  # other is last bucket
     assert sum(genre_slice) == 1.0
 
@@ -157,16 +163,16 @@ def test_feature_vector_bpm_range_fast():
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True,
                 seed_bpm=130.0).features
     vec = _build_feature_vector(f)
-    bpm_slice = vec[21:25]
+    bpm_slice = vec[BPM_RANGE_START:BPM_RANGE_START + _N_BPM_RANGE]
     assert bpm_slice[2] == 1.0  # fast
-    assert vec[25] == 1.0        # bpmRangePresent
+    assert vec[BPM_RANGE_PRESENT_IDX] == 1.0  # bpmRangePresent
 
 
 def test_feature_vector_bpm_range_absent():
     """No seed BPM → all BPM range features are 0."""
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True).features
     vec = _build_feature_vector(f)
-    assert vec[21:26] == [0.0, 0.0, 0.0, 0.0, 0.0]
+    assert vec[BPM_RANGE_START:BPM_RANGE_PRESENT_IDX + 1] == [0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_genre_source_interaction_nonzero_when_matched():
@@ -174,10 +180,8 @@ def test_genre_source_interaction_nonzero_when_matched():
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True,
                 seed_genre="Techno").features
     vec = _build_feature_vector(f)
-    # genre×source block starts at index 26
-    # techno is bucket 0, cosine_club is source 0
-    # index = 26 + (0 * 7) + 0 = 26
-    assert vec[26] > 0.0
+    # techno is bucket 0, cosine_club is source 0 → first interaction slot
+    assert vec[GENRE_SOURCE_INTERACTION_START] > 0.0
 
 
 def test_genre_source_interaction_zero_when_genre_other():
@@ -185,9 +189,8 @@ def test_genre_source_interaction_zero_when_genre_other():
     f = _sample(sources_at_rank={"cosine_club": 1}, is_similar=True,
                 seed_genre=None).features
     vec = _build_feature_vector(f)
-    # genre is 'other' (index 6), so all non-other genre×source interactions are 0
-    # techno×cosine_club = vec[26]
-    assert vec[26] == 0.0
+    # genre is 'other', so all non-other genre×source interactions are 0
+    assert vec[GENRE_SOURCE_INTERACTION_START] == 0.0
 
 
 async def test_train_returns_genre_adjustments():

@@ -14,7 +14,6 @@ import {
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { AudioFeatures, FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks, buildFeatures, rrfFuse } from "@/lib/aggregator";
-import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import { HttpError } from "@/lib/hono/httpError";
@@ -48,17 +47,18 @@ function uniqueSources(t: FusedCandidate): string[] {
 // Reads one page of a completed search straight from the persisted
 // SearchResult rows. The full fused+enriched list lives in Postgres after
 // `runSearch` (or a previous cache-fill), so paging is a cheap skip/take —
-// no Python fan-out, no re-fusion. Ordering pins `id` as a tiebreaker so a
-// row never straddles a page boundary across requests. Dislike filtering is
-// applied client-side over the returned page; this stays user-agnostic so the
-// page is shareable/cacheable.
+// no Python fan-out, no re-fusion. Orders by the persisted `rank` (the
+// post-aggregation RRF + artist-diversification order) so the 2-consecutive
+// cap holds across pages; `id` is a stable tiebreaker so a row never straddles
+// a page boundary. Dislike filtering is applied client-side over the returned
+// page; this stays user-agnostic so the page is shareable/cacheable.
 async function fetchSearchPage(searchId: SearchQueryId, page: number, perPage: number) {
   const where = { searchQueryId: searchId };
   const [items, rows] = await Promise.all([
     prisma.searchResult.count({ where }),
     prisma.searchResult.findMany({
       where,
-      orderBy: [{ score: "desc" }, { id: "asc" }],
+      orderBy: [{ rank: "asc" }, { id: "asc" }],
       skip: (page - 1) * perPage,
       take: perPage,
       include: { track: true },
@@ -114,50 +114,37 @@ async function saveTracks(
   });
 
   // 2. One SELECT to map every sourceUrl → id (covers freshly inserted and
-  //    pre-existing rows alike) and to read current cover/embed/audio state for
-  //    the backfill check.
+  //    pre-existing rows alike) and to read current audio state for the
+  //    backfill check.
   const existing = await prisma.track.findMany({
     where: { sourceUrl: { in: urls } },
-    select: { id: true, sourceUrl: true, coverUrl: true, embedUrl: true, audioFeaturesFetchedAt: true },
+    select: { id: true, sourceUrl: true, audioFeaturesFetchedAt: true },
   });
   const urlToRow = new Map(existing.map((r) => [r.sourceUrl, r]));
 
-  // 3. Backfill cover/embed when DB stores NULL but the current fetch has data,
-  //    and the eagerly-resolved bpm/key for pre-existing rows we scraped this
-  //    search (audioFeaturesFetchedAt still NULL). Never overwrites good data.
-  //    Typically a no-op after the first save of a given track.
+  // 3. Backfill only the ranking signal — the eagerly-resolved bpm/key for
+  //    pre-existing rows we scraped this search (audioFeaturesFetchedAt still
+  //    NULL, or a stale "not found" whose cooldown should reset). Cover/embed
+  //    are presentation, not ranking, so they are never backfilled here:
+  //    covers are resolved client-side and embeds are warmed separately (step 5).
+  //    Just-inserted rows already carry `now` from createMany and are skipped.
   const backfills = tracks.filter((t) => {
     const row = urlToRow.get(t.sourceUrl);
     if (!row) return false;
-    const coverEmbed = (row.coverUrl == null && t.coverUrl != null) || (row.embedUrl == null && t.embedUrl != null);
-    // Refresh on every attempt — including a re-attempt of a stale "not found"
-    // (timestamp older than `now`) so its cooldown resets. Just-inserted rows
-    // already carry `now` from createMany and are skipped here.
-    const audioBackfill =
-      attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
-    return coverEmbed || audioBackfill;
+    return attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
   });
   if (backfills.length) {
     await prisma.$transaction(
-      backfills.map((t) => {
-        const row = urlToRow.get(t.sourceUrl)!;
-        const audioBackfill =
-          attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
-        return prisma.track.update({
+      backfills.map((t) =>
+        prisma.track.update({
           where: { sourceUrl: t.sourceUrl },
           data: {
-            coverUrl: t.coverUrl ?? undefined,
-            embedUrl: t.embedUrl ?? undefined,
-            ...(audioBackfill
-              ? {
-                  bpm: audio.candidateBpm.get(t.sourceUrl) ?? undefined,
-                  musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? undefined,
-                  audioFeaturesFetchedAt: now,
-                }
-              : {}),
+            bpm: audio.candidateBpm.get(t.sourceUrl) ?? undefined,
+            musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? undefined,
+            audioFeaturesFetchedAt: now,
           },
-        });
-      }),
+        }),
+      ),
       { timeout: DB_TXN_TIMEOUT_MS },
     );
   }
@@ -166,13 +153,27 @@ async function saveTracks(
   //    score/sources are fixed for that pair within a single search, so
   //    skipDuplicates is the correct semantics — no UPDATE branch needed.
   await prisma.searchResult.createMany({
-    data: tracks.map((t) => ({
-      searchQueryId: searchId,
-      trackId: urlToRow.get(t.sourceUrl)!.id,
-      score: t.score ?? null,
-      sources: uniqueSources(t),
-      features: buildFeatures(t),
-    })),
+    // `tracks` is the final post-aggregation order (RRF + artist
+    // diversification). Persist that index as `rank` so paged reads preserve it
+    // — score alone re-clusters same-artist tracks. Skipped rows leave gaps in
+    // rank; relative order is unaffected.
+    data: tracks.flatMap((t, i) => {
+      // A row is always present after step 1's insert + step 2's select; guard
+      // anyway so a single missing mapping skips that candidate instead of
+      // throwing and aborting the whole save (which would strand the search).
+      const row = urlToRow.get(t.sourceUrl);
+      if (!row) return [];
+      return [
+        {
+          searchQueryId: searchId,
+          trackId: row.id,
+          score: t.score ?? null,
+          rank: i,
+          sources: uniqueSources(t),
+          features: buildFeatures(t),
+        },
+      ];
+    }),
     skipDuplicates: true,
   });
 
@@ -222,28 +223,43 @@ async function runSearch(
   const pythonDurationMs = performance.now() - pythonStart;
 
   const sourcesUsed = pythonResult.source_lists.filter((x) => x.tracks.length > 0).map((x) => x.source);
-  const weights = await getActiveWeights();
 
-  // Fuse first to get the deduped candidate set (one row per identity), then
-  // eagerly resolve BPM/key for all of them so the audio bonus is applied to
-  // the whole list before the final sort — not on a later background pass.
-  // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
-  const seed = { artist, title: track };
-  const fused = rrfFuse(pythonResult.source_lists, weights);
-  const { audio, attemptedUrls } = await resolveAudioFeatures(
-    cacheKeyFor(artist, track),
-    seed,
-    fused,
-    pythonServiceUrl,
-  );
-  const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
-  const playable = await enrichMissingCovers(aggregated);
-  await saveTracks(searchId, playable, seed, audio, attemptedUrls);
+  // Everything past the Python fan-out (weights, fusion, eager BPM/key
+  // resolution, cover enrichment, persistence) must either reach
+  // `status: "done"` or flip the row to "error". Without this guard a throw in
+  // any of these steps escaped uncaught, leaving the SearchQuery pinned at
+  // "running" forever — the client polls a search that never completes and
+  // never errors. Mark error and rethrow so the request fails cleanly.
+  try {
+    const weights = await getActiveWeights();
 
-  await prisma.searchQuery.update({
-    where: { id: searchId },
-    data: { status: "done" },
-  });
+    // Fuse first to get the deduped candidate set (one row per identity), then
+    // eagerly resolve BPM/key for all of them so the audio bonus is applied to
+    // the whole list before the final sort — not on a later background pass.
+    // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
+    const seed = { artist, title: track };
+    const fused = rrfFuse(pythonResult.source_lists, weights);
+    const { audio, attemptedUrls } = await resolveAudioFeatures(
+      cacheKeyFor(artist, track),
+      seed,
+      fused,
+      pythonServiceUrl,
+    );
+    // Cover enrichment is presentation, not ranking — it runs client-side
+    // (lazy /api/cover lookup per card). The server persists only what the
+    // adapters returned plus the ranking signals.
+    const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
+    await saveTracks(searchId, aggregated, seed, audio, attemptedUrls);
+
+    await prisma.searchQuery.update({
+      where: { id: searchId },
+      data: { status: "done" },
+    });
+  } catch (err) {
+    console.error("[Search] post-fetch stage failed:", err);
+    await prisma.searchQuery.update({ where: { id: searchId }, data: { status: "error" } });
+    throw new HttpError(500, { message: "Search failed while building results.", cause: err });
+  }
 
   return { pythonDurationMs, sourcesUsed };
 }

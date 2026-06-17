@@ -35,10 +35,16 @@ def test_drops_unrelated_artist():
     assert _filter_track_matches(suggestions, "Surgeon", "Flatliner") == []
 
 
-def test_drops_different_track_with_same_prefix():
-    # "Flatliner Two" has " Two" suffix — not a recognized remix/version marker
-    suggestions = ["Surgeon - Flatliner Two"]
-    assert _filter_track_matches(suggestions, "Surgeon", "Flatliner") == []
+def test_keeps_prefix_completion_while_typing():
+    # Prefix (autocomplete) matching: a partial title surfaces real completions.
+    # "Joe Milli - M" must surface "Mantra"/"Mono"; "Flatliner" surfaces
+    # "Flatliner Two". This is the typed-prefix case the strict filter broke.
+    assert _filter_track_matches(["Joe Milli - Mantra"], "Joe Milli", "M") == [
+        "Joe Milli - Mantra"
+    ]
+    assert _filter_track_matches(["Surgeon - Flatliner Two"], "Surgeon", "Flatliner") == [
+        "Surgeon - Flatliner Two"
+    ]
 
 
 def test_drops_unrelated_track_with_matching_artist():
