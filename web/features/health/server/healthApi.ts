@@ -2,13 +2,10 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "@/lib/hono/types";
 import { healthHealthGet } from "@/lib/python-api/generated/clients/healthHealthGet";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 export const healthApi = new Hono<AppEnv>().get("/health", async (c) => {
   const pythonOk = await healthHealthGet({
-    baseURL: c.var.pythonServiceUrl,
     signal: AbortSignal.timeout(3000),
-    headers: pythonServiceHeaders(),
   })
     .then(() => true)
     .catch(() => false);

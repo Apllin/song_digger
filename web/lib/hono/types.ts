@@ -7,7 +7,6 @@ export type RequestMetricsVar = {
 
 export type AppEnv = {
   Variables: {
-    pythonServiceUrl: string;
     metrics: RequestMetricsVar;
   };
 };

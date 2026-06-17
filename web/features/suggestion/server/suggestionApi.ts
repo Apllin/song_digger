@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import type { AppEnv } from "@/lib/hono/types";
 import { getSuggestionsSuggestionsGet } from "@/lib/python-api/generated/clients/getSuggestionsSuggestionsGet";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const SuggestionsQuerySchema = z.object({
   q: z.string().trim().min(2).max(200),
@@ -21,10 +20,7 @@ export const suggestionApi = new Hono<AppEnv>().get(
   async (c) => {
     const { q } = c.req.valid("query");
     try {
-      const data = await getSuggestionsSuggestionsGet(
-        { q },
-        { baseURL: c.var.pythonServiceUrl, signal: AbortSignal.timeout(4000), headers: pythonServiceHeaders() },
-      );
+      const data = await getSuggestionsSuggestionsGet({ q }, { signal: AbortSignal.timeout(4000) });
       return c.json(data);
     } catch {
       return c.json([] as string[]);

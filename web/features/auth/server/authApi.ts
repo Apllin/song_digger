@@ -115,7 +115,10 @@ export const authApi = new Hono<AppEnv>()
     });
 
     if (pendingCodes.length === 0) {
-      return c.json({ error: "Code expired or not found. Please request a new one." });
+      throw new HttpError(400, {
+        name: "CODE_EXPIRED",
+        message: "Code expired or not found. Please request a new one.",
+      });
     }
 
     let matched = false;
@@ -134,9 +137,12 @@ export const authApi = new Hono<AppEnv>()
       const maxFailed = Math.max(...updated.map((c) => c.failedAttempts));
       if (maxFailed >= 5) {
         await prisma.verificationCode.deleteMany({ where: { email } });
-        return c.json({ error: "Code expired or not found. Please request a new one." });
+        throw new HttpError(400, {
+          name: "CODE_EXPIRED",
+          message: "Code expired or not found. Please request a new one.",
+        });
       }
-      return c.json({ error: "Invalid code" });
+      throw new HttpError(400, { name: "INVALID_CODE", message: "Invalid code" });
     }
 
     await prisma.user.update({ where: { email }, data: { emailVerified: new Date() } });

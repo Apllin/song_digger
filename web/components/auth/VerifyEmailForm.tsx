@@ -15,29 +15,24 @@ export function VerifyEmailForm({ email }: { email: string }) {
     setPending(true);
     setError(null);
     setResendMsg(null);
-    let result;
     try {
-      result = await parseResponse(
+      await parseResponse(
         api.account["verify-email"].$post({ json: { email, code: String(formData.get("code") ?? "") } }),
       );
     } catch (err) {
       setPending(false);
-      const data = err instanceof DetailedError ? (err.detail?.data as { error?: string } | undefined) : undefined;
-      setError(data?.error ?? "Something went wrong. Please try again.");
+      const data = err instanceof DetailedError ? (err.detail?.data as { message?: string } | undefined) : undefined;
+      setError(data?.message ?? "Something went wrong. Please try again.");
       return;
     }
     setPending(false);
 
-    if ("error" in result) {
-      setError(result.error);
-    } else {
-      // Hard navigation (not router.push) so the login page mounts with a
-      // clean DOM — soft navigation leaves browser autofill in a phantom
-      // state where the password field looks filled but the value isn't
-      // actually committed, causing the first sign-in attempt to fail.
-      // Pass the email through so the user only has to type the password.
-      window.location.replace(`/login?verified=true&email=${encodeURIComponent(email)}`);
-    }
+    // Hard navigation (not router.push) so the login page mounts with a
+    // clean DOM — soft navigation leaves browser autofill in a phantom
+    // state where the password field looks filled but the value isn't
+    // actually committed, causing the first sign-in attempt to fail.
+    // Pass the email through so the user only has to type the password.
+    window.location.replace(`/login?verified=true&email=${encodeURIComponent(email)}`);
   }
 
   async function handleResend() {

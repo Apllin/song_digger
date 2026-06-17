@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { createErrorHandler } from "./errorMiddleware";
 import type { AppEnv } from "./types";
+// Side-effect import: configures the python-service client (baseURL + auth) at startup.
+import "@/lib/python-api/client";
 
 import { authApi } from "@/features/auth/server/authApi";
 import { bandcampAudioApi } from "@/features/bandcampAudio/server/bandcampAudioApi";
@@ -23,10 +25,6 @@ export const app = new Hono<AppEnv>()
   // the Prisma extension reads to count DB calls per request.
   .use("*", metricsMiddleware)
   .onError(createErrorHandler())
-  .use("*", async (c, next) => {
-    c.set("pythonServiceUrl", process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000");
-    await next();
-  })
   .route("/", authApi)
   .route("/", bandcampAudioApi)
   .route("/", discographyApi)

@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import type { AppEnv } from "@/lib/hono/types";
 import { getReleaseTracklist } from "@/lib/python-api/generated/clients/getReleaseTracklist";
-import { pythonServiceHeaders } from "@/lib/python-api/headers";
 
 const schema = z.object({
   releaseId: z.string().trim().regex(/^\d+$/).max(12),
@@ -16,11 +15,7 @@ export const tracklistRoute = new Hono<AppEnv>().get(
   zValidator("query", schema),
   async (c) => {
     const { releaseId, type } = c.req.valid("query");
-    const data = await getReleaseTracklist(
-      Number(releaseId),
-      { release_type: type },
-      { baseURL: c.var.pythonServiceUrl, headers: pythonServiceHeaders() },
-    );
+    const data = await getReleaseTracklist(Number(releaseId), { release_type: type });
     return c.json(data);
   },
 );
