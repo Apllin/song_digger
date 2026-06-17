@@ -11,6 +11,11 @@ from app.core.models import SampleFeatures, TrainingRequest, TrainingResult
 
 router = APIRouter()
 
+# NB: troi is intentionally NOT in the trained vector. develop's model is a
+# fixed 90-feature, 7-source layout (genre/BPM buckets + interaction terms);
+# adding an 8th source shifts every index and breaks the existing model + tests.
+# Troi still contributes to retrieval/RRF at the default weight — learning a
+# dedicated troi weight is a follow-up that needs a feature-vector + model bump.
 SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud", "lastfm_hop"]
 RANK_DECAY_K = 60.0
 MIN_SAMPLES = 20

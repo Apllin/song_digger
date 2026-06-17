@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     # save the ~1s gather wait and the log noise; flip to true from .env
     # when running on a RU-resident proxy or self-hosting in RU.
     yandex_music_enabled: bool = False
+    # Troi / ListenBrainz lb-radio adapter (TRA-28). Enabled by default — it
+    # contributes to the merged /similar set and to model training. Set
+    # TROI_ENABLED=false in .env to A/B against the Last.fm-only baseline.
+    # NOTE: MetaBrainz data is free for non-commercial use only — confirm the
+    # commercial posture before a paid deployment (source-legality thread).
+    troi_enabled: bool = True
+    # dig_intensity → lb-radio mode (easy/medium/hard). "hard" biases toward the
+    # long tail (exploration), which is the core Track Digger goal; gate-tested
+    # to return on-target results for hypnotic/dub techno seeds.
+    troi_dig_intensity: str = "hard"
     # Origin used in YouTube embed URLs — must match the frontend host
     frontend_origin: str = "http://localhost:3000"
 
