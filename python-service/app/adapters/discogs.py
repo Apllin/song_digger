@@ -5,6 +5,7 @@ import httpx
 from app.config import settings
 from app.core.db import fetch_external_cache, upsert_external_cache
 from app.core.models import TrackMeta
+from app.services.discogs_warm import request_warm
 
 BASE_URL = "https://api.discogs.com"
 WWW_URL = "https://www.discogs.com"
@@ -633,7 +634,12 @@ class DiscogsAdapter:
             cache_key=_normalize_query(query),
             ttl_seconds=_COLLAB_TTL,
         )
-        if not cached:
+        if cached is None:
+            # Cold or expired seed → let the background worker (re)build it.
+            # A cached empty list is a real "no matches" result, so it's kept
+            # (returned below) and does NOT re-trigger a warm.
+            if " - " in query:
+                request_warm(query)
             return []
         return [TrackMeta(**t) for t in cached][:limit]
 
