@@ -22,8 +22,8 @@ from app.adapters.trackidnet import (
     WINDOW,
     _aggregate_incrementally,
     _extract_playlist_tracks_excluding_artist,
-    _split_query,
 )
+from app.core.models import ParsedQuery
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "trackidnet"
@@ -104,13 +104,6 @@ def _is_audiostream_detail(url, params=None):
     return "/audiostreams/" in url
 
 
-@pytest.fixture
-def _enabled(monkeypatch):
-    monkeypatch.setattr(
-        "app.adapters.trackidnet.settings.trackidnet_enabled", True
-    )
-
-
 def _make_seed_search(seed_id=502601, seed_slug="nina-kraviz-tarde-david-lohlein-amor-mix",
                      artist="nina kraviz", title="Tarde", play_count=10):
     return {
@@ -149,34 +142,9 @@ def _make_audiostream(tracks, end_date="2025-01-01T00:00:00Z"):
     }
 
 
-# ── _split_query ──────────────────────────────────────────────────────────
+# ── query short-circuits ───────────────────────────────────────────────────
 
-def test_split_query_artist_track():
-    assert _split_query("Nina Kraviz - Tarde") == ("Nina Kraviz", "Tarde")
-
-
-def test_split_query_artist_only():
-    assert _split_query("Nina Kraviz") == ("Nina Kraviz", None)
-
-
-def test_split_query_trailing_separator():
-    assert _split_query("Nina Kraviz - ") == ("Nina Kraviz", None)
-
-
-# ── feature flag + query short-circuits ───────────────────────────────────
-
-async def test_disabled_flag_short_circuits_without_network(monkeypatch):
-    monkeypatch.setattr(
-        "app.adapters.trackidnet.settings.trackidnet_enabled", False
-    )
-    adapter = TrackidnetAdapter()
-    client = _ScriptedClient([])
-    with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
-    assert client.calls == []
-
-
-async def test_query_without_dash_uses_keyword_flow(_enabled):
+async def test_query_without_dash_uses_keyword_flow():
     """Bare-artist queries now route to the /audiostreams?keywords= flow
     instead of returning empty. An empty keyword result still soft-degrades
     to []."""
@@ -185,7 +153,7 @@ async def test_query_without_dash_uses_keyword_flow(_enabled):
         (_is_keyword_search, _resp({"result": {"audiostreams": []}})),
     ])
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz")) == []
     assert any(
         c[0].endswith("/audiostreams") and c[1].get("keywords") == "Nina Kraviz"
         for c in client.calls
@@ -194,7 +162,7 @@ async def test_query_without_dash_uses_keyword_flow(_enabled):
 
 # ── seed picker (/musictracks) ────────────────────────────────────────────
 
-async def test_search_picks_highest_playcount_artist_match_and_uses_id(_enabled):
+async def test_search_picks_highest_playcount_artist_match_and_uses_id():
     """Two nina-kraviz entries (playCount 10 and 4) → picker takes 10 and
     uses its `id` to list playlists."""
     adapter = TrackidnetAdapter()
@@ -220,13 +188,13 @@ async def test_search_picks_highest_playcount_artist_match_and_uses_id(_enabled)
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
+        await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     # Verify the picked seed slug was sent on the playlists call
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
     assert any(c[1].get("musicTrackSlug") == "nina-kraviz-tarde-mix" for c in list_calls)
 
 
-async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled):
+async def test_search_falls_back_to_first_nonzero_when_no_artist_match():
     adapter = TrackidnetAdapter()
     search = {
         "result": {
@@ -244,12 +212,12 @@ async def test_search_falls_back_to_first_nonzero_when_no_artist_match(_enabled)
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina - T")
+        await adapter.find_similar(ParsedQuery("Nina", "T"))
     list_calls = [c for c in client.calls if c[0].endswith("/audiostreams")]
     assert any(c[1].get("musicTrackSlug") == "other-t" for c in list_calls)
 
 
-async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
+async def test_seed_with_zero_playcount_still_queries_playlists():
     """playCount=0 on /musictracks is unreliable — niche tracks can have 17+
     detected playlists despite playCount=0. The adapter must NOT filter on
     that field; it should proceed to /audiostreams which is the source of
@@ -270,7 +238,7 @@ async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
     # Playlists call IS made — playCount=0 must not short-circuit
     assert any(
         c[0].endswith("/audiostreams") and c[1].get("musicTrackSlug") == "nina-kraviz-tarde"
@@ -278,33 +246,33 @@ async def test_seed_with_zero_playcount_still_queries_playlists(_enabled):
     )
 
 
-async def test_search_empty_results_returns_empty(_enabled):
+async def test_search_empty_results_returns_empty():
     adapter = TrackidnetAdapter()
     payload = {"result": {"musicTracks": [], "rowCount": 0}}
     client = _ScriptedClient([(_is_search, _resp(payload))])
     with _patch_client(client):
-        assert await adapter.find_similar("Nobody - Nothing") == []
+        assert await adapter.find_similar(ParsedQuery("Nobody", "Nothing")) == []
 
 
-async def test_search_http_error_returns_empty(_enabled, capsys):
+async def test_search_http_error_returns_empty(capsys):
     adapter = TrackidnetAdapter()
     client = _ScriptedClient([(_is_search, httpx.ConnectError("boom"))])
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
     assert "[Trackidnet]" in capsys.readouterr().out
 
 
-async def test_search_500_returns_empty(_enabled, capsys):
+async def test_search_500_returns_empty(capsys):
     adapter = TrackidnetAdapter()
     client = _ScriptedClient([(_is_search, _resp({}, status=500))])
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
     assert "[Trackidnet]" in capsys.readouterr().out
 
 
 # ── playlists list (/audiostreams?musicTrackSlug=) ─────────────────────────
 
-async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
+async def test_playlists_list_happy_path_fetches_all_returned():
     """10 playlists from the (capped) fixture → all 10 detail fetches happen."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
@@ -316,13 +284,13 @@ async def test_playlists_list_happy_path_fetches_all_returned(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
+        await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
     # Fixture has 14 playlists; MAX_PLAYLISTS = 10 caps the fetch.
     assert len(detail_calls) == 10
 
 
-async def test_playlists_list_capped_at_max(_enabled):
+async def test_playlists_list_capped_at_max():
     """20 playlists returned (page max) → only top MAX_PLAYLISTS (by addedOn desc) fetched."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
@@ -335,7 +303,7 @@ async def test_playlists_list_capped_at_max(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
+        await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
     assert len(detail_calls) == 10
     fetched_slugs = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
@@ -345,7 +313,7 @@ async def test_playlists_list_capped_at_max(_enabled):
     assert "slug-9" not in fetched_slugs
 
 
-async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):
+async def test_playlists_list_sorted_by_addedon_desc_defensively():
     """API returns out-of-order playlists; adapter sorts before capping."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
@@ -362,7 +330,7 @@ async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
+        await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     detail_calls = [c for c in client.calls if "/audiostreams/" in c[0]]
     fetched_order = [c[0].rsplit("/", 1)[-1] for c in detail_calls]
     # Issue order doesn't have to be exact (gather is concurrent), but the
@@ -371,7 +339,7 @@ async def test_playlists_list_sorted_by_addedon_desc_defensively(_enabled):
     assert set(fetched_order) == {"new", "mid", "old"}
 
 
-async def test_playlists_list_http_error_returns_empty(_enabled, capsys):
+async def test_playlists_list_http_error_returns_empty(capsys):
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     rules = [
@@ -380,11 +348,11 @@ async def test_playlists_list_http_error_returns_empty(_enabled, capsys):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
     assert "[Trackidnet] playlists list failed" in capsys.readouterr().out
 
 
-async def test_playlists_list_empty_returns_empty(_enabled):
+async def test_playlists_list_empty_returns_empty():
     adapter = TrackidnetAdapter()
     search = _make_seed_search()
     rules = [
@@ -393,12 +361,12 @@ async def test_playlists_list_empty_returns_empty(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
 
 
 # ── window extraction ────────────────────────────────────────────────────
 
-async def test_window_around_seed_in_middle(_enabled):
+async def test_window_around_seed_in_middle():
     """20-track playlist, seed at index 7 → ±WINDOW co-occurrence neighbours,
     excluding the seed itself."""
     adapter = TrackidnetAdapter()
@@ -420,7 +388,7 @@ async def test_window_around_seed_in_middle(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     artists = {t.artist for t in results}
     expected = {
         f"A{i}"
@@ -431,7 +399,7 @@ async def test_window_around_seed_in_middle(_enabled):
     assert "Nina Kraviz" not in artists
 
 
-async def test_window_seed_at_start_returns_only_after(_enabled):
+async def test_window_seed_at_start_returns_only_after():
     """Seed at index 0 → window has WINDOW tracks after, none before."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -450,12 +418,12 @@ async def test_window_seed_at_start_returns_only_after(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert len(results) == WINDOW
     assert {t.artist for t in results} == {f"A{i}" for i in range(WINDOW)}
 
 
-async def test_window_seed_at_end_returns_only_before(_enabled):
+async def test_window_seed_at_end_returns_only_before():
     """Seed as last track → window has WINDOW tracks before, none after."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -474,12 +442,12 @@ async def test_window_seed_at_end_returns_only_before(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert len(results) == WINDOW
     assert {t.artist for t in results} == {f"A{i}" for i in range(10 - WINDOW, 10)}
 
 
-async def test_window_seed_not_in_tracklist_returns_empty(_enabled):
+async def test_window_seed_not_in_tracklist_returns_empty():
     """Playlist doesn't contain the seed slug → that playlist contributes 0."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -496,11 +464,11 @@ async def test_window_seed_not_in_tracklist_returns_empty(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert results == []
 
 
-async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
+async def test_window_seed_appears_multiple_times_anchors_on_first():
     """Seed at two indices — anchor on the first; window clamps at 0; ALL
     seed instances filtered."""
     adapter = TrackidnetAdapter()
@@ -523,7 +491,7 @@ async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     artists = {t.artist for t in results}
     # Window anchored on first seed at index `seed_first`, clamped to [0, len),
     # all seed instances filtered.
@@ -538,7 +506,7 @@ async def test_window_seed_appears_multiple_times_anchors_on_first(_enabled):
     assert "Nina Kraviz" not in artists
 
 
-async def test_track_with_null_slug_skipped(_enabled):
+async def test_track_with_null_slug_skipped():
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -555,11 +523,11 @@ async def test_track_with_null_slug_skipped(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert {t.artist for t in results} == {"Valid"}
 
 
-async def test_audiostream_falls_back_when_latest_process_is_empty(_enabled):
+async def test_audiostream_falls_back_when_latest_process_is_empty():
     """Latest endDate process is empty → fall back to earlier process
     that contains the seed."""
     adapter = TrackidnetAdapter()
@@ -589,11 +557,11 @@ async def test_audiostream_falls_back_when_latest_process_is_empty(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert {t.artist for t in results} == {"B", "A"}
 
 
-async def test_audiostream_skips_non_empty_process_that_lost_seed(_enabled):
+async def test_audiostream_skips_non_empty_process_that_lost_seed():
     """Real-world trackid.net case: a later reprocess succeeds with a
     non-empty result that simply doesn't include the seed track. The
     older (lower endDate) process *does* contain the seed.
@@ -636,11 +604,11 @@ async def test_audiostream_skips_non_empty_process_that_lost_seed(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert {t.artist for t in results} == {"B", "A"}
 
 
-async def test_audiostream_picks_latest_process_among_those_with_seed(_enabled):
+async def test_audiostream_picks_latest_process_among_those_with_seed():
     """Multiple processes contain the seed; tiebreak by latest endDate."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -672,11 +640,11 @@ async def test_audiostream_picks_latest_process_among_those_with_seed(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert {t.artist for t in results} == {"New"}
 
 
-async def test_no_process_contains_seed_returns_empty(_enabled):
+async def test_no_process_contains_seed_returns_empty():
     """Every detection process is non-empty but none contain the seed
     slug → playlist contributes nothing."""
     adapter = TrackidnetAdapter()
@@ -703,11 +671,11 @@ async def test_no_process_contains_seed_returns_empty(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert results == []
 
 
-async def test_empty_detection_processes_returns_empty_pool(_enabled):
+async def test_empty_detection_processes_returns_empty_pool():
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -719,12 +687,12 @@ async def test_empty_detection_processes_returns_empty_pool(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        assert await adapter.find_similar("Nina Kraviz - Tarde") == []
+        assert await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde")) == []
 
 
 # ── soft-fail per detail fetch ───────────────────────────────────────────
 
-async def test_one_detail_failing_does_not_kill_others(_enabled, capsys):
+async def test_one_detail_failing_does_not_kill_others(capsys):
     """One playlist's detail fetch raises; the others still contribute."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -749,14 +717,14 @@ async def test_one_detail_failing_does_not_kill_others(_enabled, capsys):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert {t.artist for t in results} == {"B"}
     assert "[Trackidnet] audiostream set-a failed" in capsys.readouterr().out
 
 
 # ── concurrency cap ──────────────────────────────────────────────────────
 
-async def test_detail_concurrency_capped_at_5(_enabled):
+async def test_detail_concurrency_capped_at_5():
     """With 15 playlists to fetch, never more than DETAIL_CONCURRENCY=5
     requests are in flight at once."""
     adapter = TrackidnetAdapter()
@@ -793,13 +761,13 @@ async def test_detail_concurrency_capped_at_5(_enabled):
     ]
     client = _SlowClient(rules)
     with _patch_client(client):
-        await adapter.find_similar("Nina Kraviz - Tarde")
+        await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert peak <= 5, f"semaphore did not cap concurrency; peak in-flight = {peak}"
 
 
 # ── aggregation across playlists ─────────────────────────────────────────
 
-async def test_cooccurrence_higher_count_wins(_enabled):
+async def test_cooccurrence_higher_count_wins():
     """Track in 2 of 2 fetched playlists outranks tracks in 1 of 2."""
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
@@ -827,13 +795,13 @@ async def test_cooccurrence_higher_count_wins(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert results[0].artist == "Shared"
     assert results[0].score == 2.0
     assert {t.artist for t in results[1:]} == {"OnlyA", "OnlyB"}
 
 
-async def test_tiebreak_lower_referencecount_wins(_enabled):
+async def test_tiebreak_lower_referencecount_wins():
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -849,11 +817,11 @@ async def test_tiebreak_lower_referencecount_wins(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde")
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert [t.artist for t in results] == ["Rare", "Generic"]
 
 
-async def test_limit_caps_returned_candidates(_enabled):
+async def test_limit_caps_returned_candidates():
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -872,11 +840,11 @@ async def test_limit_caps_returned_candidates(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        results = await adapter.find_similar("Nina Kraviz - Tarde", limit=3)
+        results = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"), limit=3)
     assert len(results) == 3
 
 
-async def test_trackmeta_fields_populated_correctly(_enabled):
+async def test_trackmeta_fields_populated_correctly():
     adapter = TrackidnetAdapter()
     search = _make_seed_search(seed_slug="seed")
     playlists = _make_playlists_response([("set-a", "2025-01-01T00:00:00Z")])
@@ -893,7 +861,7 @@ async def test_trackmeta_fields_populated_correctly(_enabled):
     ]
     client = _ScriptedClient(rules)
     with _patch_client(client):
-        (track,) = await adapter.find_similar("Nina Kraviz - Tarde")
+        (track,) = await adapter.find_similar(ParsedQuery("Nina Kraviz", "Tarde"))
     assert track.title == "Forest Hunter"
     assert track.artist == "Heliobolus"
     assert track.source == "trackidnet"

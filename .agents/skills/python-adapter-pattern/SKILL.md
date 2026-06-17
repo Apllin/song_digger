@@ -20,13 +20,13 @@ Every adapter is a class in `python-service/app/adapters/<name>.py` that:
 
 1. Inherits from `AbstractAdapter` (in `app/adapters/base.py`)
 2. Sets `name: str = "<source-name>"` matching the source identifier used in `SourceList(source=...)`
-3. Implements `async def find_similar(self, query: str, limit: int = N) -> list[TrackMeta]` — `query` is `"Artist - Track"` (or just `"Artist"` for artist-only mode); the adapter parses it locally via a private `_split_query` helper (mirror the one in [lastfm.py](../../python-service/app/adapters/lastfm.py))
+3. Implements `async def find_similar(self, query: ParsedQuery, limit: int = N) -> list[TrackMeta]` — `query.artist` and `query.track` (`None` for artist-only mode) arrive pre-parsed from the `/similar` route; `query.search_string` renders the canonical `"Artist - Track"` form for sources that pass the whole query to an upstream search API. Adapters do NOT parse raw strings or define a `_split_query` helper anymore.
 4. Implements `async def random_techno_track(self) -> TrackMeta | None` (return `None` if the source has no random capability — Last.fm, trackid all return None here)
 
 ```python
 import httpx
 from app.adapters.base import AbstractAdapter
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 from app.config import settings
 
 API_BASE = "https://example.com/api/"
@@ -38,7 +38,7 @@ class ExampleAdapter(AbstractAdapter):
 
     async def find_similar(
         self,
-        query: str,
+        query: ParsedQuery,
         limit: int = LIMIT,
     ) -> list[TrackMeta]:
         # 1. Soft-degrade when credentials are missing
@@ -47,11 +47,11 @@ class ExampleAdapter(AbstractAdapter):
             return []
 
         # 2. Soft-degrade when the API can't handle the request shape.
-        #    Parse "Artist - Track" locally; if the source needs both,
-        #    short-circuit on artist-only queries.
-        artist, track = _split_query(query)
-        if not track:
+        #    query.track is None for artist-only queries; short-circuit if the
+        #    source needs a track.
+        if not query.track:
             return []  # this source requires a track
+        artist, track = query.artist, query.track
 
         # 3. Make the request inside try/except — swallow ALL exceptions,
         #    log with the [Adapter] prefix, return [] on failure
@@ -85,17 +85,9 @@ class ExampleAdapter(AbstractAdapter):
 
     async def random_techno_track(self) -> TrackMeta | None:
         return None  # explicit, not omitted
-
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" → (artist, track). Returns (query, None)
-    when there is no separator. Adapters needing a track must
-    short-circuit on the (artist, None) shape — see lastfm.py:_split_query."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    return artist.strip(), (track.strip() or None)
 ```
+
+`ParsedQuery` lives in `app/core/models.py`: a frozen dataclass with `artist: str`, `track: str | None`, and a `search_string` property. The `/similar` route builds it (including the word-swapped reversed variant) — adapters just read it.
 
 ## Critical conventions
 
@@ -134,7 +126,7 @@ Don't dedupe inside the adapter. The `/similar` route applies `_dedup_within_sou
 ### What never to do
 
 - **Don't make multiple requests to dedupe results.** If the API returns 50 with some duplicates, return all 50. The downstream filter handles it.
-- **Don't cache inside the adapter** unless the source semantics specifically require it. For most adapters, caching is a separate concern at higher layers (Postgres for cross-search reuse via the web side). Adapter remains a pure async function from `query` to `list[TrackMeta]`. The `LastfmArtistSimilars` cache table (read/written by the Last.fm artist-fallback path) is the active example; the `TrackidCooccurrence` cache mentioned in older docs was removed in ADR-0019.
+- **Don't cache inside the adapter.** The single cache layer is the web-side search-response cache (`ExternalApiCache` `source="search_response"`) that wraps the whole `/similar` call. Adapters are pure async functions from `ParsedQuery` to `list[TrackMeta]` — the per-adapter caches (Troi prompt outputs, Last.fm artist similars / top tracks, trackid seed/playlist/set) were all removed in favour of that one layer.
 - **Don't enrich.** If the API returns a similarity score, populate `score`. Don't call other adapters to fill gaps — the post-Stage-F philosophy is "trust the adapters" and there is no inline-enrichment pass anymore.
 - **Don't hardcode URLs in production code.** Constants at module top (`API_BASE`, `LIMIT`, `MIN_MATCH`) are fine. Per-call URLs use these constants.
 

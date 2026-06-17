@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.adapters.yandex_music import YandexMusicAdapter
+from app.core.models import ParsedQuery
 
 
 def _track(
@@ -68,7 +69,7 @@ async def test_no_client_returns_empty():
     """Missing token / package init failed → adapter no-ops without searching."""
     adapter = YandexMusicAdapter()
     adapter._get_client = AsyncMock(return_value=None)
-    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses')) == []
 
 
 async def test_search_no_hits_returns_empty():
@@ -78,7 +79,7 @@ async def test_search_no_hits_returns_empty():
         search=_search_response([]),
         tracks_similar=AssertionError("must not call tracks_similar"),
     )
-    assert await adapter.find_similar("Some Unknown - Track") == []
+    assert await adapter.find_similar(ParsedQuery('Some Unknown', 'Track')) == []
     fake.tracks_similar.assert_not_called()
 
 
@@ -90,7 +91,7 @@ async def test_search_tracks_attr_none_returns_empty():
         search=SimpleNamespace(tracks=None),
         tracks_similar=AssertionError("must not call"),
     )
-    assert await adapter.find_similar("X - Y") == []
+    assert await adapter.find_similar(ParsedQuery('X', 'Y')) == []
 
 
 # ── happy path ───────────────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ async def test_two_step_search_then_similar_returns_parsed_tracks():
         tracks_similar=_similar_response([sim_a, sim_b]),
     )
 
-    results = await adapter.find_similar("Oscar Mulero - Horses", limit=20)
+    results = await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'), limit=20)
 
     fake.search.assert_awaited_once_with("Oscar Mulero - Horses", type_="track", nocorrect=False)
     fake.tracks_similar.assert_awaited_once_with("seed-1")
@@ -142,7 +143,7 @@ async def test_find_similar_respects_limit():
         search=_search_response([seed]),
         tracks_similar=_similar_response(sims),
     )
-    out = await adapter.find_similar("A - T", limit=3)
+    out = await adapter.find_similar(ParsedQuery('A', 'T'), limit=3)
     assert len(out) == 3
     assert [r.title for r in out] == ["T0", "T1", "T2"]
 
@@ -157,7 +158,7 @@ async def test_parser_drops_tracks_without_id():
         search=_search_response([seed]),
         tracks_similar=_similar_response([good, bad]),
     )
-    out = await adapter.find_similar("A - T")
+    out = await adapter.find_similar(ParsedQuery('A', 'T'))
     assert [r.title for r in out] == ["Good"]
 
 
@@ -178,7 +179,7 @@ async def test_seed_rejects_off_topic_first_hit_and_skips_similar_call(capsys):
         tracks_similar=AssertionError("must not call — seed rejected"),
     )
 
-    assert await adapter.find_similar("Ignez - Aventurine") == []
+    assert await adapter.find_similar(ParsedQuery('Ignez', 'Aventurine')) == []
     fake.tracks_similar.assert_not_called()
     assert "no seed matched" in capsys.readouterr().out
 
@@ -194,7 +195,7 @@ async def test_seed_picks_second_candidate_when_first_is_off_topic():
         search=_search_response([wrong, right]),
         tracks_similar=_similar_response([sim]),
     )
-    out = await adapter.find_similar("Oscar Mulero - Horses")
+    out = await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'))
     assert len(out) == 1
     assert out[0].artist == "Reeko"
 
@@ -210,7 +211,7 @@ async def test_seed_scans_at_most_first_five_candidates():
         search=_search_response(wrong + [matching]),
         tracks_similar=AssertionError("must not call"),
     )
-    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses')) == []
     fake.tracks_similar.assert_not_called()
 
 
@@ -226,7 +227,7 @@ async def test_bare_artist_query_picks_first_track_by_that_artist():
         search=_search_response([off, right]),
         tracks_similar=_similar_response([sim]),
     )
-    out = await adapter.find_similar("Oscar Mulero")
+    out = await adapter.find_similar(ParsedQuery('Oscar Mulero'))
     assert len(out) == 1
     assert out[0].artist == "Reeko"
     fake.tracks_similar.assert_awaited_once_with("right")
@@ -240,7 +241,7 @@ async def test_bare_artist_query_returns_empty_when_no_artist_match(capsys):
         search=_search_response([_track("x", "Whatever", artist="Whoever")]),
         tracks_similar=AssertionError("must not call"),
     )
-    assert await adapter.find_similar("Chontane") == []
+    assert await adapter.find_similar(ParsedQuery('Chontane')) == []
     fake.tracks_similar.assert_not_called()
     assert "no seed matched" in capsys.readouterr().out
 
@@ -255,7 +256,7 @@ async def test_artist_title_query_requires_exact_title_match(capsys):
         search=_search_response([_track("wrong", "Horses (VIP Mix)", artist="Oscar Mulero")]),
         tracks_similar=AssertionError("must not call"),
     )
-    assert await adapter.find_similar("Oscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses')) == []
     fake.tracks_similar.assert_not_called()
     assert "no seed matched" in capsys.readouterr().out
 
@@ -270,7 +271,7 @@ async def test_seed_match_tolerates_diacritics_and_collaborators():
         tracks_similar=_similar_response([]),
     )
     # Empty similars list confirms we *reached* tracks_similar (no rejection).
-    assert await adapter.find_similar("Óscar Mulero - Horses") == []
+    assert await adapter.find_similar(ParsedQuery('Óscar Mulero', 'Horses')) == []
 
 
 # ── failure modes ────────────────────────────────────────────────────────────
@@ -289,7 +290,7 @@ async def test_yandex_music_error_during_similar_returns_empty(capsys):
         search=_search_response([seed]),
         tracks_similar=_raise,
     )
-    assert await adapter.find_similar("A - T") == []
+    assert await adapter.find_similar(ParsedQuery('A', 'T')) == []
     assert "[YandexMusic]" in capsys.readouterr().out
 
 
@@ -304,7 +305,7 @@ async def test_unexpected_exception_returns_empty(capsys):
         search=_raise,
         tracks_similar=AssertionError("must not call"),
     )
-    assert await adapter.find_similar("A - T") == []
+    assert await adapter.find_similar(ParsedQuery('A', 'T')) == []
     out = capsys.readouterr().out
     assert "[YandexMusic]" in out
     assert "unexpected" in out

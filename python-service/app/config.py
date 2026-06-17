@@ -13,23 +13,11 @@ class Settings(BaseSettings):
     yandex_music_token: str = ""
     lastfm_api_key: str = ""
     # Postgres connection string — shared with web (Prisma). Empty in test
-    # environments; the trackid cache helpers soft-degrade when unset.
+    # environments; the /similar cache helpers soft-degrade when unset.
     database_url: str = ""
-    # Trackid.net rewrite verified 2026-05-04. JSON API confirmed working
-    # (no auth, no Cloudflare cookie); tests cover the full flow.
-    # Enable by default — see ADR-0014.
-    trackidnet_enabled: bool = True
-    # Yandex Music API geoblocks non-RU IPs with HTTP 451 since 2024. The
-    # adapter is functional but every request returns []. Default OFF to
-    # save the ~1s gather wait and the log noise; flip to true from .env
-    # when running on a RU-resident proxy or self-hosting in RU.
-    yandex_music_enabled: bool = False
-    # Troi / ListenBrainz lb-radio adapter (TRA-28). Enabled by default — it
-    # contributes to the merged /similar set and to model training. Set
-    # TROI_ENABLED=false in .env to A/B against the Last.fm-only baseline.
-    # NOTE: MetaBrainz data is free for non-commercial use only — confirm the
-    # commercial posture before a paid deployment (source-legality thread).
-    troi_enabled: bool = True
+    # NOTE: MetaBrainz data (Troi / ListenBrainz lb-radio) is free for
+    # non-commercial use only — confirm the commercial posture before a paid
+    # deployment (source-legality thread).
     # dig_intensity → lb-radio mode (easy/medium/hard). "hard" biases toward the
     # long tail (exploration), which is the core Track Digger goal; gate-tested
     # to return on-target results for hypnotic/dub techno seeds.

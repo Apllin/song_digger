@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.adapters.youtube_music import YouTubeMusicAdapter
+from app.core.models import ParsedQuery
 
 
 def _ytm_track(video_id: str, title: str, artist: str = "Some Artist") -> dict:
@@ -36,7 +37,7 @@ async def test_find_similar_skips_seed_and_parses_remaining():
     fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, rec1, rec2]}
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        results = await adapter.find_similar("Oscar Mulero - Horses", limit=10)
+        results = await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'), limit=10)
 
     assert len(results) == 2
     assert results[0].title == "Faceless"
@@ -63,7 +64,7 @@ async def test_find_similar_search_no_hits_returns_empty():
     fake_ytm = MagicMock()
     fake_ytm.search.return_value = []
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        assert await adapter.find_similar("Some Unknown - Track") == []
+        assert await adapter.find_similar(ParsedQuery('Some Unknown', 'Track')) == []
     fake_ytm.get_watch_playlist.assert_not_called()
 
 
@@ -76,7 +77,7 @@ async def test_find_similar_search_returns_no_video_id_returns_empty():
     # would reject the entry on missing artist/title first.
     fake_ytm.search.return_value = [{"title": "weird"}]  # no videoId key
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        assert await adapter.find_similar("freeform query") == []
+        assert await adapter.find_similar(ParsedQuery('freeform query')) == []
     fake_ytm.get_watch_playlist.assert_not_called()
 
 
@@ -87,7 +88,7 @@ async def test_find_similar_rejects_seed_that_does_not_match_query():
     fake_ytm.search.return_value = [_ytm_track("vidX", "Ooooooooo", artist="Joy Helder")]
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        assert await adapter.find_similar("Ignez - Aventurine") == []
+        assert await adapter.find_similar(ParsedQuery('Ignez', 'Aventurine')) == []
     fake_ytm.get_watch_playlist.assert_not_called()
 
 
@@ -105,7 +106,7 @@ async def test_find_similar_drops_tracks_missing_video_id():
     fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, good, bad]}
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        results = await adapter.find_similar("Some Artist - Horses", limit=10)
+        results = await adapter.find_similar(ParsedQuery('Some Artist', 'Horses'), limit=10)
 
     assert len(results) == 1
     assert results[0].sourceUrl == "https://music.youtube.com/watch?v=vidA"
@@ -125,7 +126,7 @@ async def test_find_similar_joins_multiple_artists():
     fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, collab]}
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        results = await adapter.find_similar("Some Artist - Horses")
+        results = await adapter.find_similar(ParsedQuery('Some Artist', 'Horses'))
 
     assert len(results) == 1
     assert results[0].artist == "A, B"
@@ -141,7 +142,7 @@ async def test_find_similar_swallows_ytmusicapi_exceptions(capsys):
     fake_ytm.search.side_effect = RuntimeError("rate limited")
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        assert await adapter.find_similar("Some Artist - Some Title") == []
+        assert await adapter.find_similar(ParsedQuery('Some Artist', 'Some Title')) == []
     assert "[YouTubeMusic]" in capsys.readouterr().out
 
 
@@ -185,7 +186,7 @@ async def test_videos_fallback_used_when_songs_catalogue_misses():
     fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, rec]}
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        results = await adapter.find_similar("The Computer Controlled Minds - Machines Are Working", limit=10)
+        results = await adapter.find_similar(ParsedQuery('The Computer Controlled Minds', 'Machines Are Working'), limit=10)
 
     assert len(results) == 1
     assert results[0].sourceUrl == "https://music.youtube.com/watch?v=rec1"
@@ -208,7 +209,7 @@ async def test_videos_fallback_rejects_partial_token_match():
     fake_ytm.search.side_effect = [[], video_hits]  # songs empty, videos has near-miss
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        results = await adapter.find_similar("The Computer Controlled Minds - Machines Are Working")
+        results = await adapter.find_similar(ParsedQuery('The Computer Controlled Minds', 'Machines Are Working'))
 
     assert results == []
     fake_ytm.get_watch_playlist.assert_not_called()
@@ -222,7 +223,7 @@ async def test_videos_fallback_skipped_for_bare_artist_query():
     fake_ytm.search.return_value = []  # songs empty for the bare-artist query
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        assert await adapter.find_similar("Some Unknown Artist") == []
+        assert await adapter.find_similar(ParsedQuery('Some Unknown Artist')) == []
     # Exactly one search — videos fallback never attempted.
     assert fake_ytm.search.call_count == 1
 
@@ -237,6 +238,6 @@ async def test_videos_fallback_not_called_when_songs_match():
     fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, rec]}
 
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
-        await adapter.find_similar("Oscar Mulero - Horses")
+        await adapter.find_similar(ParsedQuery('Oscar Mulero', 'Horses'))
 
     assert fake_ytm.search.call_count == 1

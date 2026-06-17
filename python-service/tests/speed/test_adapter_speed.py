@@ -20,10 +20,14 @@ from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.config import settings
+from app.core.models import ParsedQuery
 
 from .conftest import SPEED_SEED_QUERY, measure_runs, p50_p95
 
 pytestmark = pytest.mark.speed
+
+_seed_artist, _, _seed_track = SPEED_SEED_QUERY.partition(" - ")
+SPEED_SEED = ParsedQuery(artist=_seed_artist.strip(), track=(_seed_track.strip() or None))
 
 
 # Per-adapter P95 thresholds (seconds). Rationale:
@@ -56,7 +60,7 @@ async def test_cosine_p95_latency():
         pytest.skip("COSINE_CLUB_API_KEY not configured")
     adapter = CosineClubAdapter()
     latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
+        lambda: adapter.find_similar(SPEED_SEED, 30), runs=RUNS,
     )
     _, p95 = _report("Cosine", latencies)
     assert p95 < COSINE_P95_S, f"Cosine P95 {p95:.2f}s ≥ threshold {COSINE_P95_S}s"
@@ -65,7 +69,7 @@ async def test_cosine_p95_latency():
 async def test_youtube_music_p95_latency():
     adapter = YouTubeMusicAdapter()
     latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
+        lambda: adapter.find_similar(SPEED_SEED, 30), runs=RUNS,
     )
     _, p95 = _report("YTM", latencies)
     assert p95 < YTM_P95_S, f"YTM P95 {p95:.2f}s ≥ threshold {YTM_P95_S}s"
@@ -76,7 +80,7 @@ async def test_yandex_music_p95_latency():
         pytest.skip("YANDEX_MUSIC_TOKEN not configured")
     adapter = YandexMusicAdapter()
     latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
+        lambda: adapter.find_similar(SPEED_SEED, 30), runs=RUNS,
     )
     _, p95 = _report("Yandex", latencies)
     assert p95 < YANDEX_P95_S, f"Yandex P95 {p95:.2f}s ≥ threshold {YANDEX_P95_S}s"
@@ -87,18 +91,16 @@ async def test_lastfm_p95_latency():
         pytest.skip("LASTFM_API_KEY not configured")
     adapter = LastfmAdapter()
     latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
+        lambda: adapter.find_similar(SPEED_SEED, 30), runs=RUNS,
     )
     _, p95 = _report("Last.fm", latencies)
     assert p95 < LASTFM_P95_S, f"Last.fm P95 {p95:.2f}s ≥ threshold {LASTFM_P95_S}s"
 
 
 async def test_trackidnet_p95_latency():
-    if not settings.trackidnet_enabled:
-        pytest.skip("TRACKIDNET_ENABLED=false")
     adapter = TrackidnetAdapter()
     latencies, _ = await measure_runs(
-        lambda: adapter.find_similar(SPEED_SEED_QUERY, 30), runs=RUNS,
+        lambda: adapter.find_similar(SPEED_SEED, 30), runs=RUNS,
     )
     _, p95 = _report("Trackid", latencies)
     assert p95 < TRACKIDNET_P95_S, (

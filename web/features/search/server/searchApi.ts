@@ -14,7 +14,6 @@ import {
 import { PYTHON_LIMIT_PER_SOURCE, SEARCH_CACHE_TTL_SECONDS, searchCacheKey } from "@/features/search/searchCache";
 import type { AudioFeatures, FusedCandidate } from "@/lib/aggregator";
 import { aggregateTracks, buildFeatures, rrfFuse } from "@/lib/aggregator";
-import { enrichMissingCovers } from "@/lib/cover-enrichment";
 import { warmEmbedCache } from "@/lib/embed-cache";
 import { anonGate } from "@/lib/hono/anonGate";
 import { HttpError } from "@/lib/hono/httpError";
@@ -115,50 +114,37 @@ async function saveTracks(
   });
 
   // 2. One SELECT to map every sourceUrl → id (covers freshly inserted and
-  //    pre-existing rows alike) and to read current cover/embed/audio state for
-  //    the backfill check.
+  //    pre-existing rows alike) and to read current audio state for the
+  //    backfill check.
   const existing = await prisma.track.findMany({
     where: { sourceUrl: { in: urls } },
-    select: { id: true, sourceUrl: true, coverUrl: true, embedUrl: true, audioFeaturesFetchedAt: true },
+    select: { id: true, sourceUrl: true, audioFeaturesFetchedAt: true },
   });
   const urlToRow = new Map(existing.map((r) => [r.sourceUrl, r]));
 
-  // 3. Backfill cover/embed when DB stores NULL but the current fetch has data,
-  //    and the eagerly-resolved bpm/key for pre-existing rows we scraped this
-  //    search (audioFeaturesFetchedAt still NULL). Never overwrites good data.
-  //    Typically a no-op after the first save of a given track.
+  // 3. Backfill only the ranking signal — the eagerly-resolved bpm/key for
+  //    pre-existing rows we scraped this search (audioFeaturesFetchedAt still
+  //    NULL, or a stale "not found" whose cooldown should reset). Cover/embed
+  //    are presentation, not ranking, so they are never backfilled here:
+  //    covers are resolved client-side and embeds are warmed separately (step 5).
+  //    Just-inserted rows already carry `now` from createMany and are skipped.
   const backfills = tracks.filter((t) => {
     const row = urlToRow.get(t.sourceUrl);
     if (!row) return false;
-    const coverEmbed = (row.coverUrl == null && t.coverUrl != null) || (row.embedUrl == null && t.embedUrl != null);
-    // Refresh on every attempt — including a re-attempt of a stale "not found"
-    // (timestamp older than `now`) so its cooldown resets. Just-inserted rows
-    // already carry `now` from createMany and are skipped here.
-    const audioBackfill =
-      attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
-    return coverEmbed || audioBackfill;
+    return attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
   });
   if (backfills.length) {
     await prisma.$transaction(
-      backfills.map((t) => {
-        const row = urlToRow.get(t.sourceUrl)!;
-        const audioBackfill =
-          attemptedUrls.has(t.sourceUrl) && (row.audioFeaturesFetchedAt == null || row.audioFeaturesFetchedAt < now);
-        return prisma.track.update({
+      backfills.map((t) =>
+        prisma.track.update({
           where: { sourceUrl: t.sourceUrl },
           data: {
-            coverUrl: t.coverUrl ?? undefined,
-            embedUrl: t.embedUrl ?? undefined,
-            ...(audioBackfill
-              ? {
-                  bpm: audio.candidateBpm.get(t.sourceUrl) ?? undefined,
-                  musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? undefined,
-                  audioFeaturesFetchedAt: now,
-                }
-              : {}),
+            bpm: audio.candidateBpm.get(t.sourceUrl) ?? undefined,
+            musicalKey: audio.candidateMusicalKey.get(t.sourceUrl) ?? undefined,
+            audioFeaturesFetchedAt: now,
           },
-        });
-      }),
+        }),
+      ),
       { timeout: DB_TXN_TIMEOUT_MS },
     );
   }
@@ -259,9 +245,11 @@ async function runSearch(
       fused,
       pythonServiceUrl,
     );
+    // Cover enrichment is presentation, not ranking — it runs client-side
+    // (lazy /api/cover lookup per card). The server persists only what the
+    // adapters returned plus the ranking signals.
     const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
-    const playable = await enrichMissingCovers(aggregated);
-    await saveTracks(searchId, playable, seed, audio, attemptedUrls);
+    await saveTracks(searchId, aggregated, seed, audio, attemptedUrls);
 
     await prisma.searchQuery.update({
       where: { id: searchId },

@@ -4,7 +4,7 @@ import re
 from ytmusicapi import YTMusic
 from app.adapters.base import AbstractAdapter
 from app.adapters._seed_match import SEED_CANDIDATES, _normalize, query_match_score
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 from app.config import settings
 
 # ytmusicapi is synchronous — we run it in a thread pool
@@ -112,9 +112,9 @@ class YouTubeMusicAdapter(AbstractAdapter):
     Docs: https://ytmusicapi.readthedocs.io/en/stable/
     """
 
-    async def find_similar(self, query: str, limit: int = 10) -> list[TrackMeta]:
+    async def find_similar(self, query: ParsedQuery, limit: int = 10) -> list[TrackMeta]:
         try:
-            tracks = await asyncio.to_thread(self._find_similar_sync, query, limit)
+            tracks = await asyncio.to_thread(self._find_similar_sync, query.search_string, limit)
             return tracks
         except Exception as e:
             print(f"[YouTubeMusic] find_similar error: {e}")

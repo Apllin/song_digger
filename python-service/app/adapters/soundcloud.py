@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 
 from app.adapters._seed_match import MATCH_NONE, query_match_score
 from app.adapters.base import AbstractAdapter
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 from app.core.title_norm import strip_recording_suffixes
 
 SC_BASE = "https://soundcloud.com"
@@ -264,16 +264,15 @@ def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
 class SoundCloudAdapter(AbstractAdapter):
     name = "soundcloud"
 
-    async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
+    async def find_similar(self, query: ParsedQuery, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
         seed_url = await self._search_seed(query)
         if not seed_url:
             return []
         return await self._fetch_recommended(seed_url, limit)
 
-    async def _search_seed(self, query: str) -> str | None:
+    async def _search_seed(self, query: ParsedQuery) -> str | None:
         """Search SoundCloud and return a validated seed track URL, or None."""
-        artist, track = _split_query(query)
-        search_query = f"{artist} {track}" if track else artist
+        search_query = f"{query.artist} {query.track}" if query.track else query.artist
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, headers=_HEADERS) as client:
                 resp = await client.get(f"{SC_BASE}/search", params={"q": search_query})
@@ -281,7 +280,7 @@ class SoundCloudAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[SoundCloud] search error: {e}")
             return None
-        return _pick_seed(query, resp.text)
+        return _pick_seed(query.search_string, resp.text)
 
     async def _fetch_recommended(self, seed_url: str, limit: int) -> list[TrackMeta]:
         rec_url = seed_url.rstrip("/") + "/recommended"
@@ -310,13 +309,3 @@ class SoundCloudAdapter(AbstractAdapter):
 
     async def random_techno_track(self) -> TrackMeta | None:
         return None
-
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" -> (artist, track). Returns (query, None) when no separator."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    return artist, track or None

@@ -1,4 +1,24 @@
+from dataclasses import dataclass
+
 from pydantic import BaseModel
+
+
+@dataclass(frozen=True)
+class ParsedQuery:
+    """Parsed search query handed to every adapter's find_similar.
+
+    The /similar route parses the request once into this object instead of each
+    adapter re-splitting a raw "Artist - Track" string. `search_string` renders
+    the canonical form for adapters that pass the whole query to an upstream
+    search API; adapters that need the parts read `artist` / `track` directly.
+    """
+
+    artist: str
+    track: str | None = None
+
+    @property
+    def search_string(self) -> str:
+        return f"{self.artist} - {self.track}" if self.track else self.artist
 
 
 class TrackMeta(BaseModel):

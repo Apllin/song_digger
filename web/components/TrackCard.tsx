@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { parseResponse } from "hono/client";
+import { useCallback, useEffect, useState } from "react";
 
 import { SOURCE_LABELS } from "@/features/player/constants";
 import { usePlayer } from "@/features/player/hooks/usePlayer";
 import type { PlayerTrack } from "@/features/player/types";
+import { api } from "@/lib/hono/client";
 
 interface TrackCardProps {
   track: PlayerTrack;
@@ -34,7 +36,26 @@ export function TrackCard({
 
   const videoId = track.source === "youtube_music" ? (track.sourceUrl.split("v=")[1]?.split("&")[0] ?? null) : null;
 
-  const effectiveCover = track.coverUrl ?? (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
+  const baseCover = track.coverUrl ?? (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
+
+  // Cover enrichment is client-side: adapters that returned no artwork get a
+  // lazy iTunes lookup here (cache-first via /api/cover), keeping it off the
+  // search hot path.
+  const [fetchedCover, setFetchedCover] = useState<string | null>(null);
+  const effectiveCover = baseCover ?? fetchedCover;
+
+  useEffect(() => {
+    if (baseCover) return;
+    let active = true;
+    parseResponse(api.cover.$get({ query: { artist: track.artist, title: track.title } }))
+      .then((data) => {
+        if (active && data.coverUrl) setFetchedCover(data.coverUrl);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [baseCover, track.artist, track.title]);
 
   const handlePlay = useCallback(() => {
     if (isPlaying) {

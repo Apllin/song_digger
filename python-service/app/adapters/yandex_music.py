@@ -1,7 +1,7 @@
 from typing import Any
 from app.adapters.base import AbstractAdapter
 from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 from app.config import settings
 
 try:
@@ -31,9 +31,6 @@ class YandexMusicAdapter(AbstractAdapter):
     async def _get_client(self) -> Any:
         if self._client is not None or self._init_failed:
             return self._client
-        if not settings.yandex_music_enabled:
-            self._init_failed = True
-            return None
         if ClientAsync is None:
             print("[YandexMusic] yandex-music package not installed; adapter disabled")
             self._init_failed = True
@@ -51,16 +48,17 @@ class YandexMusicAdapter(AbstractAdapter):
             self._init_failed = True
             return None
 
-    async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:
+    async def find_similar(self, query: ParsedQuery, limit: int = 20) -> list[TrackMeta]:
         client = await self._get_client()
         if client is None:
             return []
+        search_string = query.search_string
         try:
-            search = await client.search(query, type_="track", nocorrect=False)
+            search = await client.search(search_string, type_="track", nocorrect=False)
             results = (search.tracks.results if search and search.tracks else None) or []
             if not results:
                 return []
-            seed = self._pick_seed(query, results[:SEED_CANDIDATES])
+            seed = self._pick_seed(search_string, results[:SEED_CANDIDATES])
             if seed is None:
                 return []
             similar = await client.tracks_similar(seed.id)

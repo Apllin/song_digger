@@ -82,7 +82,7 @@ async def test_cosine_track_miss_does_not_fall_back_to_artist_seed():
     )
 
     async def fake_cosine_find_similar(query, limit=20):
-        return [bare_artist_hit] if " - " not in query else []
+        return [bare_artist_hit] if query.track is None else []
 
     cosine_mock = AsyncMock(side_effect=fake_cosine_find_similar)
 
@@ -102,7 +102,7 @@ async def test_cosine_track_miss_does_not_fall_back_to_artist_seed():
     assert cosine_list.tracks == [], "Cosine must stay empty when it lacks the track"
     # And the bare-artist fallback query must not be issued at all.
     queries = [c.args[0] if c.args else c.kwargs.get("query") for c in cosine_mock.call_args_list]
-    assert all(" - " in q for q in queries), f"unexpected bare-artist Cosine query in {queries}"
+    assert all(q.track is not None for q in queries), f"unexpected bare-artist Cosine query in {queries}"
 
 
 @pytest.mark.asyncio

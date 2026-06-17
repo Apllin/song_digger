@@ -11,12 +11,10 @@ from app.core.models import SampleFeatures, TrainingRequest, TrainingResult
 
 router = APIRouter()
 
-# NB: troi is intentionally NOT in the trained vector. develop's model is a
-# fixed 90-feature, 7-source layout (genre/BPM buckets + interaction terms);
-# adding an 8th source shifts every index and breaks the existing model + tests.
-# Troi still contributes to retrieval/RRF at the default weight — learning a
-# dedicated troi weight is a follow-up that needs a feature-vector + model bump.
-SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud", "lastfm_hop"]
+# Every retrieval source that contributes to RRF gets a trained weight. Adding
+# or removing a source re-lays out the feature vector (indices below are derived
+# from len(SOURCES)), so the model must be retrained — there is no fixed layout.
+SOURCES = ["cosine_club", "youtube_music", "yandex_music", "lastfm", "trackidnet", "soundcloud", "lastfm_hop", "troi"]
 RANK_DECAY_K = 60.0
 MIN_SAMPLES = 20
 BPM_DELTA_CAP = 24.0
@@ -25,19 +23,22 @@ LR_C = 0.1
 SOURCE_WEIGHT_CLIP = (0.3, 3.0)
 AUDIO_WEIGHT_CLIP = (-2.0, 2.0)
 
-# Feature vector index constants — must match order in _build_feature_vector.
-_N_SOURCES = len(SOURCES)           # 7
+# Feature vector index constants — all derived from len(SOURCES) so adding a
+# source shifts every downstream index consistently. Comments show the values
+# for the current 8-source layout.
+_N_SOURCES = len(SOURCES)           # 8
 _N_GENRE = len(GENRE_BUCKETS)       # 7
 _N_BPM_RANGE = len(BPM_RANGES)      # 4
-_BASE_FEATURES = 14                 # 7 sources + cosine + numSources + bpmDelta + bpmCompat + bpmPresent + keyCompat + keyPresent
-GENRE_FEATURES_START = _BASE_FEATURES                        # 14
-BPM_RANGE_START = GENRE_FEATURES_START + _N_GENRE            # 21
-BPM_RANGE_PRESENT_IDX = BPM_RANGE_START + _N_BPM_RANGE      # 25
-GENRE_SOURCE_INTERACTION_START = BPM_RANGE_PRESENT_IDX + 1  # 26
-GENRE_COSINE_INTERACTION_START = GENRE_SOURCE_INTERACTION_START + _N_GENRE * _N_SOURCES  # 75
-BPM_DELTA_INTERACTION_START = GENRE_COSINE_INTERACTION_START + _N_GENRE                 # 82
-BPM_COMPAT_INTERACTION_START = BPM_DELTA_INTERACTION_START + _N_BPM_RANGE               # 86
-TOTAL_FEATURES = BPM_COMPAT_INTERACTION_START + _N_BPM_RANGE                            # 90
+_N_SCALAR = 7                       # cosine + numSources + bpmDelta + bpmCompat + bpmPresent + keyCompat + keyPresent
+_BASE_FEATURES = _N_SOURCES + _N_SCALAR                     # 15
+GENRE_FEATURES_START = _BASE_FEATURES                        # 15
+BPM_RANGE_START = GENRE_FEATURES_START + _N_GENRE            # 22
+BPM_RANGE_PRESENT_IDX = BPM_RANGE_START + _N_BPM_RANGE      # 26
+GENRE_SOURCE_INTERACTION_START = BPM_RANGE_PRESENT_IDX + 1  # 27
+GENRE_COSINE_INTERACTION_START = GENRE_SOURCE_INTERACTION_START + _N_GENRE * _N_SOURCES  # 83
+BPM_DELTA_INTERACTION_START = GENRE_COSINE_INTERACTION_START + _N_GENRE                 # 90
+BPM_COMPAT_INTERACTION_START = BPM_DELTA_INTERACTION_START + _N_BPM_RANGE               # 94
+TOTAL_FEATURES = BPM_COMPAT_INTERACTION_START + _N_BPM_RANGE                            # 98
 
 
 def _build_feature_vector(f: SampleFeatures) -> list[float]:
@@ -74,21 +75,21 @@ def _build_feature_vector(f: SampleFeatures) -> list[float]:
     bpm_range_compat_interactions = [r * bpm_compatible for r in bpm_range_one_hot]
 
     return [
-        *source_features,             # 7  (indices 0-6)
-        cosine_val,                   # 1  (index 7)
-        f.numSources / len(SOURCES),  # 1  (index 8)
-        bpm_delta_norm,               # 1  (index 9)
-        bpm_compatible,               # 1  (index 10)
-        bpm_present,                  # 1  (index 11)
-        key_compatible,               # 1  (index 12)
-        key_present,                  # 1  (index 13)
-        *g_one_hot,                   # 7  (indices 14-20)
-        *bpm_range_one_hot,           # 4  (indices 21-24)
-        bpm_range_present,            # 1  (index 25)
-        *genre_source_interactions,   # 49 (indices 26-74)
-        *genre_cosine_interactions,   # 7  (indices 75-81)
-        *bpm_range_delta_interactions, # 4 (indices 82-85)
-        *bpm_range_compat_interactions, # 4 (indices 86-89)
+        *source_features,             # 8  (indices 0-7)
+        cosine_val,                   # 1  (index 8)
+        f.numSources / len(SOURCES),  # 1  (index 9)
+        bpm_delta_norm,               # 1  (index 10)
+        bpm_compatible,               # 1  (index 11)
+        bpm_present,                  # 1  (index 12)
+        key_compatible,               # 1  (index 13)
+        key_present,                  # 1  (index 14)
+        *g_one_hot,                   # 7  (indices 15-21)
+        *bpm_range_one_hot,           # 4  (indices 22-25)
+        bpm_range_present,            # 1  (index 26)
+        *genre_source_interactions,   # 56 (indices 27-82)
+        *genre_cosine_interactions,   # 7  (indices 83-89)
+        *bpm_range_delta_interactions, # 4 (indices 90-93)
+        *bpm_range_compat_interactions, # 4 (indices 94-97)
     ]
 
 

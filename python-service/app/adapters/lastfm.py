@@ -9,12 +9,8 @@ own ordering and do not apply score floors on our side.
 
 The artist-level path runs `artist.getSimilar(seed_artist)` →
 `artist.getTopTracks(similar_artist)` aggregated over the top-N similar
-artists. Artist similars are cached in Postgres (LastfmArtistSimilars,
-30-day TTL) because artist relationships move slowly; top-tracks are
-cached via the generic external_cache table (7-day TTL) — stable
-week-to-week and read repeatedly by the hop expansion in services/lastfm_hop.py.
-The primary track.getSimilar path is cached the same way (7-day TTL) —
-collaborative-filtering similarity is equally slow-moving.
+artists. Result caching lives at the /similar endpoint level, not in this
+adapter — every method here is a direct API read.
 """
 import asyncio
 import random
@@ -22,13 +18,7 @@ import random
 from app.adapters._http import fetch_json_with_retry
 from app.adapters.base import AbstractAdapter
 from app.config import settings
-from app.core.db import (
-    fetch_external_cache,
-    fetch_lastfm_artist_similars,
-    upsert_external_cache,
-    upsert_lastfm_artist_similars,
-)
-from app.core.models import TrackMeta
+from app.core.models import ParsedQuery, TrackMeta
 
 LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
 DEFAULT_LIMIT = 50
@@ -37,16 +27,12 @@ TIMEOUT_SECONDS = 8.0
 LASTFM_FALLBACK_ARTIST_CAP = 10  # how many similar artists to expand
 LASTFM_FALLBACK_TRACKS_PER_ARTIST = 3  # tracks fetched per similar artist
 LASTFM_FALLBACK_TOTAL_CAP = 30  # final cap on fallback contribution
-LASTFM_FALLBACK_TTL_DAYS = 30  # artist similars are slow-moving
 LASTFM_FALLBACK_CONCURRENCY = 5  # max concurrent artist.getTopTracks calls
-# Top-tracks cache: fetch up to N once, slice per caller. Covers the artist
+# Top-tracks fetch size: pull up to N once, slice per caller. Covers the artist
 # fallback (1 top + 2 random) and lastfm_hop (picks from positions 1..4).
-_LASTFM_TOP_TRACKS_CACHE_LIMIT = 10
-_LASTFM_TOP_TRACKS_TTL_SECONDS = 7 * 86400
-# track.getSimilar cache: same week-to-week stability as top-tracks. Fetch a
-# fixed N once and cache the raw track dicts — callers slice to their limit.
-_LASTFM_TRACK_SIMILAR_CACHE_LIMIT = 50
-_LASTFM_TRACK_SIMILAR_TTL_SECONDS = 7 * 86400
+_LASTFM_TOP_TRACKS_FETCH_LIMIT = 10
+# track.getSimilar fetch size: pull a fixed N — callers slice to their limit.
+_LASTFM_TRACK_SIMILAR_FETCH_LIMIT = 50
 # Position decay applied to per-artist ranks 1..3. Multiplied by the artist
 # match score so a high-match artist's rank-2 track can still outrank a
 # low-match artist's rank-1 track.
@@ -56,10 +42,10 @@ _POSITION_DECAY = (1.0, 0.7, 0.5)
 class LastfmAdapter(AbstractAdapter):
     SOURCE = "lastfm"
 
-    async def find_similar(self, query: str, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
-        # Query is "Artist - Track" or just "Artist". track.getSimilar requires
-        # both, so artist-only queries go straight to the artist-level path.
-        artist, track = _split_query(query)
+    async def find_similar(self, query: ParsedQuery, limit: int = DEFAULT_LIMIT) -> list[TrackMeta]:
+        # track.getSimilar requires both artist and track, so artist-only
+        # queries go straight to the artist-level path.
+        artist, track = query.artist, query.track
 
         api_key = settings.lastfm_api_key
         if not api_key:
@@ -79,7 +65,7 @@ class LastfmAdapter(AbstractAdapter):
     async def _fetch_track_similar(
         self, api_key: str, artist: str, track: str, limit: int
     ) -> list[TrackMeta]:
-        raw = await self._get_track_similar_cached(api_key, artist, track)
+        raw = await self._fetch_track_similar_raw(api_key, artist, track)
         results = [tm for t in raw if (tm := self._parse_similar_track(t))]
         return results[:limit]
 
@@ -110,33 +96,6 @@ class LastfmAdapter(AbstractAdapter):
             score=match,
         )
 
-    async def _get_track_similar_cached(
-        self, api_key: str, artist: str, track: str
-    ) -> list[dict]:
-        """Cached read-through for track.getSimilar. Fetches up to
-        _LASTFM_TRACK_SIMILAR_CACHE_LIMIT once and caches the raw track dicts —
-        callers slice. An empty result is not cached: the track may gain
-        similars later, and an empty list routes to the artist-level fallback."""
-        cache_key = f"{artist.lower().strip()}|{track.lower().strip()}"
-        cached = await fetch_external_cache(
-            source="lastfm_track_similar",
-            cache_key=cache_key,
-            ttl_seconds=_LASTFM_TRACK_SIMILAR_TTL_SECONDS,
-        )
-        if cached is not None:
-            return cached
-        fetched = await self._fetch_track_similar_raw(api_key, artist, track)
-        if fetched:
-            try:
-                await upsert_external_cache(
-                    source="lastfm_track_similar",
-                    cache_key=cache_key,
-                    payload=fetched,
-                )
-            except Exception as e:
-                print(f"[Lastfm] track-similar cache write error: {e}")
-        return fetched
-
     async def _fetch_track_similar_raw(
         self, api_key: str, artist: str, track: str
     ) -> list[dict]:
@@ -147,7 +106,7 @@ class LastfmAdapter(AbstractAdapter):
             "track": track,
             "api_key": api_key,
             "format": "json",
-            "limit": _LASTFM_TRACK_SIMILAR_CACHE_LIMIT,
+            "limit": _LASTFM_TRACK_SIMILAR_FETCH_LIMIT,
             "autocorrect": 1,  # let Last.fm fix "Mulero" -> "Oscar Mulero"
         }
         data = await fetch_json_with_retry(
@@ -162,7 +121,7 @@ class LastfmAdapter(AbstractAdapter):
     async def _artist_fallback(
         self, api_key: str, artist: str, limit: int
     ) -> list[TrackMeta]:
-        similars = await self._get_artist_similars_cached(api_key, artist)
+        similars = await self._fetch_artist_similar(api_key, artist)
         if not similars:
             return []
 
@@ -175,10 +134,10 @@ class LastfmAdapter(AbstractAdapter):
 
         async def _one(sim: dict) -> list[dict]:
             async with sem:
-                tracks = await self._get_artist_top_tracks_cached(
-                    api_key, sim.get("name") or ""
+                tracks = await self._fetch_artist_top_tracks(
+                    api_key, sim.get("name") or "", _LASTFM_TOP_TRACKS_FETCH_LIMIT
                 )
-                return _pick_fallback_tracks(tracks)
+                return _pick_fallback_tracks(tracks or [])
 
         track_lists = await asyncio.gather(
             *(_one(s) for s in top_similars), return_exceptions=True
@@ -228,35 +187,6 @@ class LastfmAdapter(AbstractAdapter):
             )
 
         return results[:limit]
-
-    async def _get_artist_similars_cached(
-        self, api_key: str, artist: str
-    ) -> list[dict]:
-        """
-        Return artist similars from cache when fresh, else fetch from API and
-        write through. Empty list is a valid cached value (means "Last.fm has
-        no similars for this artist") and is returned without re-fetching.
-        """
-        cached = await fetch_lastfm_artist_similars(
-            artist=artist, ttl_days=LASTFM_FALLBACK_TTL_DAYS
-        )
-        if cached is not None:
-            return cached
-
-        fetched = await self._fetch_artist_similar(api_key, artist)
-        if fetched is None:
-            # Transient/permanent fetch failure — return [] WITHOUT writing to
-            # cache. The previous behaviour cached empty here and locked the
-            # artist out of the fallback for the full 30-day TTL on a single
-            # blip (see TRA-19).
-            return []
-        # Persist even an empty result — repeated unknown-artist queries should
-        # not hammer the API.
-        try:
-            await upsert_lastfm_artist_similars(artist=artist, similars=fetched)
-        except Exception as e:
-            print(f"[Lastfm] artist-similars cache write error: {e}")
-        return fetched
 
     async def _fetch_artist_similar(
         self, api_key: str, artist: str
@@ -315,52 +245,21 @@ class LastfmAdapter(AbstractAdapter):
 
         return data.get("toptracks", {}).get("track", []) or []
 
-    async def _get_artist_top_tracks_cached(
-        self, api_key: str, artist: str
-    ) -> list[dict]:
-        """Cached read-through for artist.getTopTracks. Always fetches up to
-        _LASTFM_TOP_TRACKS_CACHE_LIMIT and caches that — callers slice."""
-        if not artist:
-            return []
-        cache_key = artist.lower().strip()
-        cached = await fetch_external_cache(
-            source="lastfm_artist_top_tracks",
-            cache_key=cache_key,
-            ttl_seconds=_LASTFM_TOP_TRACKS_TTL_SECONDS,
-        )
-        if cached is not None:
-            return cached
-        fetched = await self._fetch_artist_top_tracks(
-            api_key, artist, _LASTFM_TOP_TRACKS_CACHE_LIMIT
-        )
-        if fetched is None:
-            return []
-        if fetched:
-            try:
-                await upsert_external_cache(
-                    source="lastfm_artist_top_tracks",
-                    cache_key=cache_key,
-                    payload=fetched,
-                )
-            except Exception as e:
-                print(f"[Lastfm] top-tracks cache write error: {e}")
-        return fetched
-
     # ── public methods for cross-service reuse (see services/lastfm_hop.py) ──
 
     async def get_artist_similars(self, artist: str) -> list[dict]:
-        """Public cached read of artist.getSimilar. Returns [] if api key missing."""
+        """Public read of artist.getSimilar. Returns [] if api key missing or fetch fails."""
         api_key = settings.lastfm_api_key
         if not api_key or not artist:
             return []
-        return await self._get_artist_similars_cached(api_key, artist)
+        return await self._fetch_artist_similar(api_key, artist) or []
 
     async def get_artist_top_tracks(self, artist: str) -> list[dict]:
-        """Public cached read of artist.getTopTracks. Returns [] if api key missing."""
+        """Public read of artist.getTopTracks. Returns [] if api key missing or fetch fails."""
         api_key = settings.lastfm_api_key
         if not api_key or not artist:
             return []
-        return await self._get_artist_top_tracks_cached(api_key, artist)
+        return await self._fetch_artist_top_tracks(api_key, artist, _LASTFM_TOP_TRACKS_FETCH_LIMIT) or []
 
 
 def _pick_fallback_tracks(tracks: list[dict]) -> list[dict]:
@@ -369,15 +268,3 @@ def _pick_fallback_tracks(tracks: list[dict]) -> list[dict]:
         return tracks
     extra = random.sample(tracks[1:], LASTFM_FALLBACK_TRACKS_PER_ARTIST - 1)
     return [tracks[0], *extra]
-
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" -> (artist, track). Returns (query, None) when no separator."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    if not track:
-        return artist, None
-    return artist, track
