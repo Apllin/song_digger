@@ -3,9 +3,13 @@ import re
 
 from ytmusicapi import YTMusic
 from app.adapters.base import AbstractAdapter
-from app.adapters._seed_match import SEED_CANDIDATES, _normalize, query_match_score
+from app.core.seed_match import SEED_CANDIDATES, pick_best_candidate
 from app.core.models import TrackMeta
 from app.config import settings
+
+
+def _bag(s: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]+", s.lower()) if t}
 
 # ytmusicapi is synchronous — we run it in a thread pool
 _ytm = YTMusic()
@@ -25,39 +29,20 @@ def _split_artist_title(raw_title: str) -> tuple[str | None, str]:
     return None, raw_title.strip()
 
 
-def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
-    """Return the videoId of the best-scoring search hit for `query`.
-
-    YTM search is fuzzy: a query with no exact match still returns the closest
-    text-similar song, and `get_watch_playlist()` on that mismatched seed
-    yields a radio of the wrong genre. Scoring rules come from
-    `_seed_match.query_match_score`: "Artist - Title" requires an exact
-    title-signature match; bare-artist accepts the first hit whose artist
-    matches. No qualifying candidate → return None and emit no radio.
-    """
-    best_vid: str | None = None
-    best_score = 0
-    for cand in results:
-        vid = cand.get("videoId")
-        if not vid:
-            continue
-        cand_artist = ", ".join(
-            a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")
+async def _pick_seed_video_id(query: str, results: list[dict]) -> str | None:
+    """Return the videoId of the best query-matching hit, or None."""
+    pairs = [
+        (
+            ", ".join(a.get("name", "") for a in (c.get("artists") or []) if a.get("name")),
+            c.get("title") or "",
         )
-        cand_title = cand.get("title") or ""
-        score = query_match_score(query, cand_artist, cand_title)
-        if score > best_score:
-            best_score = score
-            best_vid = vid
-    if best_vid is not None:
-        return best_vid
-    rejected = ", ".join(
-        f"{', '.join(a.get('name', '') for a in (c.get('artists') or []) if a.get('name'))!r}"
-        f" - {c.get('title', '')!r}"
         for c in results
-    )
-    print(f"[YouTubeMusic] no seed matched query {query!r}; rejected: {rejected}")
-    return None
+    ]
+    idx = await pick_best_candidate(query, pairs)
+    if idx is None:
+        print(f"[YouTubeMusic] no seed matched query {query!r}")
+        return None
+    return results[idx].get("videoId")
 
 
 def _seed_dict_from_candidate(cand: dict, *, parse_title: bool) -> dict:
@@ -82,7 +67,7 @@ def _pick_seed_video_id_from_videos(query: str, results: list[dict]) -> str | No
     standard matcher rejects every songs hit because the artist appears with a
     different track. Videos search surfaces the actual upload — but the
     candidate's `artists` field carries the uploader channel name, not the
-    real artist, so we cannot use `query_match_score`.
+    real artist, so we cannot use the LLM-based seed matcher.
 
     Instead we treat the raw video title as one bag and require that **every**
     token of the query (both artist and title sides) appear in it. Token-set
@@ -93,14 +78,14 @@ def _pick_seed_video_id_from_videos(query: str, results: list[dict]) -> str | No
     """
     if " - " not in query:
         return None
-    q_tokens = {t for t in re.findall(r"[a-z0-9]+", _normalize(query.replace(" - ", " "))) if t}
+    q_tokens = _bag(query.replace(" - ", " "))
     if not q_tokens:
         return None
     for cand in results:
         vid = cand.get("videoId")
         if not vid:
             continue
-        title_tokens = set(re.findall(r"[a-z0-9]+", _normalize(cand.get("title") or "")))
+        title_tokens = _bag(cand.get("title") or "")
         if q_tokens.issubset(title_tokens):
             return vid
     return None
@@ -147,70 +132,49 @@ class YouTubeMusicAdapter(AbstractAdapter):
 
     async def find_similar(self, query: str, limit: int = 10) -> list[TrackMeta]:
         try:
-            tracks = await asyncio.to_thread(self._find_similar_sync, query, limit)
-            return tracks
+            # Seed search + async validation first, then radio in a thread.
+            results = await asyncio.to_thread(_ytm.search, query, filter="songs", limit=SEED_CANDIDATES)
+            video_id = await _pick_seed_video_id(query, results) if results else None
+
+            # Videos fallback for label releases not indexed as songs.
+            if not video_id and " - " in query:
+                video_results = await asyncio.to_thread(_ytm.search, query, filter="videos", limit=SEED_CANDIDATES)
+                video_id = _pick_seed_video_id_from_videos(query, video_results)
+                if video_id:
+                    print(f"[YouTubeMusic] seed from videos for {query!r}")
+
+            if not video_id:
+                return []
+
+            return await asyncio.to_thread(self._radio_tracks_sync, video_id, limit)
         except Exception as e:
             print(f"[YouTubeMusic] find_similar error: {e}")
             return []
 
-    def _find_similar_sync(self, query: str, limit: int) -> list[TrackMeta]:
-        # Step 1: search for the track and validate the seed.
-        # YTM search is fuzzy and will return *something* for almost any input.
-        # Without validation a query like "Ignez - Aventurine" can resolve to
-        # an unrelated record and the radio playlist will be off-genre.
-        results = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
-        video_id = _pick_seed_video_id(query, results) if results else None
-
-        # Step 1b: videos fallback for label releases not indexed as songs.
-        # YouTube Music's songs catalogue misses many user-uploaded releases
-        # (small techno labels, etc.); the same track often surfaces under
-        # `filter=videos`. The strict token-subset matcher only accepts a
-        # video whose title contains every word of the query, so off-target
-        # videos don't bleed in.
-        if not video_id and " - " in query:
-            video_results = _ytm.search(query, filter="videos", limit=SEED_CANDIDATES)
-            video_id = _pick_seed_video_id_from_videos(query, video_results)
-            if video_id:
-                print(f"[YouTubeMusic] seed from videos for {query!r}")
-
-        if not video_id:
-            return []
-
-        # Step 2: get YTM Radio for this track.
-        # playlistId="RDAMVM{videoId}" triggers the full radio station algorithm
-        # (audio-similarity based), not just the short "Up Next" queue.
+    def _radio_tracks_sync(self, video_id: str, limit: int) -> list[TrackMeta]:
+        # playlistId="RDAMVM{videoId}" triggers the full radio station algorithm.
         radio_playlist_id = f"RDAMVM{video_id}"
         watch = _ytm.get_watch_playlist(videoId=video_id, playlistId=radio_playlist_id, limit=limit + 1)
         tracks_raw = watch.get("tracks", [])
-
         # Skip the first — it's the source track itself
-        parsed = [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
-        return parsed
-
-    def _resolve_seed_sync(self, query: str) -> dict | None:
-        """Resolve `query` to a seed across catalog songs, then UGC videos — the
-        same two-tier lookup as `_find_similar_sync`, but returning the seed's
-        videoId + primary artist + title so /similar can seed Cosine by URL
-        (TRA-25) and derive the source artist. Returns None when nothing matches.
-        """
-        songs = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
-        vid = _pick_seed_video_id(query, songs) if songs else None
-        if vid:
-            cand = next((c for c in songs if c.get("videoId") == vid), None)
-            return _seed_dict_from_candidate(cand, parse_title=False) if cand else None
-        if " - " in query:
-            videos = _ytm.search(query, filter="videos", limit=SEED_CANDIDATES)
-            vid = _pick_seed_video_id_from_videos(query, videos)
-            if vid:
-                cand = next((c for c in videos if c.get("videoId") == vid), None)
-                return _seed_dict_from_candidate(cand, parse_title=True) if cand else None
-        return None
+        return [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
 
     async def resolve_seed(self, query: str) -> dict | None:
         """Public seed resolver (catalog songs → UGC videos). Used by /similar to
         seed Cosine with the correct track URL and to derive the source artist."""
         try:
-            return await asyncio.to_thread(self._resolve_seed_sync, query)
+            songs = await asyncio.to_thread(_ytm.search, query, filter="songs", limit=SEED_CANDIDATES)
+            vid = await _pick_seed_video_id(query, songs) if songs else None
+            if vid:
+                cand = next((c for c in songs if c.get("videoId") == vid), None)
+                return _seed_dict_from_candidate(cand, parse_title=False) if cand else None
+            if " - " in query:
+                videos = await asyncio.to_thread(_ytm.search, query, filter="videos", limit=SEED_CANDIDATES)
+                vid = _pick_seed_video_id_from_videos(query, videos)
+                if vid:
+                    cand = next((c for c in videos if c.get("videoId") == vid), None)
+                    return _seed_dict_from_candidate(cand, parse_title=True) if cand else None
+            return None
         except Exception as e:
             print(f"[YouTubeMusic] resolve_seed error: {e}")
             return None
@@ -243,11 +207,11 @@ class YouTubeMusicAdapter(AbstractAdapter):
     def _find_by_artist_sync(self, artist: str, limit: int) -> list[TrackMeta]:
         results = _ytm.search(artist, filter="artists", limit=1)
         if not results:
-            return self._find_similar_sync(artist, limit)
+            return self._songs_radio_sync(artist, limit)
 
         artist_id = results[0].get("browseId")
         if not artist_id:
-            return self._find_similar_sync(artist, limit)
+            return self._songs_radio_sync(artist, limit)
 
         artist_data = _ytm.get_artist(artist_id)
 
@@ -259,12 +223,20 @@ class YouTubeMusicAdapter(AbstractAdapter):
             songs = artist_data.get("songs", {}).get("results", [])
             seed_vid = songs[0].get("videoId") if songs else None
             if not seed_vid:
-                return self._find_similar_sync(artist, limit)
+                return self._songs_radio_sync(artist, limit)
             watch = _ytm.get_watch_playlist(videoId=seed_vid, limit=limit + 5)
 
         tracks_raw = watch.get("tracks", [])
         parsed = [m for t in tracks_raw if (m := _parse_ytm_track(t))]
         return parsed[:limit]
+
+    def _songs_radio_sync(self, query: str, limit: int) -> list[TrackMeta]:
+        # Bare-artist fallback: take the first songs hit without LLM validation.
+        results = _ytm.search(query, filter="songs", limit=SEED_CANDIDATES)
+        vid = next((c.get("videoId") for c in results if c.get("videoId")), None)
+        if not vid:
+            return []
+        return self._radio_tracks_sync(vid, limit)
 
     async def search_songs(self, query: str, limit: int = 3) -> list[dict]:
         """Return raw YTM song search results (for seeding Cosine.club)."""

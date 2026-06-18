@@ -12,6 +12,16 @@ import pytest
 from app.adapters.youtube_music import YouTubeMusicAdapter
 
 
+async def _pick_match(query, candidates):
+    """Stub: returns 0 (first candidate matches)."""
+    return 0
+
+
+async def _pick_none(query, candidates):
+    """Stub: returns None (no match)."""
+    return None
+
+
 def _ytm_track(video_id: str, title: str, artist: str = "Some Artist") -> dict:
     """Shape get_watch_playlist returns: artists list, singular `thumbnail`."""
     return {
@@ -24,8 +34,9 @@ def _ytm_track(video_id: str, title: str, artist: str = "Some Artist") -> dict:
 
 # ── happy path ───────────────────────────────────────────────────────────────
 
-async def test_find_similar_skips_seed_and_parses_remaining():
+async def test_find_similar_skips_seed_and_parses_remaining(monkeypatch):
     """First track in get_watch_playlist is the seed itself — must be dropped."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     seed = _ytm_track("seedvid", "Horses", artist="Oscar Mulero")
     rec1 = _ytm_track("vid1", "Faceless", artist="Reeko")
@@ -67,21 +78,20 @@ async def test_find_similar_search_no_hits_returns_empty():
     fake_ytm.get_watch_playlist.assert_not_called()
 
 
-async def test_find_similar_search_returns_no_video_id_returns_empty():
+async def test_find_similar_search_returns_no_video_id_returns_empty(monkeypatch):
     """Search hit lacks videoId → adapter cannot start radio. Return []."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     fake_ytm = MagicMock()
-    # Free-form query (no " - ") bypasses seed validation, so an entry without
-    # videoId still reaches the videoId check. With a separator the validation
-    # would reject the entry on missing artist/title first.
     fake_ytm.search.return_value = [{"title": "weird"}]  # no videoId key
     with patch("app.adapters.youtube_music._ytm", fake_ytm):
         assert await adapter.find_similar("freeform query") == []
     fake_ytm.get_watch_playlist.assert_not_called()
 
 
-async def test_find_similar_rejects_seed_that_does_not_match_query():
+async def test_find_similar_rejects_seed_that_does_not_match_query(monkeypatch):
     """YTM fuzzy search returned an unrelated track — adapter must return []."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_none)
     adapter = YouTubeMusicAdapter()
     fake_ytm = MagicMock()
     fake_ytm.search.return_value = [_ytm_track("vidX", "Ooooooooo", artist="Joy Helder")]
@@ -93,8 +103,9 @@ async def test_find_similar_rejects_seed_that_does_not_match_query():
 
 # ── parser robustness ───────────────────────────────────────────────────────
 
-async def test_find_similar_drops_tracks_missing_video_id():
+async def test_find_similar_drops_tracks_missing_video_id(monkeypatch):
     """get_watch_playlist sometimes returns rows without videoId — skip them."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     seed = _ytm_track("seedvid", "Horses", artist="Some Artist")
     good = _ytm_track("vidA", "Faceless")
@@ -111,7 +122,8 @@ async def test_find_similar_drops_tracks_missing_video_id():
     assert results[0].sourceUrl == "https://music.youtube.com/watch?v=vidA"
 
 
-async def test_find_similar_joins_multiple_artists():
+async def test_find_similar_joins_multiple_artists(monkeypatch):
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     seed = _ytm_track("seedvid", "Horses", artist="Some Artist")
     collab = {
@@ -155,10 +167,11 @@ def _make_search(songs: list[dict], videos: list[dict]):
     return _search
 
 
-async def test_find_similar_falls_back_to_videos_for_ugc_track():
+async def test_find_similar_falls_back_to_videos_for_ugc_track(monkeypatch):
     """Track absent from the songs catalog but present as a UGC video upload:
     the adapter must fall back to filter='videos', match against the parsed
     title, seed radio off it, and parse 'Artist - Title' out of UGC results."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_none)
     adapter = YouTubeMusicAdapter()
     song_miss = _ytm_track("wrongvid", "Some Other Song", artist="Baby Ford")
     video_hit = {
@@ -189,9 +202,10 @@ async def test_find_similar_falls_back_to_videos_for_ugc_track():
     assert results[0].title == "The Mysterious Pocket"
 
 
-async def test_parse_keeps_catalog_track_with_dash_in_title():
+async def test_parse_keeps_catalog_track_with_dash_in_title(monkeypatch):
     """A non-UGC (catalog) radio track whose title legitimately contains ' - '
     must NOT be reparsed — the artists field stays authoritative."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     seed = _ytm_track("seedvid", "Horses", artist="Some Artist")
     catalog = {
@@ -253,11 +267,12 @@ def _ytm_video_search_hit(video_id: str, title: str) -> dict:
     return {"videoId": video_id, "title": title, "artists": [{"name": "uploaderChannel"}]}
 
 
-async def test_videos_fallback_used_when_songs_catalogue_misses():
+async def test_videos_fallback_used_when_songs_catalogue_misses(monkeypatch):
     """`The Computer Controlled Minds - Machines Are Working` lives on YT Music
     only as a user-uploaded video. The songs results carry the same artist but
     a different track; the strict matcher rejects them, then videos fallback
     finds the exact title-bearing upload and starts a radio off it."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_none)
     adapter = YouTubeMusicAdapter()
     songs_hits = [
         _ytm_track("songA", "Machines Eat My Body", artist="The Computer Controlled Minds"),
@@ -285,9 +300,10 @@ async def test_videos_fallback_used_when_songs_catalogue_misses():
     assert fake_ytm.get_watch_playlist.call_args.kwargs["videoId"] == "vidND"
 
 
-async def test_videos_fallback_rejects_partial_token_match():
+async def test_videos_fallback_rejects_partial_token_match(monkeypatch):
     """A video whose title contains only some query tokens must NOT seed the
     radio — otherwise unrelated uploads would bleed into recommendations."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_none)
     adapter = YouTubeMusicAdapter()
     video_hits = [
         # Missing "Machines Are Working" tokens entirely
@@ -316,8 +332,9 @@ async def test_videos_fallback_skipped_for_bare_artist_query():
     assert fake_ytm.search.call_count == 1
 
 
-async def test_videos_fallback_not_called_when_songs_match():
+async def test_videos_fallback_not_called_when_songs_match(monkeypatch):
     """Happy songs match short-circuits the videos search."""
+    monkeypatch.setattr("app.adapters.youtube_music.pick_best_candidate", _pick_match)
     adapter = YouTubeMusicAdapter()
     seed = _ytm_track("seedvid", "Horses", artist="Oscar Mulero")
     rec = _ytm_track("rec1", "Faceless", artist="Reeko")
