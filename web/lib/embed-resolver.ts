@@ -11,7 +11,7 @@
  * Returns embedUrl or null.
  */
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000";
+import { searchExactYtmSearchExactGet } from "@/lib/python-api/generated/clients/searchExactYtmSearchExactGet";
 
 interface EmbedResult {
   embedUrl: string | null;
@@ -31,16 +31,17 @@ function cleanArtist(artist: string): string {
 
 async function tryYtmExact(title: string, cleanedArtist: string): Promise<EmbedResult | null> {
   try {
-    const params = new URLSearchParams({ title, artist: cleanedArtist });
-    const res = await fetch(`${PYTHON_SERVICE_URL}/ytm/search-exact?${params}`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.embedUrl) return null;
+    const data = await searchExactYtmSearchExactGet(
+      { title, artist: cleanedArtist },
+      { signal: AbortSignal.timeout(8000) },
+    );
+    const embedUrl = typeof data.embedUrl === "string" ? data.embedUrl : null;
+    if (!embedUrl) return null;
     return {
-      embedUrl: data.embedUrl,
+      embedUrl,
       source: "youtube_music",
-      sourceUrl: data.sourceUrl ?? null,
-      coverUrl: data.coverUrl ?? null,
+      sourceUrl: typeof data.sourceUrl === "string" ? data.sourceUrl : null,
+      coverUrl: typeof data.coverUrl === "string" ? data.coverUrl : null,
     };
   } catch {
     return null;

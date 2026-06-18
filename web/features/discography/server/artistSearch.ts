@@ -17,7 +17,7 @@ export const artistSearchRoute = new Hono<AppEnv>().get(
   zValidator("query", schema),
   async (c) => {
     const { q } = c.req.valid("query");
-    const data = await searchArtists({ q }, { baseURL: c.var.pythonServiceUrl });
+    const data = await searchArtists({ q });
 
     void prisma.$transaction(
       data.map((a) =>

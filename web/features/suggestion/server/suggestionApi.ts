@@ -20,10 +20,7 @@ export const suggestionApi = new Hono<AppEnv>().get(
   async (c) => {
     const { q } = c.req.valid("query");
     try {
-      const data = await getSuggestionsSuggestionsGet(
-        { q },
-        { baseURL: c.var.pythonServiceUrl, signal: AbortSignal.timeout(4000) },
-      );
+      const data = await getSuggestionsSuggestionsGet({ q }, { signal: AbortSignal.timeout(4000) });
       return c.json(data);
     } catch {
       return c.json([] as string[]);

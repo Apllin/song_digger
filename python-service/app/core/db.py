@@ -20,20 +20,38 @@ from app.config import settings
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
+_pool_init_failed = False  # gates repeated soft-degrade logs during an outage
 
 
 async def _get_pool() -> asyncpg.Pool | None:
-    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty."""
-    global _pool
+    """Lazy-init asyncpg pool. Returns None when DATABASE_URL is empty OR the
+    connection can't be established.
+
+    `create_pool(min_size=1)` connects eagerly, so a DB outage / cold-start /
+    SSL-config error raises here — before any guarded query block. Left
+    unguarded it propagates through every db helper and silently wipes a whole
+    source in the /similar fan-out (Last.fm fallback, trackid.net, lastfm hop).
+    Catch it and soft-degrade exactly as for an empty DATABASE_URL; `_pool`
+    stays None so the next request retries once the DB is reachable again."""
+    global _pool, _pool_init_failed
     if not settings.database_url:
         return None
     async with _pool_lock:
         if _pool is None:
-            _pool = await asyncpg.create_pool(
-                settings.database_url,
-                min_size=1,
-                max_size=5,
-            )
+            try:
+                _pool = await asyncpg.create_pool(
+                    settings.database_url,
+                    min_size=1,
+                    max_size=5,
+                )
+                _pool_init_failed = False
+            except Exception as e:
+                # Log once per outage, not once per cache call — a single
+                # /similar fan-out calls this many times.
+                if not _pool_init_failed:
+                    print(f"[db] pool init failed, soft-degrading: {e}")
+                    _pool_init_failed = True
+                return None
     return _pool
 
 
@@ -59,7 +77,7 @@ async def fetch_lastfm_artist_similars(
     if pool is None:
         return None
 
-    cutoff = datetime.utcnow() - timedelta(days=ttl_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=ttl_days)
     seed = _normalize(artist)
 
     try:
@@ -202,9 +220,8 @@ async def fetch_external_cache(
     if ttl_seconds is not None:
         # Prisma writes "updatedAt" as TIMESTAMP(3) WITHOUT TIME ZONE in UTC,
         # so compare against naive UTC. utcnow() is deprecated in 3.12+ —
-        # use tz-aware now(UTC) and strip the tzinfo so subtraction works
-        # against the naive DB column. (Backlog P2 will sweep the rest of
-        # this file later; new code shouldn't compound the debt.)
+        # use tz-aware now(UTC) and strip tzinfo so subtraction works
+        # against the naive DB column.
         now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         age_s = int((now_naive - row["updatedAt"]).total_seconds())
         if age_s > ttl_seconds:

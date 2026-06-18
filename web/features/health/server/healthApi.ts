@@ -5,7 +5,6 @@ import { healthHealthGet } from "@/lib/python-api/generated/clients/healthHealth
 
 export const healthApi = new Hono<AppEnv>().get("/health", async (c) => {
   const pythonOk = await healthHealthGet({
-    baseURL: c.var.pythonServiceUrl,
     signal: AbortSignal.timeout(3000),
   })
     .then(() => true)

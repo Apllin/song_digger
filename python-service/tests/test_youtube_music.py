@@ -145,6 +145,95 @@ async def test_find_similar_swallows_ytmusicapi_exceptions(capsys):
     assert "[YouTubeMusic]" in capsys.readouterr().out
 
 
+# ── videos fallback + UGC parsing (TRA-25 follow-up) ─────────────────────────
+
+def _make_search(songs: list[dict], videos: list[dict]):
+    """Dispatch ytmusicapi.search by its `filter` kwarg so a test can give
+    distinct results for the catalog-songs pass and the UGC-videos fallback."""
+    def _search(query, filter, limit):
+        return songs if filter == "songs" else videos
+    return _search
+
+
+async def test_find_similar_falls_back_to_videos_for_ugc_track():
+    """Track absent from the songs catalog but present as a UGC video upload:
+    the adapter must fall back to filter='videos', match against the parsed
+    title, seed radio off it, and parse 'Artist - Title' out of UGC results."""
+    adapter = YouTubeMusicAdapter()
+    song_miss = _ytm_track("wrongvid", "Some Other Song", artist="Baby Ford")
+    video_hit = {
+        "videoId": "ugcvid",
+        "title": "Baby Ford - Dognosematic [Perlon114]",
+        "artists": [{"name": "playedby"}],  # uploader channel, not the performer
+    }
+    seed_radio = {"videoId": "ugcvid", "title": "seed", "artists": [], "thumbnail": []}
+    ugc_rec = {
+        "videoId": "rvid",
+        "title": "Fumiya Tanaka - The Mysterious Pocket",
+        "artists": [{"name": "Do Funkk"}],
+        "videoType": "MUSIC_VIDEO_TYPE_UGC",
+        "thumbnail": [],
+    }
+    fake_ytm = MagicMock()
+    fake_ytm.search.side_effect = _make_search([song_miss], [video_hit])
+    fake_ytm.get_watch_playlist.return_value = {"tracks": [seed_radio, ugc_rec]}
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        results = await adapter.find_similar("baby ford - dognosematic", limit=10)
+
+    # Radio seeded off the UGC video, not the wrong catalog song.
+    assert fake_ytm.get_watch_playlist.call_args.kwargs["videoId"] == "ugcvid"
+    assert len(results) == 1
+    # UGC parsing: performer comes from the title, not the uploader channel.
+    assert results[0].artist == "Fumiya Tanaka"
+    assert results[0].title == "The Mysterious Pocket"
+
+
+async def test_parse_keeps_catalog_track_with_dash_in_title():
+    """A non-UGC (catalog) radio track whose title legitimately contains ' - '
+    must NOT be reparsed — the artists field stays authoritative."""
+    adapter = YouTubeMusicAdapter()
+    seed = _ytm_track("seedvid", "Horses", artist="Some Artist")
+    catalog = {
+        "videoId": "vidC",
+        "title": "Sun - Moon",  # legit title with a dash
+        "artists": [{"name": "Real Artist"}],
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "thumbnail": [],
+    }
+    fake_ytm = MagicMock()
+    fake_ytm.search.return_value = [_ytm_track("seedvid", "Horses", artist="Some Artist")]
+    fake_ytm.get_watch_playlist.return_value = {"tracks": [seed, catalog]}
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        results = await adapter.find_similar("Some Artist - Horses")
+
+    assert results[0].artist == "Real Artist"
+    assert results[0].title == "Sun - Moon"
+
+
+async def test_resolve_seed_returns_parsed_video_seed():
+    """resolve_seed falls through songs → videos and returns the parsed
+    'Artist - Title' plus the videoId used to seed Cosine."""
+    adapter = YouTubeMusicAdapter()
+    video_hit = {
+        "videoId": "ugcvid",
+        "title": "Baby Ford - Dognosematic [Perlon114]",
+        "artists": [{"name": "playedby"}],
+    }
+    fake_ytm = MagicMock()
+    fake_ytm.search.side_effect = _make_search([], [video_hit])
+
+    with patch("app.adapters.youtube_music._ytm", fake_ytm):
+        seed = await adapter.resolve_seed("baby ford - dognosematic")
+
+    assert seed == {
+        "videoId": "ugcvid",
+        "artist": "Baby Ford",
+        "title": "Dognosematic [Perlon114]",
+    }
+
+
 # ── search_songs (raw passthrough used by similar.py source-artist resolution) ───
 
 async def test_search_songs_returns_raw_search_payload():

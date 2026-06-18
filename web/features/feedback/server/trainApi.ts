@@ -77,8 +77,7 @@ export const trainApi = new Hono<AppEnv>().post("/admin/train", async (c) => {
     return c.json({ error: `Only ${samples.length} samples have feature data (need ${MIN_SAMPLES}).` } as const, 422);
   }
 
-  const pythonServiceUrl = c.var.pythonServiceUrl;
-  const result = await trainWeights({ samples }, { baseURL: pythonServiceUrl });
+  const result = await trainWeights({ samples });
 
   const latest = await prisma.modelWeights.findFirst({
     orderBy: { version: "desc" },

@@ -105,6 +105,82 @@ async def test_two_step_search_then_similar_returns_parsed_tracks(monkeypatch):
     assert results[1].sourceUrl == "https://example.com/track/2"
 
 
+# ── URL-seeded search (TRA-25) ───────────────────────────────────────────────
+
+async def test_url_seed_takes_first_hit_without_seed_validation(monkeypatch):
+    """A pasted track URL pins the exact track: the top `/v1/search` hit is used
+    directly, bypassing the fuzzy seed-match gate that text `find_similar` runs.
+    This is what lets out-of-catalog tracks still return similars."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    calls: list[tuple[str, dict]] = []
+
+    async def _get(url, **kwargs):
+        calls.append((url, kwargs.get("params", {})))
+        if url == "/v1/search":
+            # An artist/title that would FAIL query_match_score against the URL —
+            # proof that no validation is applied on the URL path.
+            return _ok_response({"data": [{
+                "id": "parsed-1", "artist": "Whoever", "track": "Whatever",
+            }]})
+        if url == "/v1/tracks/parsed-1/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "Faceless", "artist": "Reeko", "video_id": "v", "score": 0.4}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar_by_url(
+        "https://music.youtube.com/watch?v=abc123", limit=20
+    )
+    assert len(out) == 1
+    assert out[0].artist == "Reeko"
+    # The URL was passed as the `q` param to /v1/search.
+    assert calls[0][0] == "/v1/search"
+    assert calls[0][1]["q"] == "https://music.youtube.com/watch?v=abc123"
+
+
+async def test_url_seed_no_api_key_returns_empty_without_network(monkeypatch):
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "")
+    adapter = CosineClubAdapter()
+    adapter._client.get = AsyncMock(side_effect=AssertionError("must not call"))
+    assert await adapter.find_similar_by_url("https://music.youtube.com/watch?v=x") == []
+
+
+async def test_url_seed_empty_url_returns_empty_without_network(monkeypatch):
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+    adapter._client.get = AsyncMock(side_effect=AssertionError("must not call"))
+    assert await adapter.find_similar_by_url("") == []
+
+
+async def test_url_seed_no_parsed_track_returns_empty(monkeypatch):
+    """Cosine couldn't parse the URL → empty search data → no /similar call."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    calls: list[str] = []
+
+    async def _get(url, **_kwargs):
+        calls.append(url)
+        if url == "/v1/search":
+            return _ok_response({"data": []})
+        raise AssertionError(f"must not GET {url} — nothing parsed")
+
+    _patch_get(adapter, _get)
+    assert await adapter.find_similar_by_url("https://example.com/x") == []
+    assert calls == ["/v1/search"]
+
+
+async def test_url_seed_http_error_returns_empty(monkeypatch, capsys):
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+    _patch_get(adapter, AsyncMock(side_effect=httpx.ConnectError("dns fail")))
+    assert await adapter.find_similar_by_url("https://music.youtube.com/watch?v=x") == []
+    assert "[CosineClub]" in capsys.readouterr().out
+
+
 # ── failure modes ────────────────────────────────────────────────────────────
 
 async def test_http_error_during_similar_returns_empty(monkeypatch, capsys):
@@ -406,6 +482,31 @@ async def test_bare_artist_query_returns_empty_when_no_artist_match(
     assert await adapter.find_similar("Chontane") == []
     assert calls == ["/v1/search"]
     assert "no seed matched" in capsys.readouterr().out
+
+
+async def test_seed_match_tolerates_catalog_tag_suffix(monkeypatch):
+    """'Baby Ford - Dognosematic' must seed off a 'Dognosematic [Perlon114]'
+    candidate — the label/catalog tag is release noise, not a distinct title.
+    Regression for the bug where YTM/Yandex (same _seed_match gate) dropped out
+    because the title signatures differed only by the catalog suffix."""
+    monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    adapter = CosineClubAdapter()
+
+    async def _get(url, **_kwargs):
+        if url == "/v1/search":
+            return _ok_response({"data": [{
+                "id": "seed", "artist": "Baby Ford", "track": "Dognosematic [Perlon114]",
+            }]})
+        if url == "/v1/tracks/seed/similar":
+            return _ok_response({"data": {"similar_tracks": [
+                {"track": "X", "artist": "Y", "video_id": "v"}
+            ]}})
+        raise AssertionError(f"unexpected url: {url}")
+
+    _patch_get(adapter, _get)
+    out = await adapter.find_similar("Baby Ford - Dognosematic")
+    assert len(out) == 1
+    assert out[0].artist == "Y"
 
 
 async def test_artist_title_query_requires_exact_title_match(monkeypatch, capsys):

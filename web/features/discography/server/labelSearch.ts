@@ -16,7 +16,7 @@ export const labelSearchRoute = new Hono<AppEnv>().get(
   zValidator("query", schema),
   async (c) => {
     const { q } = c.req.valid("query");
-    const data = await searchLabels({ q }, { baseURL: c.var.pythonServiceUrl });
+    const data = await searchLabels({ q });
     return c.json(data);
   },
 );

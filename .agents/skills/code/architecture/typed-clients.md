@@ -32,14 +32,11 @@ All requests to `python-service` go through the kubb-generated client at `@/lib/
 ```ts
 import { getLabelReleases } from "@/lib/python-api/generated/clients/getLabelReleases";
 
-const data = await getLabelReleases(
-  labelId,
-  { page, per_page: perPage },
-  { baseURL: c.var.pythonServiceUrl },
-);
+const data = await getLabelReleases(labelId, { page, per_page: perPage });
 ```
 
-- Wraps axios under the hood. Pass `{ baseURL }` on every call — typically `c.var.pythonServiceUrl` from the Hono context (see `lib/hono/types.ts`).
+- Wraps axios under the hood. The base URL and the `x-internal-auth` header are configured **once** at startup by [web/lib/python-api/client.ts](web/lib/python-api/client.ts) (a side-effect module imported from [web/lib/hono/app.ts](web/lib/hono/app.ts)). Never pass `baseURL` or auth `headers` at the call site — only per-request options like `{ signal }`.
+- `client.ts` reads `PYTHON_SERVICE_URL` and `PYTHON_SERVICE_SECRET` and throws loudly if either is unset. The python-service mirrors this: it refuses to start without `PYTHON_SERVICE_SECRET` and rejects unauthenticated requests (fail-closed).
 - The client validates the response via the generated Zod schema before returning. Drift between FastAPI and the consumer surfaces as an exception at the seam, not a silent type lie ten frames deeper.
 - Generated files live under `web/lib/python-api/generated/{types,zod,clients}/` and are **committed to git** (treated like any other source file: PR review surfaces drift, no special CI step needed). Run `pnpm codegen` after touching FastAPI routes or Pydantic models, then commit the regenerated files alongside the route change.
 

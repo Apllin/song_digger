@@ -10,11 +10,7 @@ export const labelApi = new Hono<AppEnv>().get(
   zValidator("query", ReleasesQuerySchema),
   async (c) => {
     const { labelId, page, perPage } = c.req.valid("query");
-    const data = await getLabelReleases(
-      Number(labelId),
-      { page, per_page: perPage },
-      { baseURL: c.var.pythonServiceUrl },
-    );
+    const data = await getLabelReleases(Number(labelId), { page, per_page: perPage });
     return c.json(data);
   },
 );

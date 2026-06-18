@@ -211,14 +211,13 @@ async function runSearch(
   input: string,
   artist: string,
   track: string | null,
-  pythonServiceUrl: string,
 ): Promise<{ pythonDurationMs: number; sourcesUsed: string[] }> {
   const pythonStart = performance.now();
   let pythonResult;
   try {
     pythonResult = await findSimilar(
       { input, artist, track, limit_per_source: PYTHON_LIMIT_PER_SOURCE },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(90_000) },
+      { signal: AbortSignal.timeout(90_000) },
     );
   } catch (err) {
     console.error("[Search] Python stage failed:", err);
@@ -236,12 +235,7 @@ async function runSearch(
   // aggregateTracks re-fuses deterministically, so candidate sourceUrls align.
   const seed = { artist, title: track };
   const fused = rrfFuse(pythonResult.source_lists, weights);
-  const { audio, attemptedUrls } = await resolveAudioFeatures(
-    cacheKeyFor(artist, track),
-    seed,
-    fused,
-    pythonServiceUrl,
-  );
+  const { audio, attemptedUrls } = await resolveAudioFeatures(cacheKeyFor(artist, track), seed, fused);
   const aggregated = aggregateTracks(pythonResult.source_lists, weights, audio);
   const playable = await enrichMissingCovers(aggregated);
   await saveTracks(searchId, playable, seed, audio, attemptedUrls);
@@ -284,13 +278,7 @@ export const searchApi = new Hono<AppEnv>()
     });
     const searchQueryId = SearchQueryIdSchema.parse(searchQuery.id);
 
-    const { pythonDurationMs, sourcesUsed } = await runSearch(
-      searchQueryId,
-      input,
-      artist,
-      track,
-      c.var.pythonServiceUrl,
-    );
+    const { pythonDurationMs, sourcesUsed } = await runSearch(searchQueryId, input, artist, track);
     const m = c.var.metrics;
     if (m) {
       m.cacheHit = false;

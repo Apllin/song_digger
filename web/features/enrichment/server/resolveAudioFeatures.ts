@@ -39,7 +39,6 @@ export async function resolveAudioFeatures(
   cacheKey: string,
   seed: Seed,
   candidates: Candidate[],
-  pythonServiceUrl: string,
 ): Promise<ResolvedAudioFeatures> {
   const urls = candidates.map((c) => c.sourceUrl);
   const [seedRow, rows] = await Promise.all([
@@ -105,10 +104,7 @@ export async function resolveAudioFeatures(
 
   let resp;
   try {
-    resp = await enrichAudioFeatures(
-      { tracks: reqTracks },
-      { baseURL: pythonServiceUrl, signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS) },
-    );
+    resp = await enrichAudioFeatures({ tracks: reqTracks }, { signal: AbortSignal.timeout(ENRICH_TIMEOUT_MS) });
   } catch (err) {
     console.error("[enrichment] eager /enrich failed:", err);
     return { audio, attemptedUrls };

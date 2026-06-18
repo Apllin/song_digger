@@ -15,11 +15,7 @@ export const tracklistRoute = new Hono<AppEnv>().get(
   zValidator("query", schema),
   async (c) => {
     const { releaseId, type } = c.req.valid("query");
-    const data = await getReleaseTracklist(
-      Number(releaseId),
-      { release_type: type },
-      { baseURL: c.var.pythonServiceUrl },
-    );
+    const data = await getReleaseTracklist(Number(releaseId), { release_type: type });
     return c.json(data);
   },
 );
