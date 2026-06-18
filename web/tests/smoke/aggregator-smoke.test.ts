@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "@/lib/aggregator";
+import { aggregateTracks, rrfFuse } from "@/lib/aggregator";
 import type { SourceList } from "@/lib/python-api/generated/types/SourceList";
 import type { TrackMeta } from "@/lib/python-api/generated/types/TrackMeta";
 
@@ -77,7 +77,7 @@ describe("aggregator smoke — artist diversification", () => {
     let maxConsecutive = 0;
     let prev = "";
     for (const t of result) {
-      const a = normalizeArtist(t.artist);
+      const a = t.artistKey ?? t.artist.toLowerCase();
       if (a === prev) {
         consecutive++;
         maxConsecutive = Math.max(maxConsecutive, consecutive);
@@ -127,8 +127,5 @@ describe("aggregator smoke — identity dedup across sources", () => {
     ]);
     expect(result).toHaveLength(1);
     expect(result[0]!.appearances).toHaveLength(2);
-    // Sanity-check that normalize* still does what fuse depends on
-    expect(normalizeTitle("Grid (Original Mix)")).toBe("grid");
-    expect(normalizeArtist("Surgeon")).toBe("surgeon");
   });
 });

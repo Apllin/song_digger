@@ -102,6 +102,8 @@ async function saveTracks(
     data: tracks.map((t) => ({
       title: t.title,
       artist: t.artist,
+      artistKey: t.artistKey || null,
+      titleKey: t.titleKey || null,
       source: t.source,
       sourceUrl: t.sourceUrl,
       coverUrl: t.coverUrl,

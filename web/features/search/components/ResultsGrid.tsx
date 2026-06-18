@@ -53,12 +53,18 @@ export function ResultsGrid({
   );
 
   const handleDislike = useCallback(
-    (track: PlayerTrack) => mutateDislike({ artist: track.artist, title: track.title }),
+    (track: PlayerTrack) =>
+      mutateDislike({
+        artist: track.artist,
+        title: track.title,
+        artistKey: track.artistKey ?? "",
+        titleKey: track.titleKey ?? "",
+      }),
     [mutateDislike],
   );
 
   const visibleTracks = useMemo(
-    () => tracks.filter((t) => !dislikedKeys.has(makeDislikeKey(t.artist, t.title))),
+    () => tracks.filter((t) => !dislikedKeys.has(makeDislikeKey(t.artistKey ?? "", t.titleKey ?? ""))),
     [tracks, dislikedKeys],
   );
 

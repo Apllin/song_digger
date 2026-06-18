@@ -6,16 +6,12 @@ describe("searchCacheKey", () => {
     expect(searchCacheKey("Mulero", "Voices")).toBe(`${SEARCH_CACHE_VERSION}:mulero|voices`);
   });
 
-  it("normalizes diacritics on the artist", () => {
-    expect(searchCacheKey("Óscar Mulero", "Voices")).toBe(searchCacheKey("Oscar Mulero", "Voices"));
-  });
-
-  it("collapses case and whitespace differences via normalize*", () => {
+  it("collapses case and whitespace differences", () => {
     expect(searchCacheKey("OSCAR MULERO", "VOICES")).toBe(searchCacheKey("oscar mulero", "voices"));
   });
 
-  it("strips '(Original Mix)' from track via normalizeTitle", () => {
-    expect(searchCacheKey("Mulero", "Voices (Original Mix)")).toBe(searchCacheKey("Mulero", "Voices"));
+  it("collapses internal whitespace", () => {
+    expect(searchCacheKey("oscar  mulero", "voices")).toBe(searchCacheKey("oscar mulero", "voices"));
   });
 
   it("uses '_' sentinel for artist-only searches (track=null)", () => {

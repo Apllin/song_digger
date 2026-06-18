@@ -25,6 +25,8 @@ export interface PlayerTrack {
   id: string;
   title: string;
   artist: string;
+  artistKey?: string | null;
+  titleKey?: string | null;
   source: TrackSource | null;
   sourceUrl: string;
   coverUrl?: string | null;

@@ -13,7 +13,6 @@
 // keeps the cache table small.
 
 import type { FusedCandidate } from "@/lib/aggregator";
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { lookupCache, upsertCache } from "@/lib/external-api-cache";
 
 const ITUNES_ENDPOINT = "https://itunes.apple.com/search";
@@ -33,15 +32,15 @@ interface CachedCover {
   url: string;
 }
 
-function coverCacheKey(artist: string, title: string): string {
-  return `${normalizeArtist(artist)}|${normalizeTitle(title)}`;
+function coverCacheKey(artistKey: string, titleKey: string): string {
+  return `${artistKey}|${titleKey}`;
 }
 
-async function lookupOne(artist: string, title: string): Promise<string | null> {
-  const term = `${artist} ${title}`.trim();
+async function lookupOne(candidate: FusedCandidate): Promise<string | null> {
+  const term = `${candidate.artist} ${candidate.title}`.trim();
   if (!term) return null;
 
-  const key = coverCacheKey(artist, title);
+  const key = coverCacheKey(candidate.artistKey ?? "", candidate.titleKey ?? "");
   // Skip cache lookup if normalization yields a degenerate key — those
   // would collide across unrelated tracks.
   if (key !== "|") {
@@ -84,7 +83,7 @@ export async function enrichMissingCovers(candidates: FusedCandidate[]): Promise
     while (cursor < targets.length) {
       const i = cursor++;
       const { candidate, index } = targets[i]!;
-      const found = await lookupOne(candidate.artist, candidate.title);
+      const found = await lookupOne(candidate);
       if (found) covers.set(index, found);
     }
   };

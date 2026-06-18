@@ -5,12 +5,11 @@
  * via DATABASE_URL.
  *
  * Flow tested:
- *  1. POST /api/dislikes with (artist, title) → row created
+ *  1. POST /api/dislikes with canonical (artistKey, titleKey) + display
+ *     (artist, title) → row created
  *  2. GET  /api/dislikes returns it
  *  3. POST /api/search → run a real search, dislike the rank-1 result,
  *     re-run — assert that (artistKey, titleKey) is no longer in results.
- *     Identity match uses normalizeArtist/normalizeTitle from the
- *     aggregator (same logic the search route uses to build dislikedKeys).
  *  4. DELETE → cleanup so subsequent test runs aren't polluted.
  *
  * Run with:  pnpm test:smoke
@@ -18,7 +17,6 @@
 import { hc } from "hono/client";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import type { AppType } from "@/lib/hono/app";
 
 const WEB_URL = "http://localhost:3000";
@@ -43,7 +41,9 @@ afterEach(async () => {
   // Always remove the placeholder row even on failure paths so the dev
   // DB doesn't accumulate junk.
   if (!serversUp) return;
-  await client.dislikes.$delete({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } }).catch(() => {});
+  await client.dislikes
+    .$delete({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE, artistKey: "", titleKey: "" } })
+    .catch(() => {});
 });
 
 describe("/api/dislikes CRUD", () => {
@@ -53,7 +53,9 @@ describe("/api/dislikes CRUD", () => {
       return;
     }
 
-    const post = await client.dislikes.$post({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } });
+    const post = await client.dislikes.$post({
+      json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE, artistKey: "", titleKey: "" },
+    });
     expect(post.ok).toBe(true);
 
     const listResp = await client.dislikes.$get();
@@ -68,9 +70,11 @@ describe("/api/dislikes CRUD", () => {
       return;
     }
 
-    await client.dislikes.$post({ json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE } });
+    await client.dislikes.$post({
+      json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE, artistKey: "", titleKey: "" },
+    });
     const del = await client.dislikes.$delete({
-      json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE },
+      json: { artist: PLACEHOLDER_ARTIST, title: PLACEHOLDER_TITLE, artistKey: "", titleKey: "" },
     });
     expect(del.ok).toBe(true);
 
@@ -94,6 +98,8 @@ describe("/api/dislikes CRUD", () => {
 interface SearchTrack {
   artist: string;
   title: string;
+  artistKey?: string | null;
+  titleKey?: string | null;
   source: string;
   sourceUrl: string;
 }
@@ -107,8 +113,8 @@ async function startSearch(input: string): Promise<SearchResult> {
   return (await resp.json()) as SearchResult;
 }
 
-function identityKey(t: { artist: string; title: string }): string {
-  return `${normalizeArtist(t.artist)}|${normalizeTitle(t.title)}`;
+function identityKey(t: SearchTrack): string {
+  return `${t.artistKey ?? ""}|${t.titleKey ?? ""}`;
 }
 
 describe("/api/search dislike-filter behavior", () => {
@@ -127,7 +133,14 @@ describe("/api/search dislike-filter behavior", () => {
     const target = r1.tracks[0]!;
     console.log(`[dislike smoke] disliking "${target.artist} - ${target.title}" (rank 1, source=${target.source})`);
 
-    const post = await client.dislikes.$post({ json: { artist: target.artist, title: target.title } });
+    const post = await client.dislikes.$post({
+      json: {
+        artist: target.artist,
+        title: target.title,
+        artistKey: target.artistKey ?? "",
+        titleKey: target.titleKey ?? "",
+      },
+    });
     expect(post.ok).toBe(true);
 
     try {
@@ -140,7 +153,14 @@ describe("/api/search dislike-filter behavior", () => {
         `disliked ${targetKey} re-appeared in search ${r2.id} from source ${survived?.source}`,
       ).toBeUndefined();
     } finally {
-      await client.dislikes.$delete({ json: { artist: target.artist, title: target.title } });
+      await client.dislikes.$delete({
+        json: {
+          artist: target.artist,
+          title: target.title,
+          artistKey: target.artistKey ?? "",
+          titleKey: target.titleKey ?? "",
+        },
+      });
     }
   }, 180_000);
 });

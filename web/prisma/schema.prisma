@@ -26,6 +26,8 @@ model Track {
     id                     String               @id @default(cuid())
     title                  String
     artist                 String
+    artistKey              String?
+    titleKey               String?
     source                 String
     sourceUrl              String               @unique
     coverUrl               String?
@@ -167,11 +169,7 @@ model Favorite {
 model DislikedTrack {
     id        String   @id @default(cuid())
     userId    String
-    // Normalized identity keys for matching against candidate tracks.
-    // Same normalization as web/lib/aggregator.ts:normalizeArtist /
-    // normalizeTitle (NFKD diacritic strip + lowercase + drop
-    // non-alphanumerics for artist; whitelisted suffix-strip + lowercase
-    // for title).
+    // Canonical identity keys from LLM title normalization (title_llm.py).
     artistKey String
     titleKey  String
     // Originals retained for UI display.
@@ -223,8 +221,6 @@ model LoginAttempt {
 model TrackEmbed {
     id String @id @default(cuid())
 
-    // Same normalization convention as DislikedTrack: aggregator.ts
-    // normalizeArtist / normalizeTitle.
     artistKey String
     titleKey  String
 

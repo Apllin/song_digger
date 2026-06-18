@@ -6,7 +6,6 @@ import { parseResponse } from "hono/client";
 import { useMemo } from "react";
 import { type DislikeKey, makeDislikeKey } from "../types";
 
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { fetchApi } from "@/lib/callApi";
 import { api } from "@/lib/hono/client";
 
@@ -21,20 +20,27 @@ export function useDislikedKeys(userId: string | null): Set<DislikeKey> {
     enabled: !!userId,
     staleTime: 60_000,
   });
-  return useMemo(() => new Set((data ?? []).map((d) => makeDislikeKey(d.artist, d.title))), [data]);
+  return useMemo(() => new Set((data ?? []).map((d) => makeDislikeKey(d.artistKey, d.titleKey))), [data]);
 }
 
 export function useDislikeTrack(userId: string | null) {
   const qc = useQueryClient();
   const key = dislikesKey(userId);
   return useMutation({
-    mutationFn: ({ artist, title }: { artist: string; title: string }) =>
-      fetchApi(api.dislikes.$post({ json: { artist, title } })),
-    onMutate: async ({ artist, title }) => {
+    mutationFn: ({
+      artist,
+      title,
+      artistKey,
+      titleKey,
+    }: {
+      artist: string;
+      title: string;
+      artistKey: string;
+      titleKey: string;
+    }) => fetchApi(api.dislikes.$post({ json: { artist, title, artistKey, titleKey } })),
+    onMutate: async ({ artist, title, artistKey, titleKey }) => {
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<DislikeRow[]>(key) ?? [];
-      const artistKey = normalizeArtist(artist);
-      const titleKey = normalizeTitle(title);
       if (!previous.some((d) => d.artistKey === artistKey && d.titleKey === titleKey)) {
         qc.setQueryData<DislikeRow[]>(key, [...previous, { artistKey, titleKey, artist, title }]);
       }

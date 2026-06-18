@@ -1,5 +1,33 @@
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 import { prisma } from "@/lib/prisma";
+
+// Embed-cache key normalization mirrors the old aggregator logic so existing
+// TrackEmbed rows remain valid across the LLM-normalization migration.
+function _normArtist(s: string): string {
+  return s.normalize("NFKD").replace(/\p{Mn}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const _TITLE_STRIP = [
+  /\s*[([]original mix[)\]]/gi,
+  /\s*[([]extended(?:\s+mix)?[)\]]/gi,
+  /\s*[([]radio\s+(?:edit|mix)[)\]]/gi,
+  /\s*[([](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[)\]]/gi,
+  /\s*[([](?:feat\.|ft\.|featuring)\s+[^)\]]*[)\]]/gi,
+  /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
+  /\s*[([](?:clean|explicit)[)\]]/gi,
+  /\s*[([]bonus\s+track[)\]]/gi,
+  /\s+[-–—]\s+original mix\s*$/gi,
+  /\s+[-–—]\s+extended(?:\s+mix)?\s*$/gi,
+  /\s+[-–—]\s+radio\s+(?:edit|mix)\s*$/gi,
+  /\s+[-–—]\s+(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)\s*$/gi,
+  /\s+(?:feat\.|ft\.|featuring)\s+.*$/gi,
+  /\s*\[(?![^\]]*\b(?:remix|rmx|mix|dub|live|edit|vip|version|instrumental|acapella|acappella|rework|bootleg|reprise|interlude|intro|outro|flip|refix)\b)[^\]]*?[a-z]{2,}[\s–/-]{0,3}\d{2,}[^\]]*\]/gi,
+];
+
+function _normTitle(s: string): string {
+  let out = s.toLowerCase().trim();
+  for (const p of _TITLE_STRIP) out = out.replace(p, "");
+  return out.replace(/\s+/g, " ").trim();
+}
 
 export interface EmbedCacheEntry {
   embedUrl: string | null;
@@ -22,8 +50,8 @@ export interface CacheKey {
 
 export function embedCacheKey(artist: string, title: string): CacheKey {
   return {
-    artistKey: normalizeArtist(cleanArtist(artist)),
-    titleKey: normalizeTitle(title),
+    artistKey: _normArtist(cleanArtist(artist)),
+    titleKey: _normTitle(title),
   };
 }
 
