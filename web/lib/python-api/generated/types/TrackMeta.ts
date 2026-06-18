@@ -16,6 +16,16 @@ export type TrackMeta = {
    */
   artist: string;
   /**
+   * @default ""
+   * @type string | undefined
+   */
+  artistKey?: string;
+  /**
+   * @default ""
+   * @type string | undefined
+   */
+  titleKey?: string;
+  /**
    * @type string
    */
   source: string;

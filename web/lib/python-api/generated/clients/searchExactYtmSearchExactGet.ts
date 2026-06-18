@@ -19,7 +19,7 @@ function getSearchExactYtmSearchExactGetUrl() {
 
 /**
  * @description Exact track lookup: search YTM for 'artist - title', pick the best matching
- * result by comparing normalised artist+title strings.
+ * result by comparing canonical title keys.
  * Returns { embedUrl, coverUrl } or { embedUrl: null }.
  * @summary Search Exact
  * {@link /ytm/search-exact}

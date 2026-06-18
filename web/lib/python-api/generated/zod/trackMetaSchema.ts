@@ -9,6 +9,8 @@ import type { TrackMeta } from "../types/TrackMeta";
 export const trackMetaSchema = z.object({
   title: z.string(),
   artist: z.string(),
+  artistKey: z.optional(z.string().default("")),
+  titleKey: z.optional(z.string().default("")),
   source: z.string(),
   sourceUrl: z.string(),
   coverUrl: z.optional(z.union([z.string(), z.null()])),
