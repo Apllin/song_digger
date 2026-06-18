@@ -285,3 +285,66 @@ async def upsert_external_cache(
             )
     except Exception as e:
         print(f"[cache] upsert failed source={source} key={cache_key}: {e}")
+
+
+async def fetch_external_cache_many(
+    *, source: str, cache_keys: list[str]
+) -> dict[str, Any]:
+    """Batched read — returns {cache_key: payload} for keys present (no TTL)."""
+    if not source or not cache_keys:
+        return {}
+    pool = await _get_pool()
+    if pool is None:
+        return {}
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT "cacheKey", "payload"
+                FROM "ExternalApiCache"
+                WHERE "source" = $1 AND "cacheKey" = ANY($2::text[])
+                """,
+                source, cache_keys,
+            )
+    except Exception as e:
+        print(f"[cache] batch lookup failed source={source}: {e}")
+        return {}
+    out: dict[str, Any] = {}
+    for row in rows:
+        raw = row["payload"]
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                continue
+        out[row["cacheKey"]] = raw
+    _log_cache_event("HIT", source, f"<batch {len(out)}/{len(cache_keys)}>", {})
+    return out
+
+
+async def upsert_external_cache_many(
+    *, source: str, items: list[tuple[str, Any]]
+) -> None:
+    """Batched upsert of (cache_key, payload) pairs into ExternalApiCache."""
+    if not source or not items:
+        return
+    pool = await _get_pool()
+    if pool is None:
+        return
+    keys = [k for k, _ in items]
+    payloads = [json.dumps(v) for _, v in items]
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO "ExternalApiCache"
+                  (id, "source", "cacheKey", "payload", "createdAt", "updatedAt")
+                SELECT gen_random_uuid()::text, $1, k, p::jsonb, now(), now()
+                FROM unnest($2::text[], $3::text[]) AS t(k, p)
+                ON CONFLICT ("source", "cacheKey") DO UPDATE
+                SET "payload" = EXCLUDED."payload", "updatedAt" = now()
+                """,
+                source, keys, payloads,
+            )
+    except Exception as e:
+        print(f"[cache] batch upsert failed source={source}: {e}")

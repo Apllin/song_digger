@@ -256,3 +256,55 @@ async def test_get_pool_logs_once_per_outage(monkeypatch, capsys):
         for _ in range(5):
             assert await db._get_pool() is None
     assert capsys.readouterr().out.count("pool init failed") == 1
+
+
+# ── fetch_external_cache_many ────────────────────────────────────────────────
+
+async def test_fetch_many_returns_present_keys():
+    conn = MagicMock()
+    conn.fetch = AsyncMock(return_value=[
+        {"cacheKey": "a", "payload": '{"x": 1}'},
+        {"cacheKey": "b", "payload": {"y": 2}},
+    ])
+    pool = _mock_pool(conn)
+    with patch.object(db, "_get_pool", AsyncMock(return_value=pool)):
+        out = await db.fetch_external_cache_many(source="title_norm", cache_keys=["a", "b", "c"])
+    assert out == {"a": {"x": 1}, "b": {"y": 2}}
+
+
+async def test_fetch_many_empty_input_no_query():
+    assert await db.fetch_external_cache_many(source="title_norm", cache_keys=[]) == {}
+
+
+async def test_fetch_many_db_unavailable_returns_empty():
+    with patch.object(db, "_get_pool", AsyncMock(return_value=None)):
+        assert await db.fetch_external_cache_many(source="title_norm", cache_keys=["a"]) == {}
+
+
+# ── upsert_external_cache_many ───────────────────────────────────────────────
+
+async def test_upsert_many_empty_input_noop():
+    # Must not raise and must not touch the pool
+    with patch.object(db, "_get_pool", AsyncMock(return_value=None)) as get_pool:
+        await db.upsert_external_cache_many(source="title_norm", items=[])
+    assert get_pool.call_count == 0
+
+
+async def test_upsert_many_calls_execute_once():
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value=None)
+    pool = _mock_pool(conn)
+    with patch.object(db, "_get_pool", AsyncMock(return_value=pool)):
+        await db.upsert_external_cache_many(
+            source="title_norm",
+            items=[("k1", {"a": 1}), ("k2", {"b": 2})],
+        )
+    conn.execute.assert_awaited_once()
+    args = conn.execute.await_args.args
+    sql = args[0]
+    assert "unnest" in sql
+    assert "ExternalApiCache" in sql
+    assert args[1] == "title_norm"
+    assert args[2] == ["k1", "k2"]
+    assert json.loads(args[3][0]) == {"a": 1}
+    assert json.loads(args[3][1]) == {"b": 2}
