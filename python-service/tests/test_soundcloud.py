@@ -4,12 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+import app.adapters.soundcloud as sc_mod
 from app.adapters.soundcloud import (
     SoundCloudAdapter,
-    _clean_title,
     _pick_seed,
     _split_query,
 )
+from app.core.seed_match import MATCH_EXACT, MATCH_NONE
 
 
 # ── _split_query ──────────────────────────────────────────────────────────────
@@ -22,73 +23,12 @@ def test_split_query_artist_only():
     assert _split_query("Surgeon") == ("Surgeon", None)
 
 
-def test_split_query_artist_only():
+def test_split_query_artist_only_multiword():
     assert _split_query("Dani Duran") == ("Dani Duran", None)
 
 
 def test_split_query_trailing_separator():
     assert _split_query("Ignez - ") == ("Ignez", None)
-
-
-# ── _clean_title ──────────────────────────────────────────────────────────────
-
-def test_clean_title_premiere_prefix():
-    assert _clean_title("PREMIERE: Ignez - Lightworker") == "Ignez - Lightworker"
-
-
-def test_clean_title_premiere_with_catalog_suffix():
-    assert _clean_title("PREMIERE: Ignez - Lightworker [SOMOV010]") == "Ignez - Lightworker"
-
-
-def test_clean_title_exclusive_prefix():
-    assert _clean_title("EXCLUSIVE: Surgeon - Vortex") == "Surgeon - Vortex"
-
-
-def test_clean_title_free_download_prefix():
-    assert _clean_title("FREE DOWNLOAD: Some Track") == "Some Track"
-
-
-def test_clean_title_free_dl_prefix():
-    assert _clean_title("FREE DL: Some Track") == "Some Track"
-
-
-def test_clean_title_pipe_prefix_with_free_dl_suffix():
-    assert _clean_title("PREMIERE | BENZA - Henko [Free DL]") == "BENZA - Henko"
-
-
-def test_clean_title_free_download_paren_suffix():
-    assert _clean_title("VOICEX - Loose Battery (Free Download)") == "VOICEX - Loose Battery"
-
-
-def test_clean_title_catalog_then_free_download_suffix():
-    # Promo suffix stripped first to expose catalog number.
-    assert _clean_title("Josh Burke - Catatonic Lover [MY01] (FREE DOWNLOAD)") == "Josh Burke - Catatonic Lover"
-
-
-def test_clean_title_bracketed_prefix():
-    assert _clean_title("[FREE DL] MAURER X LAUTLOS - OVERDRIVE") == "MAURER X LAUTLOS - OVERDRIVE"
-
-
-def test_clean_title_label_name_suffix():
-    assert _clean_title("Dreams Take Over [Divinity Records]") == "Dreams Take Over"
-
-
-def test_clean_title_catalog_suffix_only():
-    assert _clean_title("Ignez - Lightworker [SOMOV010]") == "Ignez - Lightworker"
-
-
-def test_clean_title_no_change():
-    assert _clean_title("Surgeon - Vortex") == "Surgeon - Vortex"
-
-
-def test_clean_title_remix_suffix_preserved():
-    # Remix suffix must not be stripped — it identifies a distinct recording.
-    result = _clean_title("Ignez - Lightworker (Surgeon Remix)")
-    assert result == "Ignez - Lightworker (Surgeon Remix)"
-
-
-def test_clean_title_radio_edit_stripped():
-    assert _clean_title("Buurman Uit Berlijn [Radio Edit] (feat. Joost)") == "Buurman Uit Berlijn"
 
 
 # ── _fetch_recommended seed exclusion ─────────────────────────────────────────
@@ -145,44 +85,75 @@ async def test_fetch_recommended_seed_exclusion_ignores_trailing_slash(monkeypat
 
 # ── _pick_seed validation ─────────────────────────────────────────────────────
 
-def test_pick_seed_exact_track_match():
+async def test_pick_seed_exact_track_match(monkeypatch):
     html = """
     <noscript>
       <a href="/other/random-track">Other - Random Track</a>
       <a href="/ignez/lightworker">Ignez - Lightworker</a>
     </noscript>
     """
-    assert _pick_seed("Ignez - Lightworker", html) == "https://soundcloud.com/ignez/lightworker"
+    # scores: Other-Random Track pair=MATCH_NONE, Ignez-Lightworker pair=MATCH_EXACT
+    async def _fake_score(query, pairs):
+        return [MATCH_NONE if "random" in p[1].lower() else MATCH_EXACT for p in pairs]
+    monkeypatch.setattr(sc_mod, "score_candidates", _fake_score)
+    result = await _pick_seed("Ignez - Lightworker", html)
+    assert result == "https://soundcloud.com/ignez/lightworker"
 
 
-def test_pick_seed_no_match_returns_none():
+async def test_pick_seed_no_match_returns_none(monkeypatch):
     html = """
     <noscript>
       <a href="/other/unrelated-one">Other - Unrelated One</a>
       <a href="/label/unrelated-two">Label - Unrelated Two</a>
     </noscript>
     """
-    assert _pick_seed("Ignez - Lightworker", html) is None
+    async def _fake_score(query, pairs):
+        return [MATCH_NONE] * len(pairs)
+    monkeypatch.setattr(sc_mod, "score_candidates", _fake_score)
+    result = await _pick_seed("Ignez - Lightworker", html)
+    assert result is None
 
 
-def test_pick_seed_embedded_artist_in_title():
+async def test_pick_seed_embedded_artist_in_title(monkeypatch):
     # URL/profile is the uploader (a label); the real artist is in the title.
     html = """
     <noscript>
       <a href="/somelabel/ignez-lightworker">Ignez - Lightworker</a>
     </noscript>
     """
-    assert _pick_seed("Ignez - Lightworker", html) == "https://soundcloud.com/somelabel/ignez-lightworker"
+    # The title has " - " so two pairs are scored: (uploader, title) and (Ignez, Lightworker).
+    # Stub returns MATCH_NONE for the uploader pair, MATCH_EXACT for the embedded pair.
+    call_count = []
+    async def _fake_score(query, pairs):
+        call_count.append(len(pairs))
+        # pairs: [(somelabel_name, "Ignez - Lightworker"), ("Ignez", "Lightworker")]
+        return [MATCH_NONE, MATCH_EXACT]
+    monkeypatch.setattr(sc_mod, "score_candidates", _fake_score)
+    result = await _pick_seed("Ignez - Lightworker", html)
+    assert result == "https://soundcloud.com/somelabel/ignez-lightworker"
+    assert call_count == [2]  # both pairs were scored
 
 
-def test_pick_seed_artist_only_query():
+async def test_pick_seed_artist_only_query(monkeypatch):
     html = """
     <noscript>
       <a href="/other/unrelated">Other - Unrelated</a>
       <a href="/somelabel/surgeon-vortex">Surgeon - Vortex</a>
     </noscript>
     """
-    assert _pick_seed("Surgeon", html) == "https://soundcloud.com/somelabel/surgeon-vortex"
+    async def _fake_score(query, pairs):
+        # pairs: (Other, Unrelated), (Other, Unrelated embedded split), (somelabel_name, Surgeon - Vortex), (Surgeon, Vortex)
+        # only the Surgeon pair (index 2 or 3) matches
+        scores = []
+        for artist, title in pairs:
+            if "surgeon" in artist.lower() or "surgeon" in title.lower():
+                scores.append(MATCH_EXACT)
+            else:
+                scores.append(MATCH_NONE)
+        return scores
+    monkeypatch.setattr(sc_mod, "score_candidates", _fake_score)
+    result = await _pick_seed("Surgeon", html)
+    assert result == "https://soundcloud.com/somelabel/surgeon-vortex"
 
 
 async def test_find_similar_returns_empty_when_no_seed_matches(monkeypatch):
@@ -192,6 +163,9 @@ async def test_find_similar_returns_empty_when_no_seed_matches(monkeypatch):
     </noscript>
     """
     _mock_async_client(html, monkeypatch)
+    async def _fake_score(query, pairs):
+        return [MATCH_NONE] * len(pairs)
+    monkeypatch.setattr(sc_mod, "score_candidates", _fake_score)
     adapter = SoundCloudAdapter()
 
     assert await adapter.find_similar("Ignez - Lightworker", limit=5) == []

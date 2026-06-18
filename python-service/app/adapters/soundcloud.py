@@ -18,10 +18,9 @@ import urllib.parse
 import httpx
 from bs4 import BeautifulSoup
 
-from app.adapters._seed_match import MATCH_NONE, query_match_score
 from app.adapters.base import AbstractAdapter
 from app.core.models import TrackMeta
-from app.core.title_norm import strip_recording_suffixes
+from app.core.seed_match import score_candidates, MATCH_NONE
 
 SC_BASE = "https://soundcloud.com"
 SC_EMBED_BASE = "https://w.soundcloud.com/player/"
@@ -39,27 +38,6 @@ _HEADERS = {
 
 # /artist/track — exactly 2 non-empty path segments.
 _TRACK_PATH_RE = re.compile(r"^/[^/]+/[^/]+$")
-# SoundCloud track title prefixes added by labels/channels. Three forms:
-#   "PREMIERE: Ignez - …"   (colon separator)
-#   "PREMIERE | BENZA - …"  (pipe separator)
-#   "[FREE DL] MAURER - …"  (bracketed prefix)
-_PROMO_WORDS = r"(?:premiere|exclusive|free\s+(?:download|dl)|out\s+now|official)"
-_TITLE_PREFIX_RE = re.compile(
-    rf"^(?:\[{_PROMO_WORDS}\]\s*|{_PROMO_WORDS}\s*[:|]\s*)",
-    re.IGNORECASE,
-)
-# Catalog-number suffixes (e.g. "[SOMOV010]", "[DT120]") at the end of a title
-_CATALOG_SUFFIX_RE = re.compile(r"\s*\[[A-Z]{2,}[A-Z0-9]*\d+\]\s*$", re.IGNORECASE)
-# Label-name suffixes (e.g. "[Divinity Records]", "[Tresor Music]") at the end of a title
-_LABEL_SUFFIX_RE = re.compile(
-    r"\s*\[[^\]]*\b(?:records?|recordings?|music|label)\]\s*$",
-    re.IGNORECASE,
-)
-# Promotional suffixes in brackets or parens (e.g. "[Free DL]", "(Free Download)")
-_PROMO_SUFFIX_RE = re.compile(
-    r"\s*[([](?:free\s+(?:dl|download)|out\s+now|premiere|exclusive)[)\]]\s*$",
-    re.IGNORECASE,
-)
 # SoundCloud system pages that appear as the first path segment.
 _SKIP_FIRST_SEGMENTS = frozenset({
     "search", "discover", "you", "upload", "settings",
@@ -122,17 +100,6 @@ def _slug_to_name(slug: str) -> str:
     return slug.replace("-", " ").title()
 
 
-def _clean_title(raw: str) -> str:
-    title = _TITLE_PREFIX_RE.sub("", raw).strip()
-    # Promo suffix before catalog: "[MY01] (FREE DOWNLOAD)" needs promo stripped
-    # first to expose the catalog number at the end.
-    title = _PROMO_SUFFIX_RE.sub("", title).strip()
-    title = _CATALOG_SUFFIX_RE.sub("", title).strip()
-    title = _LABEL_SUFFIX_RE.sub("", title).strip()
-    title = strip_recording_suffixes(title).strip()
-    return title
-
-
 def _resolve_path(href: str) -> str | None:
     """Return a /path string from an href, or None if it's not a soundcloud.com link."""
     if not href.startswith("http"):
@@ -174,30 +141,32 @@ def _parse_seed_duration_ms(html: str) -> int | None:
         return None
 
 
-def _seed_match_score(query: str, uploader: str, title: str) -> int:
-    """Best seed-match score for a hit — tries the title's embedded "Artist - Title"."""
-    score = query_match_score(query, uploader, title)
-    if " - " in title:
-        embedded_artist, _, embedded_title = title.partition(" - ")
-        score = max(
-            score,
-            query_match_score(query, embedded_artist.strip(), embedded_title.strip()),
-        )
-    return score
-
-
-def _pick_seed(query: str, html: str) -> str | None:
-    """Return the best query-matching track URL from a search page, or None."""
-    best_url: str | None = None
-    best_score = MATCH_NONE
-    for cand in _parse_tracks(html, _SEED_SCAN_LIMIT):
-        score = _seed_match_score(query, cand.artist, cand.title)
-        if score > best_score:
-            best_score = score
-            best_url = cand.sourceUrl
-    if best_url is None:
+async def _pick_seed(query: str, html: str) -> str | None:
+    """Return the best query-matching track URL from a search page, or None.
+    Each track is scored both as (uploader, title) and, when the title embeds
+    'Artist - Title', as that embedded pair; the better score wins."""
+    tracks = _parse_tracks(html, _SEED_SCAN_LIMIT)
+    pairs: list[tuple[str, str]] = []
+    owner: list[int] = []  # pairs[i] belongs to tracks[owner[i]]
+    for ti, cand in enumerate(tracks):
+        pairs.append((cand.artist, cand.title))
+        owner.append(ti)
+        if " - " in cand.title:
+            ea, _, et = cand.title.partition(" - ")
+            pairs.append((ea.strip(), et.strip()))
+            owner.append(ti)
+    if not pairs:
         print(f"[SoundCloud] no seed matched query {query!r}")
-    return best_url
+        return None
+    scores = await score_candidates(query, pairs)
+    best_track, best_score = -1, MATCH_NONE
+    for pi, sc in enumerate(scores):
+        if sc > best_score:
+            best_score, best_track = sc, owner[pi]
+    if best_track < 0:
+        print(f"[SoundCloud] no seed matched query {query!r}")
+        return None
+    return tracks[best_track].sourceUrl
 
 
 def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
@@ -223,7 +192,7 @@ def _parse_tracks(html: str, limit: int) -> list[TrackMeta]:
 
         artist_slug, track_slug = path.strip("/").split("/", 1)
 
-        title = _clean_title(a.get_text(strip=True)) or _slug_to_name(track_slug)
+        title = a.get_text(strip=True) or _slug_to_name(track_slug)
         # Filter DJ-set / podcast / radio-show uploads — same URL shape as
         # individual tracks but useless as recommendations. The seed-duration
         # check in _fetch_recommended catches the common case where the seed
@@ -286,7 +255,7 @@ class SoundCloudAdapter(AbstractAdapter):
         except Exception as e:
             print(f"[SoundCloud] search error: {e}")
             return None
-        return _pick_seed(query, resp.text)
+        return await _pick_seed(query, resp.text)
 
     async def _fetch_recommended(self, seed_url: str, limit: int) -> list[TrackMeta]:
         rec_url = seed_url.rstrip("/") + "/recommended"
