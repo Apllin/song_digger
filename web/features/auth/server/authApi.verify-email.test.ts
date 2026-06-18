@@ -74,10 +74,10 @@ describe("POST /account/verify-email", () => {
   it("rejects when no pending codes exist (expired or never created)", async () => {
     prismaMock.verificationCode.findMany.mockResolvedValueOnce([]);
     const res = await postVerify({ email: "user@example.com", code: "123456" });
+    expect(res.status).toBe(400);
     const result = await res.json();
-    expect(result).toEqual({
-      error: "Code expired or not found. Please request a new one.",
-    });
+    expect(result.name).toBe("CODE_EXPIRED");
+    expect(result.message).toBe("Code expired or not found. Please request a new one.");
   });
 
   it("rejects when code does not match any pending hash", async () => {
@@ -86,8 +86,10 @@ describe("POST /account/verify-email", () => {
       .mockResolvedValueOnce([{ code: wrongHash, expires: new Date(Date.now() + 60_000), failedAttempts: 0 }])
       .mockResolvedValueOnce([{ code: wrongHash, failedAttempts: 1 }]);
     const res = await postVerify({ email: "user@example.com", code: "123456" });
+    expect(res.status).toBe(400);
     const result = await res.json();
-    expect(result).toEqual({ error: "Invalid code" });
+    expect(result.name).toBe("INVALID_CODE");
+    expect(result.message).toBe("Invalid code");
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
@@ -143,9 +145,10 @@ describe("POST /account/verify-email", () => {
       .mockResolvedValueOnce([{ code: wrongHash, failedAttempts: 1 }]);
 
     const res = await postVerify({ email: "user@example.com", code: "123456" });
+    expect(res.status).toBe(400);
     const result = await res.json();
 
-    expect(result).toEqual({ error: "Invalid code" });
+    expect(result.name).toBe("INVALID_CODE");
     expect(prismaMock.loginAttempt.create).toHaveBeenCalledWith({
       data: { ip: "1.2.3.4", email: null, success: false },
     });
@@ -164,9 +167,11 @@ describe("POST /account/verify-email", () => {
     prismaMock.verificationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
 
     const res = await postVerify({ email: "user@example.com", code: "123456" });
+    expect(res.status).toBe(400);
     const result = await res.json();
 
-    expect(result).toEqual({ error: "Code expired or not found. Please request a new one." });
+    expect(result.name).toBe("CODE_EXPIRED");
+    expect(result.message).toBe("Code expired or not found. Please request a new one.");
     expect(prismaMock.verificationCode.deleteMany).toHaveBeenCalledWith({
       where: { email: "user@example.com" },
     });
