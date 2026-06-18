@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class TrackMeta(BaseModel):
     title: str
     artist: str
+    artistKey: str = ""   # canonical artist match key (filled by the title-norm pass)
+    titleKey: str = ""    # canonical title match key (filled by the title-norm pass)
     source: str
     sourceUrl: str
     coverUrl: str | None = None

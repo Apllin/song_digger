@@ -132,3 +132,9 @@ async def test_find_by_artist_and_track_returns_ytm_when_cosine_fails():
     ytm_list = next((sl for sl in source_lists if sl.source == "youtube_music"), None)
     assert ytm_list is not None and ytm_list.tracks, \
         "YTM tracks from other artists must be returned when CosineClub fails"
+
+
+def test_trackmeta_has_canonical_keys():
+    from app.core.models import TrackMeta
+    t = TrackMeta(title="t", artist="a", source="s", sourceUrl="u")
+    assert t.artistKey == "" and t.titleKey == ""
