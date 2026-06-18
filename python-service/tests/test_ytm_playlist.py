@@ -46,9 +46,9 @@ def test_token_close_rejects_large_length_diff():
 
 
 def test_title_close_signature_equality():
-    """Tier 1: identical after _title_signature normalisation."""
+    """Tier 1: key equality; tier 2: substring (Original Mix suffix covered)."""
     assert _title_close("Voices", "voices") is True
-    assert _title_close("Voices (Original Mix)", "Voices") is True  # 'Original Mix' stripped
+    assert _title_close("Voices (Original Mix)", "Voices") is True  # 'Voices' substring of longer
 
 
 def test_title_close_substring_either_direction():
