@@ -1,5 +1,3 @@
-import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
-
 // Two-layer cache for the search pipeline:
 //
 // Layer 1 — SearchQuery row (final result cache):
@@ -25,15 +23,18 @@ import { normalizeArtist, normalizeTitle } from "@/lib/aggregator";
 // tiebreaker, artist diversification), cover enrichment, or saveTracks
 // logic — these only affect layer-1 misses and run fresh every time.
 export const SEARCH_CACHE_SOURCE = "search_response";
-export const SEARCH_CACHE_VERSION = "v17";
+export const SEARCH_CACHE_VERSION = "v18";
 export const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
 export const PYTHON_LIMIT_PER_SOURCE = 40;
 
+function keyPart(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
 export function searchCacheKey(artist: string, track: string | null): string {
-  // Reuse the same normalization as DislikedTrack identity matching so two
-  // typings with the same parsed pair share a cache entry. Sentinel "_" for
-  // artist-only search avoids colliding with empty-track variants.
-  const a = normalizeArtist(artist);
-  const t = track ? normalizeTitle(track) : "_";
+  // Minimal key hygiene only (lowercase/trim); canonical title cleaning is the
+  // LLM's job server-side. Sentinel "_" keeps artist-only distinct from empty-track.
+  const a = keyPart(artist);
+  const t = track ? keyPart(track) : "_";
   return `${SEARCH_CACHE_VERSION}:${a}|${t}`;
 }
