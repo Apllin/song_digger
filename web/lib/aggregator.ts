@@ -88,58 +88,8 @@ export interface FusedCandidate extends TrackMeta {
   appearances: { source: string; rank: number }[];
 }
 
-// ── Title normalisation ──────────────────────────────────────────────────────
-// Mirrors python-service _normalize_title: lower-cased, with whitelisted
-// recording-equivalence suffixes (Original Mix, Extended, Radio Edit, Remaster,
-// Feat/Ft, Prod, Clean/Explicit, Bonus Track) stripped, plus square-bracket
-// catalog tags ("[Perlon114]"). Anything not in the whitelist (Remix, Dub,
-// Live, VIP, Instrumental, …) survives — those identify distinct recordings.
-// Two surface forms: bracketed ("Track (Original Mix)") and hyphen-trailed
-// ("Track - Original Mix"). Last.fm/Discogs emit the latter; without it,
-// the same recording from different sources doesn't fuse in RRF.
-const TITLE_STRIP_PATTERNS: RegExp[] = [
-  /\s*[([]original mix[)\]]/gi,
-  /\s*[([]extended(?:\s+mix)?[)\]]/gi,
-  /\s*[([]radio\s+(?:edit|mix)[)\]]/gi,
-  /\s*[([](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[)\]]/gi,
-  /\s*[([](?:feat\.|ft\.|featuring)\s+[^)\]]*[)\]]/gi,
-  /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
-  /\s*[([](?:clean|explicit)[)\]]/gi,
-  /\s*[([]bonus\s+track[)\]]/gi,
-  /\s+[-–—]\s+original mix\s*$/gi,
-  /\s+[-–—]\s+extended(?:\s+mix)?\s*$/gi,
-  /\s+[-–—]\s+radio\s+(?:edit|mix)\s*$/gi,
-  /\s+[-–—]\s+(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)\s*$/gi,
-  /\s+(?:feat\.|ft\.|featuring)\s+.*$/gi,
-  // Catalogue/label tags: "[Perlon114]", "[Perlon - PERL114]", "[SOMOV010]".
-  // Mirrors python-service title_norm._CATALOG_TAG (negative guard keeps
-  // versioned brackets like "[Live 2020]" intact). Source *service* tags
-  // (promo/vinyl/label tails) are stripped server-side by clean_title before
-  // results reach the client, so they're not duplicated here.
-  /\s*\[(?![^\]]*\b(?:remix|rmx|mix|dub|live|edit|vip|version|instrumental|acapella|acappella|rework|bootleg|reprise|interlude|intro|outro|flip|refix)\b)[^\]]*?[a-z]{2,}[\s–/-]{0,3}\d{2,}[^\]]*\]/gi,
-];
-
-export function normalizeTitle(s: string): string {
-  let out = s.toLowerCase().trim();
-  for (const pat of TITLE_STRIP_PATTERNS) out = out.replace(pat, "");
-  return out.replace(/\s+/g, " ").trim();
-}
-
-export function normalizeArtist(artist: string): string {
-  // NFKD-decompose so accented forms split into base + combining marks,
-  // then strip the combining marks before the alphanumeric filter — otherwise
-  // "Óscar Mulero" → "scarmulero" (Ó dropped) doesn't fuse with
-  // "Oscar Mulero" → "oscarmulero" across sources. Mirror in
-  // python-service _normalize / _same_artist.
-  return artist
-    .normalize("NFKD")
-    .replace(/\p{Mn}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
 function identityKey(t: TrackMeta): string {
-  return `${normalizeArtist(t.artist)}||${normalizeTitle(t.title)}`;
+  return `${t.artistKey ?? ""}||${t.titleKey ?? ""}`;
 }
 
 // ── Metadata merge across sources ────────────────────────────────────────────
@@ -211,12 +161,12 @@ function diversifyArtists(tracks: FusedCandidate[], maxConsecutive = 2): FusedCa
   while (pool.length > 0) {
     const window = recentArtists.slice(-maxConsecutive);
     const idx = pool.findIndex((t) => {
-      const a = normalizeArtist(t.artist);
+      const a = t.artistKey ?? "";
       return !(window.length === maxConsecutive && window.every((w) => w === a));
     });
     const pick = pool.splice(idx >= 0 ? idx : 0, 1)[0]!;
     result.push(pick);
-    recentArtists.push(normalizeArtist(pick.artist));
+    recentArtists.push(pick.artistKey ?? "");
   }
 
   return result;

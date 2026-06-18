@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { SourceList } from "./python-api/generated/types/SourceList";
 import type { TrackMeta } from "./python-api/generated/types/TrackMeta";
 import type { AudioFeatures, WeightConfig } from "./aggregator";
-import { aggregateTracks, normalizeArtist, normalizeTitle, rrfFuse } from "./aggregator";
+import { aggregateTracks, rrfFuse } from "./aggregator";
 
 function makeTrack(overrides: Partial<TrackMeta> = {}): TrackMeta {
   return {
     title: "T",
     artist: "A",
+    artistKey: "a",
+    titleKey: "t",
     source: "youtube_music",
     sourceUrl: `https://music.youtube.com/watch?v=${Math.random().toString(36).slice(2)}`,
     ...overrides,
@@ -18,58 +20,12 @@ function listOf(source: string, ...tracks: TrackMeta[]): SourceList {
   return { source, tracks };
 }
 
-describe("normalizeTitle", () => {
-  it("strips (Original Mix)", () => {
-    expect(normalizeTitle("Grid (Original Mix)")).toBe("grid");
-    expect(normalizeTitle("Grid [Original Mix]")).toBe("grid");
-  });
-
-  it("strips Extended/Radio/Remaster forms", () => {
-    expect(normalizeTitle("Track (Extended Mix)")).toBe("track");
-    expect(normalizeTitle("Track (Radio Edit)")).toBe("track");
-    expect(normalizeTitle("Track (Remastered)")).toBe("track");
-    expect(normalizeTitle("Track (Remastered 2019)")).toBe("track");
-  });
-
-  it("preserves Remix / Dub / Live (distinct recordings)", () => {
-    expect(normalizeTitle("Track (Remix)")).toBe("track (remix)");
-    expect(normalizeTitle("Track (Dub)")).toBe("track (dub)");
-    expect(normalizeTitle("Track (Live)")).toBe("track (live)");
-  });
-
-  it("strips feat/ft/featuring", () => {
-    expect(normalizeTitle("Track (feat. Someone)")).toBe("track");
-    expect(normalizeTitle("Track (ft. Someone)")).toBe("track");
-  });
-
-  it("strips hyphen-trailing same-recording suffixes (Spotify/Apple/Yandex form)", () => {
-    expect(normalizeTitle("Lunfardo - Original Mix")).toBe("lunfardo");
-    expect(normalizeTitle("Track - Extended Mix")).toBe("track");
-    expect(normalizeTitle("Track - Radio Edit")).toBe("track");
-    expect(normalizeTitle("Track - Remastered")).toBe("track");
-    expect(normalizeTitle("Track - Remastered 2019")).toBe("track");
-    expect(normalizeTitle("Track – Original Mix")).toBe("track"); // en dash
-  });
-
-  it("strips bare feat./ft./featuring without brackets", () => {
-    expect(normalizeTitle("Track feat. Someone")).toBe("track");
-    expect(normalizeTitle("Track ft. A & B")).toBe("track");
-    expect(normalizeTitle("Track featuring X")).toBe("track");
-  });
-
-  it("preserves Remix / Live / Version in hyphen form (distinct recordings)", () => {
-    expect(normalizeTitle("Track - Remix")).toBe("track - remix");
-    expect(normalizeTitle("Track - Live")).toBe("track - live");
-    expect(normalizeTitle("Track - Acoustic Version")).toBe("track - acoustic version");
-  });
-});
-
 describe("rrfFuse", () => {
   it("track in 3 sources beats track in 1 source even with worse ranks", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB" });
-    const trackC = makeTrack({ title: "C", artist: "ArtistC" });
-    const trackD = makeTrack({ title: "D", artist: "ArtistD" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b" });
+    const trackC = makeTrack({ title: "C", artist: "ArtistC", artistKey: "artistc", titleKey: "c" });
+    const trackD = makeTrack({ title: "D", artist: "ArtistD", artistKey: "artistd", titleKey: "d" });
 
     const lists: SourceList[] = [
       { source: "cosine", tracks: [trackA, trackB] }, // A=1, B=2
@@ -82,10 +38,12 @@ describe("rrfFuse", () => {
   });
 
   it("merges coverUrl across sources (cosine cover fills ytm null)", () => {
-    const ytm: TrackMeta = makeTrack({ title: "Same", artist: "Same", source: "youtube_music" });
+    const ytm: TrackMeta = makeTrack({ title: "Same", artist: "Same", artistKey: "same", titleKey: "same", source: "youtube_music" });
     const cosine: TrackMeta = makeTrack({
       title: "Same",
       artist: "Same",
+      artistKey: "same",
+      titleKey: "same",
       source: "cosine_club",
       coverUrl: "https://i.example/cosine.jpg",
     });
@@ -98,9 +56,10 @@ describe("rrfFuse", () => {
     expect(result[0]!.coverUrl).toBe("https://i.example/cosine.jpg");
   });
 
-  it("identical track via slightly different titles still fuses (Original Mix)", () => {
-    const a: TrackMeta = makeTrack({ title: "Grid (Original Mix)", artist: "Surgeon" });
-    const b: TrackMeta = makeTrack({ title: "Grid", artist: "Surgeon" });
+  it("fuses tracks with matching canonical keys regardless of raw title form", () => {
+    // Both have titleKey="grid" — the canonical key drives dedup, not the raw title.
+    const a: TrackMeta = makeTrack({ title: "Grid (Original Mix)", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid" });
+    const b: TrackMeta = makeTrack({ title: "Grid", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid" });
     const lists = [
       { source: "cosine", tracks: [a] },
       { source: "ytm", tracks: [b] },
@@ -110,8 +69,20 @@ describe("rrfFuse", () => {
     expect(result[0]!.appearances).toHaveLength(2);
   });
 
+  it("does NOT fuse tracks with different canonical keys", () => {
+    // Same raw title but different titleKey values → separate identities.
+    const a: TrackMeta = makeTrack({ title: "Grid", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid remix" });
+    const b: TrackMeta = makeTrack({ title: "Grid", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid" });
+    const lists = [
+      { source: "cosine", tracks: [a] },
+      { source: "ytm", tracks: [b] },
+    ];
+    const result = rrfFuse(lists);
+    expect(result).toHaveLength(2);
+  });
+
   it("empty source list contributes nothing", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a" });
     const lists = [
       { source: "cosine", tracks: [] },
       { source: "ytm", tracks: [trackA] },
@@ -122,9 +93,9 @@ describe("rrfFuse", () => {
   });
 
   it("graceful when cosine is silent (the main goal)", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB" });
-    const trackC = makeTrack({ title: "C", artist: "ArtistC" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b" });
+    const trackC = makeTrack({ title: "C", artist: "ArtistC", artistKey: "artistc", titleKey: "c" });
 
     const lists = [
       { source: "cosine", tracks: [] },
@@ -137,10 +108,10 @@ describe("rrfFuse", () => {
   });
 
   it("attaches per-source appearances with rank", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a" });
     const lists = [
       { source: "cosine", tracks: [trackA] },
-      { source: "ytm", tracks: [makeTrack({ title: "Other" }), trackA] },
+      { source: "ytm", tracks: [makeTrack({ title: "Other", artistKey: "other", titleKey: "other" }), trackA] },
     ];
     const result = rrfFuse(lists);
     expect(result[0]!.appearances).toEqual([
@@ -148,20 +119,19 @@ describe("rrfFuse", () => {
       { source: "ytm", rank: 2 },
     ]);
   });
-});
 
-describe("normalizeArtist", () => {
-  it("lowercases and strips non-alphanumerics", () => {
-    expect(normalizeArtist("DJ-Stingray!")).toBe("djstingray");
-    expect(normalizeArtist("Oscar Mulero")).toBe("oscarmulero");
-  });
-
-  it("strips diacritics so accented forms fuse with unaccented across sources", () => {
-    // Real-world: Óscar Mulero (Cosine) vs Oscar Mulero (YTM) should merge in RRF.
-    expect(normalizeArtist("Óscar Mulero")).toBe("oscarmulero");
-    expect(normalizeArtist("Étienne de Crécy")).toBe("etiennedecrecy");
-    expect(normalizeArtist("Björk")).toBe("bjork");
-    expect(normalizeArtist("Sebastián Ingrosso")).toBe("sebastianingrosso");
+  it("tracks with no canonical keys (empty string) form their own identity bucket", () => {
+    // Missing artistKey/titleKey coalesce to "" and fuse together correctly.
+    const a: TrackMeta = makeTrack({ title: "X", artist: "Y", artistKey: undefined, titleKey: undefined });
+    const b: TrackMeta = makeTrack({ title: "X2", artist: "Y2", artistKey: undefined, titleKey: undefined });
+    const lists = [
+      { source: "cosine", tracks: [a] },
+      { source: "ytm", tracks: [b] },
+    ];
+    const result = rrfFuse(lists);
+    // Both coalesce to "||" — same identity bucket, so they fuse into one.
+    expect(result).toHaveLength(1);
+    expect(result[0]!.appearances).toHaveLength(2);
   });
 });
 
@@ -178,8 +148,8 @@ describe("aggregateTracks — basic pipeline", () => {
   });
 
   it("multi-source confirmation outranks single-source top hit", () => {
-    const dual = makeTrack({ title: "Dual", artist: "X" });
-    const solo = makeTrack({ title: "Solo", artist: "Y" });
+    const dual = makeTrack({ title: "Dual", artist: "X", artistKey: "x", titleKey: "dual" });
+    const solo = makeTrack({ title: "Solo", artist: "Y", artistKey: "y", titleKey: "solo" });
     const result = aggregateTracks([
       // Solo is rank-1 in cosine, but Dual appears in two sources.
       listOf("cosine_club", solo, dual),
@@ -194,15 +164,31 @@ describe("aggregateTracks — artist diversity", () => {
     // Three Surgeon tracks fused at the top of cosine — without diversification
     // the top three would all be Surgeon.
     const tracks = [
-      makeTrack({ sourceUrl: "a1", artist: "Surgeon", title: "S1" }),
-      makeTrack({ sourceUrl: "a2", artist: "Surgeon", title: "S2" }),
-      makeTrack({ sourceUrl: "a3", artist: "Surgeon", title: "S3" }),
-      makeTrack({ sourceUrl: "b1", artist: "Mulero", title: "M1" }),
+      makeTrack({ sourceUrl: "a1", artist: "Surgeon", artistKey: "surgeon", title: "S1", titleKey: "s1" }),
+      makeTrack({ sourceUrl: "a2", artist: "Surgeon", artistKey: "surgeon", title: "S2", titleKey: "s2" }),
+      makeTrack({ sourceUrl: "a3", artist: "Surgeon", artistKey: "surgeon", title: "S3", titleKey: "s3" }),
+      makeTrack({ sourceUrl: "b1", artist: "Mulero", artistKey: "mulero", title: "M1", titleKey: "m1" }),
     ];
     const result = aggregateTracks([listOf("cosine_club", ...tracks)]);
-    const artists = result.map((t) => t.artist);
-    for (let i = 0; i + 2 < artists.length; i++) {
-      const run = artists.slice(i, i + 3);
+    const artistKeys = result.map((t) => t.artistKey ?? "");
+    for (let i = 0; i + 2 < artistKeys.length; i++) {
+      const run = artistKeys.slice(i, i + 3);
+      expect(new Set(run).size).toBeGreaterThan(1);
+    }
+  });
+
+  it("uses artistKey for diversity, not raw artist string", () => {
+    // Accented and unaccented forms share the same artistKey — treated as same artist.
+    const tracks = [
+      makeTrack({ sourceUrl: "u1", artist: "Óscar Mulero", artistKey: "oscar mulero", title: "T1", titleKey: "t1" }),
+      makeTrack({ sourceUrl: "u2", artist: "Oscar Mulero", artistKey: "oscar mulero", title: "T2", titleKey: "t2" }),
+      makeTrack({ sourceUrl: "u3", artist: "Oscar Mulero", artistKey: "oscar mulero", title: "T3", titleKey: "t3" }),
+      makeTrack({ sourceUrl: "u4", artist: "Surgeon", artistKey: "surgeon", title: "T4", titleKey: "t4" }),
+    ];
+    const result = aggregateTracks([listOf("cosine_club", ...tracks)]);
+    const artistKeys = result.map((t) => t.artistKey ?? "");
+    for (let i = 0; i + 2 < artistKeys.length; i++) {
+      const run = artistKeys.slice(i, i + 3);
       expect(new Set(run).size).toBeGreaterThan(1);
     }
   });
@@ -225,8 +211,8 @@ describe("aggregateTracks — audio bonus", () => {
   };
 
   it("compatible BPM nudges candidate above tied source-only competitor", () => {
-    const compat = makeTrack({ sourceUrl: "compat", artist: "X", title: "T1" });
-    const off = makeTrack({ sourceUrl: "off", artist: "Y", title: "T2" });
+    const compat = makeTrack({ sourceUrl: "compat", artist: "X", artistKey: "x", title: "T1", titleKey: "t1" });
+    const off = makeTrack({ sourceUrl: "off", artist: "Y", artistKey: "y", title: "T2", titleKey: "t2" });
     const audio = {
       seedBpm,
       seedMusicalKey: null,
@@ -245,8 +231,8 @@ describe("aggregateTracks — audio bonus", () => {
   it("AUDIO_BONUS_CAP keeps audio influence below a single multi-source candidate", () => {
     // A multi-source consensus candidate (3 sources) must still outrank a
     // single-source candidate even when the latter has every audio bonus.
-    const consensus = makeTrack({ sourceUrl: "cons", artist: "X", title: "Cons" });
-    const audioWin = makeTrack({ sourceUrl: "aud", artist: "Y", title: "Aud" });
+    const consensus = makeTrack({ sourceUrl: "cons", artist: "X", artistKey: "x", title: "Cons", titleKey: "cons" });
+    const audioWin = makeTrack({ sourceUrl: "aud", artist: "Y", artistKey: "y", title: "Aud", titleKey: "aud" });
     const aggressiveWeights = {
       ...weights,
       bpmCompatibleWeight: 10,
@@ -278,8 +264,8 @@ describe("aggregateTracks — audio bonus", () => {
   });
 
   it("missing seed BPM disables the bonus even if candidate has one", () => {
-    const a = makeTrack({ sourceUrl: "a", artist: "X", title: "T1" });
-    const b = makeTrack({ sourceUrl: "b", artist: "Y", title: "T2" });
+    const a = makeTrack({ sourceUrl: "a", artist: "X", artistKey: "x", title: "T1", titleKey: "t1" });
+    const b = makeTrack({ sourceUrl: "b", artist: "Y", artistKey: "y", title: "T2", titleKey: "t2" });
     const audio = {
       seedBpm: null,
       seedMusicalKey: null,
@@ -311,8 +297,8 @@ describe("genre and BPM range adjustments", () => {
   };
 
   it("genre × source adjustment boosts beatport candidate when seed is techno", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b", sourceUrl: "https://lastfm.com/b" });
     const lists: SourceList[] = [
       { source: "beatport", tracks: [trackA] },
       { source: "lastfm", tracks: [trackB] },
@@ -338,8 +324,8 @@ describe("genre and BPM range adjustments", () => {
   });
 
   it("genre adjustment is no-op when seedGenre is null", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB", sourceUrl: "https://lastfm.com/b" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
+    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b", sourceUrl: "https://lastfm.com/b" });
     const lists: SourceList[] = [
       { source: "beatport", tracks: [trackA] },
       { source: "lastfm", tracks: [trackB] },
@@ -363,7 +349,7 @@ describe("genre and BPM range adjustments", () => {
   });
 
   it("BPM range adjustment modifies bpmDelta bonus for matching range", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", sourceUrl: "https://beatport.com/a" });
+    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
     const lists: SourceList[] = [{ source: "beatport", tracks: [trackA] }];
     const weightsWithAdj: WeightConfig = {
       ...baseWeights,
