@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     discogs_stats_unblocker_url: str = ""
     yandex_music_token: str = ""
     lastfm_api_key: str = ""
+    anthropic_api_key: str = ""
     # Postgres connection string — shared with web (Prisma). Empty in test
     # environments; the trackid cache helpers soft-degrade when unset.
     database_url: str = ""
