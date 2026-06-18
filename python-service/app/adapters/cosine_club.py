@@ -1,6 +1,6 @@
 import httpx
 from app.adapters.base import AbstractAdapter
-from app.adapters._seed_match import SEED_CANDIDATES, query_match_score
+from app.core.seed_match import SEED_CANDIDATES, pick_best_candidate
 from app.core.models import TrackMeta
 from app.config import settings
 
@@ -104,16 +104,7 @@ class CosineClubAdapter(AbstractAdapter):
             return []
 
     async def _search_seed_id(self, query: str) -> str | None:
-        """Resolve the query to a seed track id, validating relevance.
-
-        Cosine.club's `/v1/search` is fuzzy and returns *something* for almost
-        any input. Without validation we end up using an off-genre track as the
-        seed and the recommendations are nonsense. Scan up to `SEED_CANDIDATES`
-        hits and apply the two regimes from `_seed_match.query_match_score`:
-        "Artist - Title" queries require an exact title-signature match;
-        bare-artist queries pick the first candidate whose artist matches. If
-        no candidate qualifies, return None and the caller emits no results.
-        """
+        """Resolve the query to a seed track id, rejecting off-genre fuzzy hits."""
         resp = await self._client.get(
             "/v1/search",
             params={"q": query, "limit": SEED_CANDIDATES},
@@ -122,30 +113,18 @@ class CosineClubAdapter(AbstractAdapter):
         data = resp.json().get("data") or []
         if not data:
             return None
-        best_idx = -1
-        best_score = 0
-        for i, cand in enumerate(data):
-            cand_artist = cand.get("artist") or ""
-            cand_title = cand.get("track") or cand.get("name") or ""
-            score = query_match_score(query, cand_artist, cand_title)
-            if score > best_score:
-                best_score = score
-                best_idx = i
-        if best_idx >= 0:
-            cand = data[best_idx]
-            cand_artist = cand.get("artist") or ""
-            cand_title = cand.get("track") or cand.get("name") or ""
-            print(
-                f"[CosineClub] seed for {query!r} -> "
-                f"{cand_artist} - {cand_title} (id={cand.get('id')}, score={best_score})"
-            )
-            return cand.get("id")
-        rejected = ", ".join(
-            f"{c.get('artist')!r} - {c.get('track') or c.get('name')!r}"
-            for c in data[:SEED_CANDIDATES]
-        )
-        print(f"[CosineClub] no seed matched query {query!r}; rejected: {rejected}")
-        return None
+        candidates = [
+            (c.get("artist") or "", c.get("track") or c.get("name") or "")
+            for c in data
+        ]
+        idx = await pick_best_candidate(query, candidates)
+        if idx is None:
+            print(f"[CosineClub] no seed matched query {query!r}")
+            return None
+        cand = data[idx]
+        cand_artist, cand_title = candidates[idx]
+        print(f"[CosineClub] seed for {query!r} -> {cand_artist} - {cand_title} (id={cand.get('id')})")
+        return cand.get("id")
 
     def _parse(self, data: dict) -> TrackMeta:
         video_id = data.get("video_id")

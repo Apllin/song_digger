@@ -18,6 +18,13 @@ import pytest
 from app.adapters.cosine_club import CosineClubAdapter
 
 
+def _pick_returning(idx):
+    """Stub for pick_best_candidate that returns a fixed index (or None)."""
+    async def _pick(_query, _candidates):
+        return idx
+    return _pick
+
+
 def _ok_response(payload: dict) -> MagicMock:
     resp = MagicMock(spec=httpx.Response)
     resp.raise_for_status = MagicMock(return_value=None)
@@ -51,6 +58,7 @@ async def test_search_no_hits_returns_empty(monkeypatch):
 
 async def test_two_step_search_then_similar_returns_parsed_tracks(monkeypatch):
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(0))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -185,6 +193,7 @@ async def test_url_seed_http_error_returns_empty(monkeypatch, capsys):
 
 async def test_http_error_during_similar_returns_empty(monkeypatch, capsys):
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(0))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -250,6 +259,7 @@ async def test_seed_rejects_off_topic_first_hit_and_skips_similar_call(
     phantom seed.
     """
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(None))
     adapter = CosineClubAdapter()
 
     calls: list[str] = []
@@ -274,6 +284,7 @@ async def test_seed_rejects_off_topic_first_hit_and_skips_similar_call(
 async def test_seed_picks_second_candidate_when_first_is_off_topic(monkeypatch):
     """If the top hit is fuzzy noise but a later hit matches, use the later one."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -297,6 +308,7 @@ async def test_seed_picks_second_candidate_when_first_is_off_topic(monkeypatch):
 async def test_seed_match_tolerates_diacritics_and_collaborators(monkeypatch):
     """'Óscar Mulero' query matches a 'Oscar Mulero & Ancient Methods' hit."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(0))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -324,6 +336,7 @@ async def test_version_specific_query_prefers_version_specific_seed(monkeypatch)
     bare title is a substring of the long query so it validates and the
     upstream's own ranking decides — which collapses different recordings."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     # Cosine often returns the bare title first for relevance/popularity, with
@@ -358,6 +371,7 @@ async def test_bare_title_query_still_picks_bare_seed(monkeypatch):
     is the exact match and should win even if a version-specific sibling
     appears in the candidate list."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -385,6 +399,7 @@ async def test_bare_artist_query_picks_first_track_by_that_artist(monkeypatch):
     """A bare-artist query (no ' - ') seeds off the first candidate whose
     artist matches the query — i.e. the first track by that artist."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -413,6 +428,7 @@ async def test_bare_artist_query_prefers_exact_artist_over_substring(monkeypatch
     "Rill". Subset token-match would tie both at MATCH_ARTIST, so cosine's own
     ranking would decide. The exact-entity match must win."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -441,6 +457,7 @@ async def test_bare_artist_query_accepts_collab_with_exact_entity(monkeypatch):
     MATCH_ARTIST_EXACT — `rill` is one of the collab-split entities. Otherwise
     legitimate Rill collabs would lose to single-name lookalikes."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(1))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -466,6 +483,7 @@ async def test_bare_artist_query_returns_empty_when_no_artist_match(
 ):
     """Bare-artist query with no candidate by that artist → drop the source."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(None))
     adapter = CosineClubAdapter()
 
     calls: list[str] = []
@@ -490,6 +508,7 @@ async def test_seed_match_tolerates_catalog_tag_suffix(monkeypatch):
     Regression for the bug where YTM/Yandex (same _seed_match gate) dropped out
     because the title signatures differed only by the catalog suffix."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(0))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
@@ -513,6 +532,7 @@ async def test_artist_title_query_requires_exact_title_match(monkeypatch, capsys
     """"Artist - Title" query with no exact title match → drop the source even
     if a candidate by the same artist exists."""
     monkeypatch.setattr("app.adapters.cosine_club.settings.cosine_club_api_key", "k")
+    monkeypatch.setattr("app.adapters.cosine_club.pick_best_candidate", _pick_returning(None))
     adapter = CosineClubAdapter()
 
     async def _get(url, **_kwargs):
