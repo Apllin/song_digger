@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from app.adapters.beatport import BeatportAdapter, _parse_track, _to_camelot
 from app.core.models import TrackMeta
+from app.core.seed_match import MATCH_EXACT, MATCH_NONE
 
 
 # ── _to_camelot ───────────────────────────────────────────────────────────────
@@ -214,3 +215,62 @@ async def test_enrich_not_found_is_not_a_failure():
         result, failed = await adapter.enrich_tracks([track])
     assert failed == set()
     assert result["https://x/10"].bpm is None
+
+
+# ── _fetch_bpm_key: score_candidates integration ─────────────────────────────
+
+async def test_fetch_bpm_key_returns_match_via_score_candidates(monkeypatch):
+    """_fetch_bpm_key returns bpm/key/genre for the candidate scored MATCH_EXACT."""
+    adapter = BeatportAdapter()
+    hit = TrackMeta(title="Aventurine", artist="Ignez", source="beatport",
+                    sourceUrl="https://beatport.com/track/aventurine/1",
+                    bpm=140.0, key="8A", genre="Techno")
+    miss = TrackMeta(title="Wrong Song", artist="Other", source="beatport",
+                     sourceUrl="https://beatport.com/track/wrong/2",
+                     bpm=130.0, key="5A", genre="House")
+
+    async def _fake_score(query, candidates):
+        return [MATCH_EXACT, MATCH_NONE]
+
+    monkeypatch.setattr("app.adapters.beatport.score_candidates", _fake_score)
+
+    with patch.object(adapter, "_search", new=AsyncMock(return_value=[hit, miss])):
+        result = await adapter._fetch_bpm_key("Aventurine", "Ignez")
+
+    assert result == (140.0, "8A", "Techno")
+
+
+async def test_fetch_bpm_key_skips_no_bpm(monkeypatch):
+    """Candidates missing bpm/key are skipped even when score is MATCH_EXACT."""
+    adapter = BeatportAdapter()
+    no_bpm = TrackMeta(title="Aventurine", artist="Ignez", source="beatport",
+                       sourceUrl="https://beatport.com/track/aventurine/1",
+                       bpm=None, key=None, genre="Techno")
+
+    async def _fake_score(query, candidates):
+        return [MATCH_EXACT]
+
+    monkeypatch.setattr("app.adapters.beatport.score_candidates", _fake_score)
+
+    with patch.object(adapter, "_search", new=AsyncMock(return_value=[no_bpm])):
+        result = await adapter._fetch_bpm_key("Aventurine", "Ignez")
+
+    assert result is None
+
+
+async def test_fetch_bpm_key_no_exact_match_returns_none(monkeypatch):
+    """Returns None when no candidate reaches MATCH_EXACT."""
+    adapter = BeatportAdapter()
+    track = TrackMeta(title="Other Song", artist="Other", source="beatport",
+                      sourceUrl="https://beatport.com/track/other/1",
+                      bpm=130.0, key="5A", genre="House")
+
+    async def _fake_score(query, candidates):
+        return [MATCH_NONE]
+
+    monkeypatch.setattr("app.adapters.beatport.score_candidates", _fake_score)
+
+    with patch.object(adapter, "_search", new=AsyncMock(return_value=[track])):
+        result = await adapter._fetch_bpm_key("Aventurine", "Ignez")
+
+    assert result is None

@@ -5,7 +5,7 @@ import random
 import asyncio
 import httpx
 from app.adapters.base import AbstractAdapter
-from app.adapters._seed_match import query_match_score, MATCH_EXACT
+from app.core.seed_match import score_candidates, MATCH_EXACT
 from app.core.models import TrackMeta
 
 # Maps Beatport key_name → Camelot notation
@@ -175,10 +175,11 @@ class BeatportAdapter(AbstractAdapter):
         failure so the caller can tell 'not found' apart from 'lookup failed'."""
         results = await self._search(f"{artist} {title}", limit=5)
         match_query = f"{artist} - {title}"
-        for t in results:
+        scores = await score_candidates(match_query, [(t.artist, t.title) for t in results])
+        for t, score in zip(results, scores):
             if t.bpm is None or t.key is None:
                 continue
-            if query_match_score(match_query, t.artist, t.title) >= MATCH_EXACT:
+            if score >= MATCH_EXACT:
                 return t.bpm, t.key, t.genre
         return None
 
