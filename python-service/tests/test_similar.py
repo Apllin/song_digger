@@ -1,13 +1,15 @@
 """Tests for the core normalization and metadata inference logic in similar.py."""
 import pytest
+import app.api.routes.similar as similar_module
 from app.api.routes.similar import (
     _normalize,
-    _normalize_title,
     _same_artist,
     _cosine_is_confident,
     _spread_unique_artists,
+    _normalize_source_titles,
 )
-from app.core.models import TrackMeta
+from app.core.models import TrackMeta, SourceList
+from app.core.title_llm import CanonicalTitle
 
 
 def make_track(**kwargs) -> TrackMeta:
@@ -46,117 +48,58 @@ def test_normalize_empty():
     assert _normalize("") == ""
 
 
-# ── _normalize_title ──────────────────────────────────────────────────────────
+# ── _normalize_source_titles ──────────────────────────────────────────────────
 
-def test_normalize_title_strips_original_mix():
-    assert _normalize_title("Collapse (Original Mix)") == "collapse"
-
-
-def test_normalize_title_strips_feat():
-    assert _normalize_title("Collapse (feat. Someone)") == "collapse"
-
-
-def test_normalize_title_strips_brackets():
-    assert _normalize_title("Collapse [Remastered]") == "collapse"
-
-
-def test_normalize_title_preserves_regular_parens():
-    # Parens that are NOT "original mix" / "feat." should stay
-    result = _normalize_title("Collapse (Dark Version)")
-    assert "collapse" in result
-    assert "dark version" in result
-
-
-def test_normalize_title_combined():
-    result = _normalize_title("GRID (Original Mix) [2024 Remaster]")
-    assert result == "grid"
-
-
-def test_normalize_title_preserves_remix_marker():
-    """(Remix) identifies a different recording — never strip it."""
-    assert _normalize_title("Insomnia (Remix)") == "insomnia (remix)"
-    assert _normalize_title("Insomnia (Faithless Remix)") == "insomnia (faithless remix)"
-    assert _normalize_title("Insomnia [Remix]") == "insomnia [remix]"
-
-
-def test_normalize_title_preserves_dub_version():
-    assert _normalize_title("Strings of Life (Dub)") == "strings of life (dub)"
-    assert _normalize_title("Strings of Life (Dub Mix)") == "strings of life (dub mix)"
-    assert _normalize_title("Strings of Life (Dub Version)") == "strings of life (dub version)"
-
-
-def test_normalize_title_preserves_live_version():
-    assert _normalize_title("Smalltown Boy (Live)") == "smalltown boy (live)"
-    assert (
-        _normalize_title("Smalltown Boy (Live at Wembley)")
-        == "smalltown boy (live at wembley)"
+def _make_canon(artist="Test Artist", title="Test Track", ak="test artist", tk="test track"):
+    return CanonicalTitle(
+        artist=artist, title=title,
+        artist_key=ak, title_key=tk,
+        artist_entities=[ak],
     )
 
 
-def test_normalize_title_strips_remaster_year_variants():
-    assert _normalize_title("Heroes (Remastered 2017)") == "heroes"
-    assert _normalize_title("Heroes [Remastered]") == "heroes"
-    assert _normalize_title("Heroes (2017 Remaster)") == "heroes"
+async def test_normalize_source_titles_fills_keys(monkeypatch):
+    """Tracks returned by _normalize_source_titles carry titleKey and artistKey."""
+    canon = _make_canon(artist="Burial", title="Archangel", ak="burial", tk="archangel")
+
+    async def _fake_normalize(items):
+        return [canon for _ in items]
+
+    monkeypatch.setattr(similar_module, "normalize_titles", _fake_normalize)
+    sl = SourceList(source="youtube_music", tracks=[make_track(artist="Burial", title="Archangel (Original Mix)")])
+    result = await _normalize_source_titles([sl])
+    t = result[0].tracks[0]
+    assert t.titleKey == "archangel"
+    assert t.artistKey == "burial"
+    assert t.title == "Archangel"
+    assert t.artist == "Burial"
 
 
-def test_normalize_title_handles_both_paren_and_bracket_forms():
-    assert _normalize_title("Track (Original Mix)") == "track"
-    assert _normalize_title("Track [Original Mix]") == "track"
-    assert _normalize_title("Track (feat. Guest)") == "track"
-    assert _normalize_title("Track [feat. Guest]") == "track"
-    assert _normalize_title("Track (Extended Mix)") == "track"
-    assert _normalize_title("Track [Extended Mix]") == "track"
+async def test_normalize_source_titles_empty_returns_unchanged(monkeypatch):
+    """Empty source_lists passes through without calling normalize_titles."""
+    async def _should_not_call(items):
+        raise AssertionError("normalize_titles should not be called for empty input")
+
+    monkeypatch.setattr(similar_module, "normalize_titles", _should_not_call)
+    result = await _normalize_source_titles([SourceList(source="youtube_music", tracks=[])])
+    assert result[0].tracks == []
 
 
-def test_normalize_title_strips_feat_variants():
-    base = _normalize_title("Track")
-    assert _normalize_title("Track (feat. X)") == base
-    assert _normalize_title("Track (ft. X)") == base
-    assert _normalize_title("Track (featuring X)") == base
+async def test_normalize_source_titles_batches_all_sources(monkeypatch):
+    """All tracks across all sources are normalized in one call."""
+    calls = []
 
+    async def _fake_normalize(items):
+        calls.append(len(items))
+        return [_make_canon() for _ in items]
 
-def test_normalize_title_strips_prod_variants():
-    base = _normalize_title("Track")
-    assert _normalize_title("Track (prod. X)") == base
-    assert _normalize_title("Track (produced by X)") == base
-    assert _normalize_title("Track [prod. X]") == base
-
-
-def test_normalize_title_strips_bonus_track():
-    base = _normalize_title("Track")
-    assert _normalize_title("Track (Bonus Track)") == base
-    assert _normalize_title("Track [Bonus Track]") == base
-
-
-def test_normalize_title_strips_catalog_tag():
-    """Label/catalog tags like "[Perlon114]" are release noise, not a distinct
-    recording — they must not break seed-match or dedup. Regression for the
-    'Baby Ford - Dognosematic [Perlon114]' bug where YTM/Yandex dropped out."""
-    assert _normalize_title("Dognosematic [Perlon114]") == "dognosematic"
-    assert _normalize_title("Dognosematic [Perlon 114]") == "dognosematic"
-    assert _normalize_title("Dognosematic [DRUM-01]") == "dognosematic"
-
-
-def test_normalize_title_preserves_bracketed_version_markers():
-    """A bracketed tag without a catalog number is a version marker, not a
-    label code — the `\\d+` requirement keeps it intact."""
-    assert _normalize_title("Insomnia [Remix]") == "insomnia [remix]"
-    assert _normalize_title("Track [Live]") == "track [live]"
-
-
-def test_normalize_title_preserves_vip_and_instrumental():
-    """VIP, Instrumental, Acoustic, Demo identify distinct recordings."""
-    assert _normalize_title("Track (VIP)") != _normalize_title("Track")
-    assert _normalize_title("Track (VIP Mix)") != _normalize_title("Track")
-    assert _normalize_title("Track (Instrumental)") != _normalize_title("Track")
-    assert _normalize_title("Track (Acoustic)") != _normalize_title("Track")
-    assert _normalize_title("Track (Demo)") != _normalize_title("Track")
-
-
-def test_normalize_title_preserves_edit_when_not_radio():
-    """Bare (Edit) is a distinct version; only 'Radio Edit' is noise."""
-    assert _normalize_title("Track (Edit)") != _normalize_title("Track")
-    assert _normalize_title("Track (Radio Edit)") == _normalize_title("Track")
+    monkeypatch.setattr(similar_module, "normalize_titles", _fake_normalize)
+    sls = [
+        SourceList(source="cosine_club", tracks=[make_track(), make_track()]),
+        SourceList(source="lastfm", tracks=[make_track()]),
+    ]
+    await _normalize_source_titles(sls)
+    assert calls == [3]  # one batched call for all 3 tracks
 
 
 # ── _same_artist ──────────────────────────────────────────────────────────────

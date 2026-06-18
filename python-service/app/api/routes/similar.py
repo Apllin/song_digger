@@ -2,7 +2,7 @@ import asyncio
 import unicodedata
 from fastapi import APIRouter
 from app.core.models import SimilarRequest, SimilarResponse, SourceList, TrackMeta
-from app.core.title_norm import clean_title, strip_recording_suffixes
+from app.core.title_llm import normalize as normalize_titles
 from app.adapters.youtube_music import YouTubeMusicAdapter
 from app.adapters.cosine_club import CosineClubAdapter
 from app.adapters.yandex_music import YandexMusicAdapter
@@ -88,13 +88,6 @@ def _same_artist(a: str, b: str) -> bool:
     longer  = tokens_b if len(tokens_a) <= len(tokens_b) else tokens_a
     return shorter.issubset(longer)
 
-
-def _normalize_title(s: str) -> str:
-    """Lower-case and strip whitelisted recording-equivalence suffixes for dedup.
-    Preserves version markers like (Remix), (Dub), (Live), (VIP), (Instrumental).
-    The whitelist lives in `app.core.title_norm` so seed-match validation and
-    output dedup can't drift apart."""
-    return strip_recording_suffixes(s.lower().strip()).strip()
 
 
 COSINE_CONFIDENCE_THRESHOLD = 0.5
@@ -349,28 +342,34 @@ async def _find_by_artist_only(
     return source_lists, artist
 
 
+async def _normalize_source_titles(source_lists: list[SourceList]) -> list[SourceList]:
+    """Fill cleaned display title/artist and canonical artistKey/titleKey on
+    every track via one batched LLM call. Raises on failure (no partial writes)."""
+    flat = [(t.artist, t.title) for sl in source_lists for t in sl.tracks]
+    if not flat:
+        return source_lists
+    canon = await normalize_titles(flat)
+    out: list[SourceList] = []
+    it = iter(canon)
+    for sl in source_lists:
+        tracks = []
+        for t in sl.tracks:
+            c = next(it)
+            tracks.append(t.model_copy(update={
+                "title": c.title or t.title,
+                "artist": c.artist or t.artist,
+                "artistKey": c.artist_key,
+                "titleKey": c.title_key,
+            }))
+        out.append(SourceList(source=sl.source, tracks=tracks))
+    return out
+
+
 @router.post(
     "/similar",
     operation_id="find_similar",
     response_model=SimilarResponse,
 )
-def _clean_source_titles(source_lists: list[SourceList]) -> list[SourceList]:
-    """Strip source service tags from every track's display title (TRA-27).
-    Keeps the original when cleaning would empty the title (all-tag title)."""
-    cleaned: list[SourceList] = []
-    for sl in source_lists:
-        tracks = []
-        for t in sl.tracks:
-            title = clean_title(t.title)
-            tracks.append(
-                t.model_copy(update={"title": title})
-                if title and title != t.title
-                else t
-            )
-        cleaned.append(SourceList(source=sl.source, tracks=tracks))
-    return cleaned
-
-
 async def find_similar(req: SimilarRequest) -> SimilarResponse:
     if req.track:
         source_lists, source_artist = await _find_by_artist_and_track(
@@ -381,7 +380,9 @@ async def find_similar(req: SimilarRequest) -> SimilarResponse:
             req.artist, req.limit_per_source
         )
 
+    source_lists = await _normalize_source_titles(source_lists)
+
     return SimilarResponse(
-        source_lists=_clean_source_titles(source_lists),
+        source_lists=source_lists,
         source_artist=source_artist,
     )

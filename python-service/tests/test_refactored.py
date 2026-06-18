@@ -1,13 +1,6 @@
-"""
-Tests for refactored logic in similar.py:
-- _same_artist min-length / token guards
-- _normalize_title regression after moving import re out
-"""
+"""Tests for _same_artist min-length / token guards in similar.py."""
 import pytest
-from app.api.routes.similar import (
-    _same_artist,
-    _normalize_title,
-)
+from app.api.routes.similar import _same_artist
 from app.core.models import TrackMeta
 
 
@@ -50,15 +43,6 @@ def test_same_artist_3_chars_no_match():
 
 def test_same_artist_3_chars_exact():
     assert _same_artist("Bob", "Bob") is True
-
-
-# ── _normalize_title — regression after moving import re out ─────────────────
-
-def test_normalize_title_no_import_inside():
-    """Ensure function works without inline import (module-level re is used)."""
-    assert _normalize_title("Test (Original Mix)") == "test"
-    assert _normalize_title("Test [Remaster]") == "test"
-    assert _normalize_title("Test (feat. X)") == "test"
 
 
 # ── Edge case: empty artist string ────────────────────────────────────────────
