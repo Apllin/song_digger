@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Model:** `claude-haiku-4-5` — exact string, no date suffix. Do not use any other model.
-- **SDK:** Anthropic Python SDK (`anthropic`), `AsyncAnthropic`. Structured output via `output_config={"format": {"type": "json_schema", "schema": ...}}` on `client.messages.create`. No thinking/effort params (Haiku rejects `effort`). `max_tokens=4096`.
+- **SDK:** Anthropic Python SDK (`anthropic==0.69.0`), `AsyncAnthropic`. Structured output via **forced tool use** — `tools=[{name, input_schema}]` + `tool_choice={"type": "tool", "name": ...}`, read the `tool_use` block's `.input`. (The pinned SDK does **not** accept `output_config`; verified by smoke.) No thinking/effort params (Haiku rejects `effort`). `max_tokens=4096`.
 - **Fail loud:** any normalization failure (network, rate limit, missing key, malformed/short output) raises; **never persist a fallback/raw value** into a keyed store.
 - **Batch every DB round-trip:** Postgres is remote (~30–80 ms RTT). Cache reads and writes for a title batch must be single queries, never per-item loops.
 - **Persistent cache:** `ExternalApiCache` with `source="title_norm"`, `ttl_seconds=None` (never expires).
@@ -245,6 +245,11 @@ def _canon(artist, title, ak, tk, ents):
             "title_key": tk, "artist_entities": ents}
 
 
+class _ToolBlock:
+    type = "tool_use"
+    def __init__(self, payload): self.input = payload
+
+
 class _FakeMessages:
     def __init__(self, payload, raise_exc=None):
         self._payload = payload
@@ -252,8 +257,7 @@ class _FakeMessages:
     async def create(self, **kwargs):
         if self._raise:
             raise self._raise
-        class _Block: text = json.dumps(self._payload)
-        class _Resp: content = [_Block()]
+        class _Resp: content = [_ToolBlock(self._payload)]
         return _Resp()
 
 
@@ -373,6 +377,12 @@ _OUTPUT_SCHEMA = {
     "required": ["results"],
 }
 
+_TOOL = {
+    "name": "emit_normalized",
+    "description": "Return the normalized title metadata, one result per input.",
+    "input_schema": _OUTPUT_SCHEMA,
+}
+
 _SYSTEM = (
     "You normalize music track metadata. For each input {artist, title} return "
     "an object with: `artist` and `title` = clean human display strings with all "
@@ -442,11 +452,12 @@ async def _call_llm(items: list[tuple[str, str]]) -> list[CanonicalTitle]:
             model=_MODEL,
             max_tokens=4096,
             system=_SYSTEM,
-            output_config={"format": {"type": "json_schema", "schema": _OUTPUT_SCHEMA}},
+            tools=[_TOOL],
+            tool_choice={"type": "tool", "name": "emit_normalized"},
             messages=[{"role": "user", "content": user}],
         )
-        data = json.loads(resp.content[0].text)
-        results = [CanonicalTitle(**r) for r in data["results"]]
+        tool_use = next(b for b in resp.content if b.type == "tool_use")
+        results = [CanonicalTitle(**r) for r in tool_use.input["results"]]
     except Exception as e:
         raise TitleNormError(f"title normalization failed: {e}") from e
     if len(results) != len(items):
