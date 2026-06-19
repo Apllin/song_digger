@@ -52,7 +52,7 @@ async def test_miss_calls_llm_and_persists(monkeypatch):
     async def _fetch(**k): return {}
     written = {}
     async def _upsert(*, source, items): written.update(dict(items))
-    payload = {"results": [_canon("Foo", "Bar", "foo", "bar", ["foo"])]}
+    payload = {"results": [{"index": 0, **_canon("Foo", "Bar", "foo", "bar", ["foo"])}]}
     monkeypatch.setattr(title_llm, "fetch_external_cache_many", _fetch)
     monkeypatch.setattr(title_llm, "upsert_external_cache_many", _upsert)
     monkeypatch.setattr(title_llm, "_get_client", lambda: _FakeClient(payload))
@@ -80,3 +80,29 @@ async def test_count_mismatch_raises(monkeypatch):
     monkeypatch.setattr(title_llm, "_get_client", lambda: _FakeClient(payload))
     with pytest.raises(TitleNormError):
         await title_llm.normalize([("Foo", "Bar")])
+
+
+async def test_reordered_results_map_by_index(monkeypatch):
+    async def _fetch(**k): return {}
+    async def _upsert(**k): pass
+    # LLM returns the two items in REVERSE order — index must drive mapping.
+    payload = {"results": [
+        {"index": 1, **_canon("B", "B", "b", "btitle", ["b"])},
+        {"index": 0, **_canon("A", "A", "a", "atitle", ["a"])},
+    ]}
+    monkeypatch.setattr(title_llm, "fetch_external_cache_many", _fetch)
+    monkeypatch.setattr(title_llm, "upsert_external_cache_many", _upsert)
+    monkeypatch.setattr(title_llm, "_get_client", lambda: _FakeClient(payload))
+    out = await title_llm.normalize([("A", "A"), ("B", "B")])
+    assert out[0].title_key == "atitle" and out[1].title_key == "btitle"
+
+
+async def test_missing_index_raises(monkeypatch):
+    async def _fetch(**k): return {}
+    async def _upsert(**k): raise AssertionError("must not persist on bad output")
+    payload = {"results": [{"index": 5, **_canon("A", "A", "a", "atitle", ["a"])}]}
+    monkeypatch.setattr(title_llm, "fetch_external_cache_many", _fetch)
+    monkeypatch.setattr(title_llm, "upsert_external_cache_many", _upsert)
+    monkeypatch.setattr(title_llm, "_get_client", lambda: _FakeClient(payload))
+    with pytest.raises(TitleNormError):
+        await title_llm.normalize([("A", "A")])

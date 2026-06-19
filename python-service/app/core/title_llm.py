@@ -32,13 +32,14 @@ _ITEM_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
+        "index": {"type": "integer"},
         "artist": {"type": "string"},
         "title": {"type": "string"},
         "artist_key": {"type": "string"},
         "title_key": {"type": "string"},
         "artist_entities": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["artist", "title", "artist_key", "title_key", "artist_entities"],
+    "required": ["index", "artist", "title", "artist_key", "title_key", "artist_entities"],
 }
 
 _OUTPUT_SCHEMA = {
@@ -67,8 +68,9 @@ _SYSTEM = (
     "markers KEPT. `artist_key` = the cleaned artist lowercased, accent-folded, "
     "collaborators joined by ' & ', punctuation-collapsed to single spaces. "
     "`artist_entities` = a list of each collaborator's canonical key (split the "
-    "artist on &, comma, feat, vs, x, with). Preserve input order; one output per "
-    "input. Output only via the structured format."
+    "artist on &, comma, feat, vs, x, with). Echo back each input's `index` "
+    "unchanged; return exactly one output per input. Output only via the "
+    "structured format."
 )
 
 
@@ -117,7 +119,8 @@ async def normalize(items: list[tuple[str, str]]) -> list[CanonicalTitle]:
 
 async def _call_llm(items: list[tuple[str, str]]) -> list[CanonicalTitle]:
     client = _get_client()
-    user = json.dumps([{"artist": a, "title": t} for a, t in items], ensure_ascii=False)
+    payload = [{"index": i, "artist": a, "title": t} for i, (a, t) in enumerate(items)]
+    user = json.dumps(payload, ensure_ascii=False)
     try:
         resp = await client.messages.create(
             model=_MODEL,
@@ -128,7 +131,11 @@ async def _call_llm(items: list[tuple[str, str]]) -> list[CanonicalTitle]:
             messages=[{"role": "user", "content": user}],
         )
         tool_use = next(b for b in resp.content if b.type == "tool_use")
-        results = [CanonicalTitle(**r) for r in tool_use.input["results"]]
+        raw = tool_use.input["results"]
+        # Reconcile by echoed index, not position — a reordered batch must not
+        # mis-assign canonical keys to the wrong track.
+        by_index = {r["index"]: CanonicalTitle.model_validate(r) for r in raw}
+        results = [by_index[i] for i in range(len(items))]
     except Exception as e:
         raise TitleNormError(f"title normalization failed: {e}") from e
     if len(results) != len(items):

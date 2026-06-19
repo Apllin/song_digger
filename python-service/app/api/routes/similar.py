@@ -341,6 +341,10 @@ async def _find_by_artist_only(
     return source_lists, artist
 
 
+def _fallback_key(s: str) -> str:
+    return " ".join(s.lower().split())
+
+
 async def _normalize_source_titles(source_lists: list[SourceList]) -> list[SourceList]:
     """Fill cleaned display title/artist and canonical artistKey/titleKey on
     every track via one batched LLM call. Raises on failure (no partial writes)."""
@@ -354,11 +358,13 @@ async def _normalize_source_titles(source_lists: list[SourceList]) -> list[Sourc
         tracks = []
         for t in sl.tracks:
             c = next(it)
+            # Fall back to minimal raw-key hygiene if the LLM emits an empty key,
+            # so keyless tracks never collapse into one fusion bucket.
             tracks.append(t.model_copy(update={
                 "title": c.title or t.title,
                 "artist": c.artist or t.artist,
-                "artistKey": c.artist_key,
-                "titleKey": c.title_key,
+                "artistKey": c.artist_key or _fallback_key(t.artist),
+                "titleKey": c.title_key or _fallback_key(t.title),
             }))
         out.append(SourceList(source=sl.source, tracks=tracks))
     return out
