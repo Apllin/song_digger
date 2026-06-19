@@ -331,8 +331,10 @@ async def upsert_external_cache_many(
     pool = await _get_pool()
     if pool is None:
         return
-    keys = [k for k, _ in items]
-    payloads = [json.dumps(v) for _, v in items]
+    # Dedup keys (last wins) — one INSERT..ON CONFLICT can't update a row twice.
+    deduped = {k: v for k, v in items}
+    keys = list(deduped.keys())
+    payloads = [json.dumps(deduped[k]) for k in keys]
     try:
         async with pool.acquire() as conn:
             await conn.execute(

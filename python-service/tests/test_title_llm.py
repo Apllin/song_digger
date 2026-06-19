@@ -97,6 +97,27 @@ async def test_reordered_results_map_by_index(monkeypatch):
     assert out[0].title_key == "atitle" and out[1].title_key == "btitle"
 
 
+async def test_duplicate_titles_persist_once(monkeypatch):
+    # Same raw (artist, title) twice in one batch must normalize + persist once,
+    # and the upsert must receive de-duplicated keys (no ON CONFLICT double-update).
+    async def _fetch(**k): return {}
+    persisted = {}
+    calls = {"n": 0}
+    async def _upsert(*, source, items):
+        keys = [k for k, _ in items]
+        assert len(keys) == len(set(keys)), f"duplicate keys in upsert: {keys}"
+        persisted.update(dict(items))
+    def _client():
+        calls["n"] += 1
+        return _FakeClient({"results": [{"index": 0, **_canon("A", "X", "a", "x", ["a"])}]})
+    monkeypatch.setattr(title_llm, "fetch_external_cache_many", _fetch)
+    monkeypatch.setattr(title_llm, "upsert_external_cache_many", _upsert)
+    monkeypatch.setattr(title_llm, "_get_client", _client)
+    out = await title_llm.normalize([("A", "X"), ("A", "X")])
+    assert len(out) == 2 and out[0].title_key == "x" and out[1].title_key == "x"
+    assert len(persisted) == 1  # one row, not two
+
+
 async def test_missing_index_raises(monkeypatch):
     async def _fetch(**k): return {}
     async def _upsert(**k): raise AssertionError("must not persist on bad output")

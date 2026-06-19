@@ -104,14 +104,23 @@ async def normalize(items: list[tuple[str, str]]) -> list[CanonicalTitle]:
         except (ValidationError, TypeError):
             continue  # corrupt row -> treat as miss
 
-    miss_idx = [i for i, k in enumerate(keys) if k not in cache]
-    if miss_idx:
-        miss_items = [items[i] for i in miss_idx]
+    # Dedup misses by cache key — the same raw title can appear twice in one
+    # batch (e.g. two sources return it); normalize and persist each key once.
+    miss_keys: list[str] = []
+    miss_items: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for i, k in enumerate(keys):
+        if k in cache or k in seen:
+            continue
+        seen.add(k)
+        miss_keys.append(k)
+        miss_items.append(items[i])
+    if miss_items:
         fresh = await _call_llm(miss_items)
         to_persist: list[tuple[str, dict]] = []
-        for i, canon in zip(miss_idx, fresh):
-            cache[keys[i]] = canon
-            to_persist.append((keys[i], canon.model_dump()))
+        for k, canon in zip(miss_keys, fresh):
+            cache[k] = canon
+            to_persist.append((k, canon.model_dump()))
         await upsert_external_cache_many(source=_CACHE_SOURCE, items=to_persist)
 
     return [cache[k] for k in keys]
