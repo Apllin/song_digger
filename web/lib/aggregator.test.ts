@@ -38,7 +38,13 @@ describe("rrfFuse", () => {
   });
 
   it("merges coverUrl across sources (cosine cover fills ytm null)", () => {
-    const ytm: TrackMeta = makeTrack({ title: "Same", artist: "Same", artistKey: "same", titleKey: "same", source: "youtube_music" });
+    const ytm: TrackMeta = makeTrack({
+      title: "Same",
+      artist: "Same",
+      artistKey: "same",
+      titleKey: "same",
+      source: "youtube_music",
+    });
     const cosine: TrackMeta = makeTrack({
       title: "Same",
       artist: "Same",
@@ -58,7 +64,12 @@ describe("rrfFuse", () => {
 
   it("fuses tracks with matching canonical keys regardless of raw title form", () => {
     // Both have titleKey="grid" — the canonical key drives dedup, not the raw title.
-    const a: TrackMeta = makeTrack({ title: "Grid (Original Mix)", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid" });
+    const a: TrackMeta = makeTrack({
+      title: "Grid (Original Mix)",
+      artist: "Surgeon",
+      artistKey: "surgeon",
+      titleKey: "grid",
+    });
     const b: TrackMeta = makeTrack({ title: "Grid", artist: "Surgeon", artistKey: "surgeon", titleKey: "grid" });
     const lists = [
       { source: "cosine", tracks: [a] },
@@ -297,8 +308,20 @@ describe("genre and BPM range adjustments", () => {
   };
 
   it("genre × source adjustment boosts beatport candidate when seed is techno", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b", sourceUrl: "https://lastfm.com/b" });
+    const trackA = makeTrack({
+      title: "A",
+      artist: "ArtistA",
+      artistKey: "artista",
+      titleKey: "a",
+      sourceUrl: "https://beatport.com/a",
+    });
+    const trackB = makeTrack({
+      title: "B",
+      artist: "ArtistB",
+      artistKey: "artistb",
+      titleKey: "b",
+      sourceUrl: "https://lastfm.com/b",
+    });
     const lists: SourceList[] = [
       { source: "beatport", tracks: [trackA] },
       { source: "lastfm", tracks: [trackB] },
@@ -324,8 +347,20 @@ describe("genre and BPM range adjustments", () => {
   });
 
   it("genre adjustment is no-op when seedGenre is null", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
-    const trackB = makeTrack({ title: "B", artist: "ArtistB", artistKey: "artistb", titleKey: "b", sourceUrl: "https://lastfm.com/b" });
+    const trackA = makeTrack({
+      title: "A",
+      artist: "ArtistA",
+      artistKey: "artista",
+      titleKey: "a",
+      sourceUrl: "https://beatport.com/a",
+    });
+    const trackB = makeTrack({
+      title: "B",
+      artist: "ArtistB",
+      artistKey: "artistb",
+      titleKey: "b",
+      sourceUrl: "https://lastfm.com/b",
+    });
     const lists: SourceList[] = [
       { source: "beatport", tracks: [trackA] },
       { source: "lastfm", tracks: [trackB] },
@@ -349,7 +384,13 @@ describe("genre and BPM range adjustments", () => {
   });
 
   it("BPM range adjustment modifies bpmDelta bonus for matching range", () => {
-    const trackA = makeTrack({ title: "A", artist: "ArtistA", artistKey: "artista", titleKey: "a", sourceUrl: "https://beatport.com/a" });
+    const trackA = makeTrack({
+      title: "A",
+      artist: "ArtistA",
+      artistKey: "artista",
+      titleKey: "a",
+      sourceUrl: "https://beatport.com/a",
+    });
     const lists: SourceList[] = [{ source: "beatport", tracks: [trackA] }];
     const weightsWithAdj: WeightConfig = {
       ...baseWeights,

@@ -349,7 +349,7 @@
     "/ytm/search-exact": {
       "get": {
         "summary": "Search Exact",
-        "description": "Exact track lookup: search YTM for 'artist - title', pick the best matching\nresult by comparing normalised artist+title strings.\nReturns { embedUrl, coverUrl } or { embedUrl: null }.",
+        "description": "Exact track lookup: search YTM for 'artist - title', pick the best matching\nresult by comparing canonical title keys.\nReturns { embedUrl, coverUrl } or { embedUrl: null }.",
         "operationId": "search_exact_ytm_search_exact_get",
         "parameters": [
           {
@@ -1084,6 +1084,16 @@
           "artist": {
             "type": "string",
             "title": "Artist"
+          },
+          "artistKey": {
+            "type": "string",
+            "title": "Artistkey",
+            "default": ""
+          },
+          "titleKey": {
+            "type": "string",
+            "title": "Titlekey",
+            "default": ""
           },
           "source": {
             "type": "string",

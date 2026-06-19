@@ -53,10 +53,9 @@ async def _trackidnet_safe(query: str, limit: int) -> list[TrackMeta]:
         return []
 
 def _normalize(s: str) -> str:
-    # NFKD-decompose so accented forms split into base + combining marks,
-    # then drop the marks. Mirrored in web/lib/aggregator.ts:normalizeArtist —
-    # without this, "Óscar Mulero" and "Oscar Mulero" produce different tokens
-    # in _same_artist and the seed-artist filter silently misses one of them.
+    # NFKD-fold accents for artist matching in _same_artist — without it
+    # "Óscar Mulero" and "Oscar Mulero" produce different tokens and the
+    # seed-artist filter silently misses one of them.
     decomposed = unicodedata.normalize("NFKD", s)
     stripped = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
     return stripped.lower().strip()
