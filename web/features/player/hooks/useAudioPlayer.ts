@@ -89,10 +89,20 @@ export function useAudioPlayer({ track, onEnded, swapTrack }: Props): AudioPlaye
     status: embedStatus,
     fetchStatus: embedFetchStatus,
   } = useQuery<EmbedData | null>({
-    queryKey: ["embed", track?.title, track?.artist],
+    queryKey: ["embed", track?.title, track?.artist, track?.artistKey, track?.titleKey],
     queryFn: async ({ signal }) => {
       const raw = await parseResponse(
-        api.embed.$get({ query: { title: track!.title, artist: track!.artist } }, { init: { signal } }),
+        api.embed.$get(
+          {
+            query: {
+              title: track!.title,
+              artist: track!.artist,
+              ...(track!.artistKey ? { artistKey: track!.artistKey } : {}),
+              ...(track!.titleKey ? { titleKey: track!.titleKey } : {}),
+            },
+          },
+          { init: { signal } },
+        ),
       );
       if (!raw) return null;
       return { ...raw, source: raw.source as TrackSource | null };

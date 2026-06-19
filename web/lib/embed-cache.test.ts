@@ -10,27 +10,48 @@ const prismaMock = {
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
-const { embedCacheKey, lookupEmbedCache, upsertEmbedCache, warmEmbedCache } = await import("./embed-cache");
+const { lookupEmbedCache, upsertEmbedCache, warmEmbedCache } = await import("./embed-cache");
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("embedCacheKey", () => {
-  it("normalizes diacritics and case in artist", () => {
-    const k = embedCacheKey("Óscar Mulero", "Voices");
-    expect(k.artistKey).toBe("oscarmulero");
-    expect(k.titleKey).toBe("voices");
+describe("key derivation (fallback)", () => {
+  it("lowercases and trims raw artist/title when no canonical keys supplied", async () => {
+    prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
+    await lookupEmbedCache("  Óscar Mulero  ", "  Voices  ");
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey).toEqual({
+      artistKey: "óscar mulero",
+      titleKey: "voices",
+    });
   });
 
-  it("strips Discogs (N) suffix from artist", () => {
-    expect(embedCacheKey("Voicex (2)", "Track").artistKey).toBe("voicex");
-    expect(embedCacheKey("Voicex", "Track").artistKey).toBe("voicex");
+  it("preserves version/mix suffixes in fallback key (no junk stripping)", async () => {
+    prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
+    await lookupEmbedCache("X", "Voices (Original Mix)");
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey.titleKey).toBe("voices (original mix)");
   });
 
-  it("collapses '(Original Mix)' suffix on title", () => {
-    expect(embedCacheKey("X", "Voices (Original Mix)").titleKey).toBe("voices");
-    expect(embedCacheKey("X", "Voices").titleKey).toBe("voices");
+  it("collapses internal whitespace in fallback key", async () => {
+    prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
+    await lookupEmbedCache("A  B", "C   D");
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey).toEqual({ artistKey: "a b", titleKey: "c d" });
+  });
+
+  it("uses canonical keys verbatim when supplied", async () => {
+    prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
+    await lookupEmbedCache("Óscar Mulero", "Voices (Original Mix)", {
+      artistKey: "oscar-mulero",
+      titleKey: "voices",
+    });
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey).toEqual({
+      artistKey: "oscar-mulero",
+      titleKey: "voices",
+    });
   });
 });
 
@@ -83,9 +104,22 @@ describe("lookupEmbedCache", () => {
     expect(result).toBeNull();
   });
 
-  it("looks up by normalized composite key", async () => {
+  it("looks up by fallback composite key when no canonical keys given", async () => {
     prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
     await lookupEmbedCache("Óscar Mulero (3)", "Voices (Original Mix)");
+    const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey).toEqual({
+      artistKey: "óscar mulero (3)",
+      titleKey: "voices (original mix)",
+    });
+  });
+
+  it("uses canonical artistKey/titleKey when supplied, ignoring raw values", async () => {
+    prismaMock.trackEmbed.findUnique.mockResolvedValueOnce(null);
+    await lookupEmbedCache("Óscar Mulero (3)", "Voices (Original Mix)", {
+      artistKey: "oscarmulero",
+      titleKey: "voices",
+    });
     const args = prismaMock.trackEmbed.findUnique.mock.calls[0]![0];
     expect(args.where.artistKey_titleKey).toEqual({
       artistKey: "oscarmulero",
@@ -93,8 +127,8 @@ describe("lookupEmbedCache", () => {
     });
   });
 
-  it("skips the query when normalization yields empty keys", async () => {
-    const result = await lookupEmbedCache("(2)", "");
+  it("skips the query when fallback yields empty keys", async () => {
+    const result = await lookupEmbedCache("", "");
     expect(result).toBeNull();
     expect(prismaMock.trackEmbed.findUnique).not.toHaveBeenCalled();
   });
@@ -117,6 +151,21 @@ describe("upsertEmbedCache", () => {
     });
     expect(args.create.embedUrl).toBe("https://www.youtube.com/embed/abc");
     expect(args.update.embedUrl).toBe("https://www.youtube.com/embed/abc");
+  });
+
+  it("uses canonical keys when supplied", async () => {
+    prismaMock.trackEmbed.upsert.mockResolvedValueOnce({});
+    await upsertEmbedCache(
+      "Mulero",
+      "Voices (Original Mix)",
+      { embedUrl: null, source: null, sourceUrl: null, coverUrl: null },
+      { artistKey: "oscarmulero", titleKey: "voices" },
+    );
+    const args = prismaMock.trackEmbed.upsert.mock.calls[0]![0];
+    expect(args.where.artistKey_titleKey).toEqual({
+      artistKey: "oscarmulero",
+      titleKey: "voices",
+    });
   });
 
   it("writes negative entries (null embedUrl) so we don't keep retrying YTM", async () => {
@@ -150,6 +199,8 @@ describe("warmEmbedCache", () => {
       {
         artist: "Mulero",
         title: "Voices",
+        artistKey: "mulero",
+        titleKey: "voices",
         embedUrl: "https://www.youtube.com/embed/a",
         sourceUrl: "https://music.youtube.com/watch?v=a",
         source: "youtube_music",
@@ -158,6 +209,8 @@ describe("warmEmbedCache", () => {
       {
         artist: "Lewis Fautzi",
         title: "Resonance",
+        artistKey: "lewisfautzi",
+        titleKey: "resonance",
         embedUrl: "https://bandcamp.com/EmbeddedPlayer/track=99/",
         sourceUrl: "https://lewisfautzi.bandcamp.com/track/resonance",
         source: "bandcamp",
@@ -171,6 +224,21 @@ describe("warmEmbedCache", () => {
     expect(args.skipDuplicates).toBe(true);
     expect(args.data).toHaveLength(2);
     expect(args.data.map((r: { artistKey: string }) => r.artistKey)).toEqual(["mulero", "lewisfautzi"]);
+  });
+
+  it("uses fallback keys when canonical keys are absent", async () => {
+    prismaMock.trackEmbed.createMany.mockResolvedValueOnce({ count: 1 });
+    await warmEmbedCache([
+      {
+        artist: "Lewis Fautzi",
+        title: "Resonance (Original Mix)",
+        embedUrl: "https://bandcamp.com/EmbeddedPlayer/track=99/",
+        source: "bandcamp",
+      },
+    ]);
+    const args = prismaMock.trackEmbed.createMany.mock.calls[0]![0];
+    expect(args.data[0].artistKey).toBe("lewis fautzi");
+    expect(args.data[0].titleKey).toBe("resonance (original mix)");
   });
 
   it("no-ops when nothing has an embedUrl (avoids empty createMany)", async () => {

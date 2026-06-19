@@ -1,32 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
-// Embed-cache key normalization mirrors the old aggregator logic so existing
-// TrackEmbed rows remain valid across the LLM-normalization migration.
-function _normArtist(s: string): string {
-  return s.normalize("NFKD").replace(/\p{Mn}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-const _TITLE_STRIP = [
-  /\s*[([]original mix[)\]]/gi,
-  /\s*[([]extended(?:\s+mix)?[)\]]/gi,
-  /\s*[([]radio\s+(?:edit|mix)[)\]]/gi,
-  /\s*[([](?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)[)\]]/gi,
-  /\s*[([](?:feat\.|ft\.|featuring)\s+[^)\]]*[)\]]/gi,
-  /\s*[([](?:prod\.|produced\s+by)\s+[^)\]]*[)\]]/gi,
-  /\s*[([](?:clean|explicit)[)\]]/gi,
-  /\s*[([]bonus\s+track[)\]]/gi,
-  /\s+[-–—]\s+original mix\s*$/gi,
-  /\s+[-–—]\s+extended(?:\s+mix)?\s*$/gi,
-  /\s+[-–—]\s+radio\s+(?:edit|mix)\s*$/gi,
-  /\s+[-–—]\s+(?:remaster(?:ed)?(?:\s+\d{4})?|\d{4}\s+remaster(?:ed)?)\s*$/gi,
-  /\s+(?:feat\.|ft\.|featuring)\s+.*$/gi,
-  /\s*\[(?![^\]]*\b(?:remix|rmx|mix|dub|live|edit|vip|version|instrumental|acapella|acappella|rework|bootleg|reprise|interlude|intro|outro|flip|refix)\b)[^\]]*?[a-z]{2,}[\s–/-]{0,3}\d{2,}[^\]]*\]/gi,
-];
-
-function _normTitle(s: string): string {
-  let out = s.toLowerCase().trim();
-  for (const p of _TITLE_STRIP) out = out.replace(p, "");
-  return out.replace(/\s+/g, " ").trim();
+// Minimal key hygiene when canonical keys are absent: lowercase + trim + collapse whitespace.
+function fallbackKey(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export interface EmbedCacheEntry {
@@ -36,22 +12,21 @@ export interface EmbedCacheEntry {
   coverUrl: string | null;
 }
 
-// Discogs disambiguates duplicate artist names with " (N)" — strip before
-// keying so "Voicex (2)" and "Voicex" share a cache entry. Mirrors
-// embed-resolver.ts:cleanArtist.
-function cleanArtist(artist: string): string {
-  return artist.replace(/\s*\(\d+\)\s*$/, "").trim();
-}
-
 export interface CacheKey {
   artistKey: string;
   titleKey: string;
 }
 
-export function embedCacheKey(artist: string, title: string): CacheKey {
+// Resolve canonical keys from a track object, falling back to raw artist/title.
+function resolveKeys(t: {
+  artist: string;
+  title: string;
+  artistKey?: string | null;
+  titleKey?: string | null;
+}): CacheKey {
   return {
-    artistKey: _normArtist(cleanArtist(artist)),
-    titleKey: _normTitle(title),
+    artistKey: t.artistKey || fallbackKey(t.artist),
+    titleKey: t.titleKey || fallbackKey(t.title),
   };
 }
 
@@ -72,11 +47,15 @@ function isStaleNegative(row: { embedUrl: string | null; updatedAt: Date }): boo
  *   - null on miss OR on stale negative — caller should re-resolve.
  *
  * The empty-key guard (artistKey === "" || titleKey === "") matches the
- * behavior of normalize* on degenerate input. We never write empty keys,
+ * behavior of fallbackKey on degenerate input. We never write empty keys,
  * so we never read them either.
  */
-export async function lookupEmbedCache(artist: string, title: string): Promise<EmbedCacheEntry | null> {
-  const { artistKey, titleKey } = embedCacheKey(artist, title);
+export async function lookupEmbedCache(
+  artist: string,
+  title: string,
+  opts?: { artistKey?: string | null; titleKey?: string | null },
+): Promise<EmbedCacheEntry | null> {
+  const { artistKey, titleKey } = resolveKeys({ artist, title, ...opts });
   if (!artistKey || !titleKey) return null;
 
   const row = await prisma.trackEmbed.findUnique({
@@ -110,8 +89,13 @@ export async function lookupEmbedCache(artist: string, title: string): Promise<E
  * the negative-TTL check keys off, so a stale-negative re-resolution that
  * still returns null correctly resets the 7-day window.
  */
-export async function upsertEmbedCache(artist: string, title: string, result: EmbedCacheEntry): Promise<void> {
-  const { artistKey, titleKey } = embedCacheKey(artist, title);
+export async function upsertEmbedCache(
+  artist: string,
+  title: string,
+  result: EmbedCacheEntry,
+  opts?: { artistKey?: string | null; titleKey?: string | null },
+): Promise<void> {
+  const { artistKey, titleKey } = resolveKeys({ artist, title, ...opts });
   if (!artistKey || !titleKey) return;
 
   await prisma.trackEmbed.upsert({
@@ -140,7 +124,7 @@ function keyString(k: CacheKey): string {
 /**
  * Batch version of lookupEmbedCache: one `findMany` instead of N findUniques.
  * Returns a map keyed by `${artistKey}|${titleKey}` — caller computes the key
- * via `embedCacheKey()` to look up. Missing key = cache miss OR stale negative
+ * via `resolveKeys()` to look up. Missing key = cache miss OR stale negative
  * (caller should re-resolve). Present key with `embedUrl=null` = fresh
  * negative hit (caller should drop the track without re-resolving).
  *
@@ -149,9 +133,9 @@ function keyString(k: CacheKey): string {
  * search latency at ~20 yandex tracks per result set.
  */
 export async function lookupEmbedCacheBatch(
-  tracks: Array<{ artist: string; title: string }>,
+  tracks: Array<{ artist: string; title: string; artistKey?: string | null; titleKey?: string | null }>,
 ): Promise<Map<string, EmbedCacheEntry>> {
-  const keys = tracks.map((t) => embedCacheKey(t.artist, t.title)).filter((k) => k.artistKey && k.titleKey);
+  const keys = tracks.map((t) => resolveKeys(t)).filter((k) => k.artistKey && k.titleKey);
   if (!keys.length) return new Map();
 
   const rows = await prisma.trackEmbed.findMany({
@@ -192,13 +176,19 @@ export async function lookupEmbedCacheBatch(
  * in well under a second; the headroom is for slow-DB days, not normal load.
  */
 export async function upsertEmbedCacheBatch(
-  entries: Array<{ artist: string; title: string; result: EmbedCacheEntry }>,
+  entries: Array<{
+    artist: string;
+    title: string;
+    artistKey?: string | null;
+    titleKey?: string | null;
+    result: EmbedCacheEntry;
+  }>,
 ): Promise<void> {
   if (!entries.length) return;
 
   const ops = entries
     .map((e) => {
-      const { artistKey, titleKey } = embedCacheKey(e.artist, e.title);
+      const { artistKey, titleKey } = resolveKeys(e);
       if (!artistKey || !titleKey) return null;
       return prisma.trackEmbed.upsert({
         where: { artistKey_titleKey: { artistKey, titleKey } },
@@ -237,6 +227,8 @@ export async function warmEmbedCache(
   tracks: Array<{
     artist: string;
     title: string;
+    artistKey?: string | null;
+    titleKey?: string | null;
     embedUrl?: string | null;
     sourceUrl?: string | null;
     source?: string | null;
@@ -246,7 +238,7 @@ export async function warmEmbedCache(
   const rows = tracks
     .filter((t) => t.embedUrl)
     .map((t) => {
-      const { artistKey, titleKey } = embedCacheKey(t.artist, t.title);
+      const { artistKey, titleKey } = resolveKeys(t);
       if (!artistKey || !titleKey) return null;
       return {
         artistKey,
