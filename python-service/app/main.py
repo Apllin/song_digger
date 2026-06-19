@@ -10,7 +10,6 @@ from app.api.routes.enrich import router as enrich_router
 from app.config import settings
 from app.core.auth_middleware import AuthMiddleware
 from app.core.metrics import MetricsMiddleware
-from app.services import discogs_warm
 
 
 @asynccontextmanager
@@ -19,12 +18,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             "PYTHON_SERVICE_SECRET is required to start the python-service. Set it in .env."
         )
-    # Background Discogs collaborative-cache warmer — fills the cache following
-    # real search traffic, so no cron/manual step is needed. No-op until
-    # DISCOGS_STATS_UNBLOCKER_URL is set (owner enumeration soft-degrades).
-    discogs_warm.start()
     yield
-    await discogs_warm.stop()
     from app.api.routes.similar import _cosine, _soundcloud, _trackidnet
     from app.api.routes.discogs import _discogs
     from app.api.routes.enrich import _beatport

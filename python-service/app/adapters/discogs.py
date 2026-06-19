@@ -5,54 +5,21 @@ import httpx
 from app.config import settings
 from app.core.db import fetch_external_cache, upsert_external_cache
 from app.core.models import TrackMeta
-from app.services.discogs_warm import request_warm
 
 BASE_URL = "https://api.discogs.com"
 WWW_URL = "https://www.discogs.com"
 
 # Collaborative-filtering source: people who Have/Want the seed → what else is
-# in their collection, filtered to the seed's Discogs styles. Owners can only
-# be read off the Cloudflare-protected www stats page, so the build is offline
-# (scripts/warm_discogs_similar.py) and find_similar serves the warmed cache.
+# in their collection, filtered to candidates that share one of the seed's
+# Discogs styles (direct 1-1 match — no style-family or cross-genre broadening).
+# Owners can only be read off the Cloudflare-protected www stats page, so the
+# build is offline (scripts/warm_discogs_similar.py) and find_similar serves the
+# warmed cache.
 _COLLAB_MAX_USERS = 3            # collectors sampled per seed (Have first, top up from Want)
 _COLLAB_TRACKS_PER_USER = 3      # max releases taken from one collector
 _COLLAB_OUTPUT_LIMIT = 9         # _COLLAB_MAX_USERS * _COLLAB_TRACKS_PER_USER
 _COLLAB_CANDIDATE_CAP = 9        # bound over-fetch when collectors are private/empty/off-genre
 _COLLAB_TTL = 30 * 86400
-
-# Style families: members are one symmetric cluster — they match each other in
-# both directions. Styles not listed match only themselves. Lowercased.
-STYLE_FAMILIES: list[set[str]] = [
-    {"acid", "acid house"},
-    {"deep house", "house", "tech house"},
-    {"dub", "dub techno"},
-    {"electro", "electro house"},
-    {"ambient", "drone"},
-    {"disco", "euro-disco"},
-    {"trance", "progressive trance", "psy-trance"},
-    {"happy hardcore", "hard house", "hard techno", "hard trance", "hardcore",
-     "hardstyle", "jumpstyle", "schranz", "gabber", "industrial"},
-]
-# style → stable family key (alphabetically-first member); unlisted → itself.
-_STYLE_TO_FAMILY: dict[str, str] = {
-    style: f"fam:{min(family)}" for family in STYLE_FAMILIES for style in family
-}
-
-
-def _fam(style: str) -> str:
-    """Canonical family key for a style (or the style itself when unlisted)."""
-    return _STYLE_TO_FAMILY.get(style, style)
-
-
-# Directional broadening (one-way): a SEED whose style is in the key family also
-# matches candidates in the listed broader families — but NOT the reverse, since
-# the targets are more abstract umbrellas. e.g. a House seed matches Techno
-# candidates; a Techno seed does not match House. Keyed by family key.
-STYLE_BROADENS: dict[str, set[str]] = {
-    _fam("house"): {_fam("techno")},                              # House (incl. Tech House) → Techno
-    _fam("minimal techno"): {_fam("techno")},                     # Minimal Techno → Techno
-    _fam("minimal"): {_fam("minimal techno"), _fam("techno")},    # Minimal → Minimal Techno, Techno
-}
 
 # The stats page renders three `release_stats_group` blocks (Ratings, Have,
 # Want), each an <h2> heading + a <ul> of collectors. The group div is
@@ -169,22 +136,6 @@ def _parse_stats_usernames(html: str) -> dict[str, list[str]]:
             if name and name not in bucket:
                 bucket.append(name)
     return {"have": have, "want": want}
-
-
-def _style_families(styles: set[str]) -> set[str]:
-    """Collapse styles to their family key so related styles share one bucket.
-    Input must be lowercased; unlisted styles map to themselves."""
-    return {_fam(s) for s in styles}
-
-
-def _seed_match_targets(seed_styles: set[str]) -> set[str]:
-    """Family keys a seed matches: its own families plus their one-way
-    broadenings (e.g. a House seed also reaches Techno). See STYLE_BROADENS."""
-    fams = _style_families(seed_styles)
-    targets = set(fams)
-    for f in fams:
-        targets |= STYLE_BROADENS.get(f, set())
-    return targets
 
 
 def _track_from_collection_item(basic: dict) -> TrackMeta | None:
@@ -635,11 +586,8 @@ class DiscogsAdapter:
             ttl_seconds=_COLLAB_TTL,
         )
         if cached is None:
-            # Cold or expired seed → let the background worker (re)build it.
-            # A cached empty list is a real "no matches" result, so it's kept
-            # (returned below) and does NOT re-trigger a warm.
-            if " - " in query:
-                request_warm(query)
+            # Cold or expired seed → nothing to serve. The cache is filled
+            # offline by scripts/warm_discogs_similar.py, never on the hot path.
             return []
         return [TrackMeta(**t) for t in cached][:limit]
 
@@ -650,9 +598,9 @@ class DiscogsAdapter:
 
         Resolves the seed release, samples up to `_COLLAB_MAX_USERS` collectors
         (Have first, topping up from Want), and pulls up to
-        `_COLLAB_TRACKS_PER_USER` releases per collector whose Discogs styles
-        overlap the seed's. Writes the result to the `discogs_similar` cache and
-        returns it. Soft-degrades to [] (token / seed / owner-list unavailable).
+        `_COLLAB_TRACKS_PER_USER` releases per collector that share one of the
+        seed's Discogs styles. Writes the result to the `discogs_similar` cache
+        and returns it. Soft-degrades to [] (token / seed / owner-list unavailable).
         """
         if not settings.discogs_token:
             return []
@@ -665,7 +613,6 @@ class DiscogsAdapter:
         if not release_id:
             return []
 
-        seed_targets = _seed_match_targets(seed_styles)
         users = await self._fetch_release_users(release_id)
         candidates = (users.get("have", []) + users.get("want", []))[:_COLLAB_CANDIDATE_CAP]
 
@@ -676,7 +623,7 @@ class DiscogsAdapter:
             if used >= _COLLAB_MAX_USERS or len(tracks) >= limit:
                 break
             matches = await self._collection_matches(
-                username, seed_targets, seed_genres, release_id
+                username, seed_styles, seed_genres, release_id
             )
             if not matches:
                 continue  # private / empty / off-genre — try the next collector
@@ -757,14 +704,14 @@ class DiscogsAdapter:
     async def _collection_matches(
         self,
         username: str,
-        seed_targets: set[str],
+        seed_styles: set[str],
         seed_genres: set[str],
         exclude_release_id: int,
     ) -> list[TrackMeta]:
-        """Up to `_COLLAB_TRACKS_PER_USER` releases from a collector whose style
-        family is in the seed's match targets (own families + one-way broadenings),
-        newest-added first. Genre overlap is the fallback when the seed has no
-        styles. Skips the seed itself."""
+        """Up to `_COLLAB_TRACKS_PER_USER` releases from a collector that share
+        one of the seed's Discogs styles (direct overlap), newest-added first.
+        Genre overlap is the fallback when the seed has no styles. Skips the
+        seed itself."""
         try:
             resp = await self._get(
                 f"/users/{username}/collection/folders/0/releases",
@@ -782,8 +729,8 @@ class DiscogsAdapter:
                 continue
             styles = {s.lower() for s in (basic.get("styles") or [])}
             genres = {g.lower() for g in (basic.get("genres") or [])}
-            if seed_targets:
-                if not (_style_families(styles) & seed_targets):
+            if seed_styles:
+                if not (styles & seed_styles):
                     continue
             elif seed_genres and not (genres & seed_genres):
                 continue

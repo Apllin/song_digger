@@ -1,16 +1,17 @@
 # Discogs collaborative source — operations runbook
 
 The Discogs collaborative source (`/similar`) surfaces, for a seed track, releases
-owned by Discogs collectors who Have/Want that seed, filtered to the seed's style
-families. Owner enumeration is the only step that needs a Cloudflare bypass, so the
-build runs **offline** into a warm cache (`ExternalApiCache`, source `discogs_similar`),
-and the `/similar` hot path only **reads** that cache. A cold (un-warmed) seed
-contributes nothing — it never blocks the request.
+owned by Discogs collectors who Have/Want that seed, filtered to candidates that
+share one of the seed's Discogs styles (direct 1-1 match — no style-family or
+cross-genre broadening). Owner enumeration is the only step that needs a Cloudflare
+bypass, so the build runs **offline** into a warm cache (`ExternalApiCache`, source
+`discogs_similar`), and the `/similar` hot path only **reads** that cache. A cold
+(un-warmed) seed contributes nothing — it never blocks the request.
 
 Two operational pieces are required in production:
 
 1. A **FlareSolverr** service (solves Cloudflare on the Discogs stats page).
-2. A **warming job** that populates the cache for popular seeds.
+2. A **warming job** that populates the cache for popular seeds (run manually).
 
 Everything here soft-degrades: with no FlareSolverr configured, the source is simply
 silent — nothing breaks.
@@ -94,54 +95,41 @@ Expect `cf: 200` (the first request can take 10–40 s while it solves the chall
 
 ---
 
-## Part B — Warming the cache (automatic)
+## Part B — Warming the cache (manual)
 
-**There is nothing to run.** Warming is automatic and follows real search traffic —
-no cron, no script, no seed lists. `python-service` runs a background worker
-(`app/services/discogs_warm.py`, started in the app lifespan) that fills the
-`discogs_similar` cache on its own. Once Part A is done, it just works.
+The `discogs_similar` cache is filled by a single-seed script. The `/similar` hot path
+only **reads** the cache — it never builds, so a seed only returns results once it has
+been warmed.
+
+```bash
+# from python-service/
+python -m scripts.warm_discogs_similar "Joe Milli - Retreat" [limit]
+```
+
+The script runs the full build (seed → Have/Want collectors → on-style collection
+releases) and writes the result to the cache. It needs `DISCOGS_TOKEN`, `DATABASE_URL`,
+and `DISCOGS_STATS_UNBLOCKER_URL` set.
 
 ### How it works
 
 1. A user searches. The `/similar` hot path reads the `discogs_similar` cache
-   (`DiscogsAdapter.find_similar`) — read-only, never blocks.
-2. On a **cache miss** (cold seed) or an **expired** entry, `find_similar` enqueues the
-   seed via `request_warm()` (track queries only). A cached *empty* result is a real
-   "no matches" and does NOT re-trigger.
-3. A single background worker drains the queue: it re-checks freshness (skips if another
-   search/instance already warmed it within ~25 days), else calls `build_collaborative`
-   and writes the cache. Builds are **throttled** (≥12 s apart) to stay well under the
-   Discogs 60 req/min limit, and seeds are **deduped** (an in-flight seed isn't queued
-   twice). Queue is capped (500) so it can't grow unbounded.
-
-Net effect: **popularity is implicit** — frequently-searched seeds get warmed first and
-stay warm; rarely-searched ones may never warm (and don't need to). Entries refresh
-automatically: once a 30-day cache entry expires, the next search re-enqueues it.
+   (`DiscogsAdapter.find_similar`) — read-only, never blocks. A cache miss returns
+   nothing.
+2. To populate a seed, run the script. It calls `build_collaborative`, which resolves
+   the seed, scrapes its Have/Want collectors via FlareSolverr, samples their on-style
+   collection releases, and writes the `discogs_similar` cache entry (30-day TTL).
+3. Pass one query per invocation (or loop over a seed list in a shell). Keep the cadence
+   well under the Discogs 60 req/min limit.
 
 ### Throughput
 
 - Per seed ≈ ~9 Discogs API calls + 1 FlareSolverr stats scrape; the **scrape is the
-  bottleneck** (~10–40 s), and the worker is sequential + throttled → **~2–4 seeds/min**.
-- This is intentionally conservative (one shared worker) so warming can never threaten
-  the Discogs rate limit regardless of search volume.
-
-### Optional manual backfill
-
-The single-seed script remains for one-off warming (e.g. to pre-warm a known seed
-without waiting for someone to search it):
-
-```bash
-# from python-service/
-python -m scripts.warm_discogs_similar "Joe Milli - Retreat"
-```
-
-Not required for normal operation.
+  bottleneck** (~10–40 s). Run seeds sequentially so a batch can never threaten the
+  Discogs rate limit.
 
 ### Why this is safe
 
-- Warming is fully off the `/similar` critical path (read-only cache + fire-and-forget
-  enqueue).
-- If the worker fails on a seed, it's caught per-job and the loop continues; if the whole
-  task dies, warming simply stops (existing cache lives until TTL) — nothing breaks.
+- Warming is fully off the `/similar` critical path (the hot path is a read-only cache
+  lookup; the build only runs from the script).
 - No FlareSolverr configured → `build_collaborative` soft-degrades to no owners → the
   source stays silent. No errors, no manual intervention.

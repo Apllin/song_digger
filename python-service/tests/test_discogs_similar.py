@@ -1,8 +1,8 @@
 """Tests for the Discogs collaborative source (find_similar / build_collaborative).
 
 find_similar is a warm-cache read; build_collaborative is the offline build that
-samples Have/Want collectors and style-matches their collections. Real HTTP and
-the Cloudflare-gated stats fetch are mocked.
+samples Have/Want collectors and matches their collections by direct style
+overlap with the seed. Real HTTP and the Cloudflare-gated stats fetch are mocked.
 """
 from unittest.mock import AsyncMock
 
@@ -12,8 +12,6 @@ from app.adapters import discogs as discogs_mod
 from app.adapters.discogs import (
     DiscogsAdapter,
     _parse_stats_usernames,
-    _seed_match_targets,
-    _style_families,
 )
 from app.config import settings
 
@@ -147,8 +145,8 @@ async def test_build_style_match_caps_and_dedup(adapter):
             return _make_resp({"releases": [
                 _item(111, "Seed EP", ["Techno"]),          # the seed → excluded
                 _item(222, "Match A", ["Techno"]),          # match
-                _item(333, "Rap Thing", ["Hip Hop"]),       # off-family → skip
-                _item(444, "Match B", ["Dub Techno", "Ambient"]),  # match
+                _item(333, "Rap Thing", ["Hip Hop"]),       # off-style → skip
+                _item(444, "Match B", ["Dub Techno", "Ambient"]),  # shares Dub Techno → match
                 _item(555, "Match C", ["Techno"]),          # match → caps alice at 3
                 _item(666, "Match D", ["Techno"]),          # never reached (per-user cap)
             ]})
@@ -183,78 +181,47 @@ async def test_build_style_match_caps_and_dedup(adapter):
     assert out[0].genre == "Techno"
 
 
-# ── style families ───────────────────────────────────────────────────────────
+# ── style matching (direct 1-1 overlap, no families / broadening) ─────────────
 
 
-def test_style_families_symmetric_groups():
-    # Members of a symmetric family share one bucket; unlisted styles are distinct.
-    assert _style_families({"house"}) == _style_families({"deep house"})
-    assert _style_families({"acid"}) == _style_families({"acid house"})
-    assert _style_families({"dub"}) == _style_families({"dub techno"})
-    assert _style_families({"house"}) != _style_families({"techno"})  # not symmetric
-    assert _style_families({"hip hop"}) == {"hip hop"}                 # unlisted → itself
-
-
-def test_tech_house_in_house_family():
-    assert _style_families({"tech house"}) == _style_families({"house"})
-
-
-def test_house_seed_broadens_to_techno_but_not_reverse():
-    # House seed reaches Techno (one-way)...
-    assert _style_families({"techno"}) <= _seed_match_targets({"house"})
-    # ...but a Techno seed does NOT reach House.
-    assert not (_style_families({"house"}) <= _seed_match_targets({"techno"}))
-
-
-def test_minimal_and_minimal_techno_broaden_upward():
-    # Minimal Techno → Techno (one-way).
-    assert _style_families({"techno"}) <= _seed_match_targets({"minimal techno"})
-    assert not (_style_families({"minimal techno"}) <= _seed_match_targets({"techno"}))
-    # Minimal → Minimal Techno AND Techno (one-way).
-    minimal_targets = _seed_match_targets({"minimal"})
-    assert _style_families({"minimal techno"}) <= minimal_targets
-    assert _style_families({"techno"}) <= minimal_targets
-    assert not (_style_families({"minimal"}) <= _seed_match_targets({"techno"}))
-    assert not (_style_families({"minimal"}) <= _seed_match_targets({"minimal techno"}))
-
-
-async def test_build_house_seed_matches_family_and_techno(adapter):
-    # House seed → Deep House (symmetric family) and Techno (one-way broaden) match;
-    # Ambient does not.
+async def test_build_matches_only_shared_style(adapter):
+    # A House seed matches only candidates that themselves carry "House" —
+    # related-but-distinct styles (Deep House, Techno) do NOT match anymore.
     adapter._fetch_release_users = AsyncMock(return_value={"have": ["alice"], "want": []})
 
     def _route(path, **kwargs):
         if path == "/database/search":
             return _make_resp({"results": [{"id": 1, "style": ["House"], "genre": ["Electronic"]}]})
         return _make_resp({"releases": [
-            _item(10, "Deep thing", ["Deep House"]),   # symmetric family → match
-            _item(20, "Techno thing", ["Techno"]),     # House→Techno broaden → match
-            _item(30, "Ambient thing", ["Ambient"]),   # unrelated → skip
+            _item(10, "House thing", ["House"]),        # exact style → match
+            _item(20, "Deep thing", ["Deep House"]),    # different tag → skip
+            _item(30, "Techno thing", ["Techno"]),      # different tag → skip
         ]})
 
     adapter._client.get = AsyncMock(side_effect=_route)
     urls = [t.sourceUrl for t in await adapter.build_collaborative("X - Y", limit=9)]
     assert "https://www.discogs.com/release/10" in urls
-    assert "https://www.discogs.com/release/20" in urls
+    assert "https://www.discogs.com/release/20" not in urls
     assert "https://www.discogs.com/release/30" not in urls
 
 
-async def test_build_techno_seed_excludes_house(adapter):
-    # Techno seed must NOT match House (asymmetry), but matches Techno.
+async def test_build_genre_fallback_when_seed_has_no_styles(adapter):
+    # No seed styles → fall back to direct genre overlap.
     adapter._fetch_release_users = AsyncMock(return_value={"have": ["alice"], "want": []})
 
     def _route(path, **kwargs):
         if path == "/database/search":
-            return _make_resp({"results": [{"id": 1, "style": ["Techno"], "genre": ["Electronic"]}]})
+            return _make_resp({"results": [{"id": 1, "style": [], "genre": ["Electronic"]}]})
         return _make_resp({"releases": [
-            _item(10, "House thing", ["House"]),    # Techno seed ↛ House → skip
-            _item(20, "Techno thing", ["Techno"]),  # self → match
+            _item(10, "Elec thing", []),                # genre Electronic (from _item) → match
+            {"basic_information": {"id": 20, "title": "Rock thing",
+                                   "artists": [{"name": "X"}], "styles": [], "genres": ["Rock"]}},
         ]})
 
     adapter._client.get = AsyncMock(side_effect=_route)
     urls = [t.sourceUrl for t in await adapter.build_collaborative("X - Y", limit=9)]
-    assert "https://www.discogs.com/release/20" in urls
-    assert "https://www.discogs.com/release/10" not in urls
+    assert "https://www.discogs.com/release/10" in urls
+    assert "https://www.discogs.com/release/20" not in urls
 
 
 async def test_build_respects_output_limit(adapter):
