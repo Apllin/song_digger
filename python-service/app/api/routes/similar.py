@@ -9,6 +9,7 @@ from app.adapters.yandex_music import YandexMusicAdapter
 from app.adapters.lastfm import LastfmAdapter
 from app.adapters.trackidnet import TrackidnetAdapter
 from app.adapters.soundcloud import SoundCloudAdapter
+from app.adapters.discogs import DiscogsAdapter
 from app.services.lastfm_hop import expand_via_similar_artists
 
 router = APIRouter()
@@ -19,6 +20,10 @@ _yandex = YandexMusicAdapter()
 _lastfm = LastfmAdapter()
 _trackidnet = TrackidnetAdapter()
 _soundcloud = SoundCloudAdapter()
+# Collaborative (Discogs collections). find_similar is a warm-cache read only —
+# the slow owner-scrape + collection fan-out is built offline, so adding it here
+# costs one cache lookup and never stalls the critical path. See discogs.py.
+_discogs = DiscogsAdapter()
 
 # Trackidnet does up to 12 sequential-batched HTTP calls per seed (1 search +
 # 1 playlists-list + up to 10 detail fetches with Semaphore(5) inside the
@@ -169,6 +174,7 @@ async def _find_by_artist_and_track(
         lastfm_tracks,
         trackidnet_tracks,
         soundcloud_tracks,
+        discogs_tracks,
         ytm_seed,
     ) = await asyncio.gather(
         _cosine.find_similar(full_query, limit),
@@ -177,6 +183,7 @@ async def _find_by_artist_and_track(
         _lastfm.find_similar(full_query, limit),
         _trackidnet_safe(full_query, limit),
         _soundcloud.find_similar(full_query, limit),
+        _discogs.find_similar(full_query, limit),
         _ytm.resolve_seed(full_query),
         return_exceptions=True,
     )
@@ -187,6 +194,7 @@ async def _find_by_artist_and_track(
     lastfm_tracks = lastfm_tracks if isinstance(lastfm_tracks, list) else []
     trackidnet_tracks = trackidnet_tracks if isinstance(trackidnet_tracks, list) else []
     soundcloud_tracks = soundcloud_tracks if isinstance(soundcloud_tracks, list) else []
+    discogs_tracks = discogs_tracks if isinstance(discogs_tracks, list) else []
 
     # Resolved YTM seed for the queried track (catalog songs → UGC videos). This
     # is the actual queried track — its artist is the real performer (unlike
@@ -265,6 +273,7 @@ async def _find_by_artist_and_track(
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="discogs", tracks=_dedup_within_source(_filter_artist(discogs_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 
@@ -286,6 +295,7 @@ async def _find_by_artist_only(
         soundcloud_artist,
         lastfm_artist,
         trackidnet_artist,
+        discogs_artist,
         top_songs,
     ) = await asyncio.gather(
         _ytm.find_similar_by_artist(artist, limit),
@@ -293,6 +303,7 @@ async def _find_by_artist_only(
         _soundcloud.find_similar(artist, limit),
         _lastfm.find_similar(artist, limit),
         _trackidnet_safe(artist, limit),
+        _discogs.find_similar(artist, limit),
         _ytm.search_songs(artist, limit=1),
         return_exceptions=True,
     )
@@ -302,6 +313,7 @@ async def _find_by_artist_only(
     soundcloud_tracks: list[TrackMeta] = soundcloud_artist if isinstance(soundcloud_artist, list) else []
     lastfm_tracks: list[TrackMeta] = lastfm_artist if isinstance(lastfm_artist, list) else []
     trackidnet_tracks: list[TrackMeta] = trackidnet_artist if isinstance(trackidnet_artist, list) else []
+    discogs_tracks: list[TrackMeta] = discogs_artist if isinstance(discogs_artist, list) else []
 
     # Cosine.club has no artist-only search — seed it with the artist's top track.
     cosine_tracks: list[TrackMeta] = []
@@ -330,6 +342,7 @@ async def _find_by_artist_only(
         SourceList(source="lastfm", tracks=_dedup_within_source(_filter_artist(lastfm_tracks))),
         SourceList(source="trackidnet", tracks=_dedup_within_source(_filter_artist(trackidnet_tracks))),
         SourceList(source="soundcloud", tracks=_dedup_within_source(_filter_artist(soundcloud_tracks))),
+        SourceList(source="discogs", tracks=_dedup_within_source(_filter_artist(discogs_tracks))),
         SourceList(source="lastfm_hop", tracks=_dedup_within_source(_filter_artist(lastfm_hop_tracks))),
     ]
 

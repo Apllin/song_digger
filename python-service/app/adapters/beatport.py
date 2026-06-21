@@ -147,10 +147,11 @@ class BeatportAdapter(AbstractAdapter):
                     failed.add(track.sourceUrl)
                     return track.sourceUrl, track
             if result:
-                bpm, key = result
+                bpm, key, genre = result
                 return track.sourceUrl, track.model_copy(update={
                     "bpm": track.bpm if track.bpm is not None else bpm,
                     "key": track.key if track.key is not None else key,
+                    "genre": track.genre if track.genre is not None else genre,
                 })
             return track.sourceUrl, track
 
@@ -165,19 +166,20 @@ class BeatportAdapter(AbstractAdapter):
 
     async def _fetch_bpm_key(
         self, title: str, artist: str
-    ) -> tuple[float, str] | None:
-        """Search Beatport for the track and return (bpm, camelot_key) only when
-        the title signature matches exactly (via shared `_seed_match` logic that
-        cosine_club uses for its seed resolution). Raises BeatportFetchError on a
-        transient fetch failure so the caller can tell 'not found' apart from
-        'lookup failed'."""
+    ) -> tuple[float, str, str | None] | None:
+        """Search Beatport for the track and return (bpm, camelot_key, genre) only
+        when the title signature matches exactly (via shared `_seed_match` logic
+        that cosine_club uses for its seed resolution). Genre rides along from the
+        same matched track (it's free in the search payload) so callers can fill
+        the seed's training genre. Raises BeatportFetchError on a transient fetch
+        failure so the caller can tell 'not found' apart from 'lookup failed'."""
         results = await self._search(f"{artist} {title}", limit=5)
         match_query = f"{artist} - {title}"
         for t in results:
             if t.bpm is None or t.key is None:
                 continue
             if query_match_score(match_query, t.artist, t.title) >= MATCH_EXACT:
-                return t.bpm, t.key
+                return t.bpm, t.key, t.genre
         return None
 
     async def find_similar(self, query: str, limit: int = 20) -> list[TrackMeta]:

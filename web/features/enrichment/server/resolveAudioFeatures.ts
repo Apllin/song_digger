@@ -72,7 +72,7 @@ export async function resolveAudioFeatures(
 
   let seedBpm = seedRow?.seedBpm ?? null;
   let seedMusicalKey = seedRow?.seedMusicalKey ?? null;
-  const seedGenre = seedRow?.seedGenre ?? null;
+  let seedGenre = seedRow?.seedGenre ?? null;
 
   // Gaps: candidates still missing both signals and not scraped within the
   // cooldown. A track that already has bpm/key is never a gap (never re-scraped);
@@ -115,6 +115,9 @@ export async function resolveAudioFeatures(
     if (t.sourceUrl === SEED_PSEUDO_URL) {
       seedBpm = t.bpm ?? null;
       seedMusicalKey = t.key ?? null;
+      // Keep the freshly-scraped Beatport genre for training (genre_to_bucket);
+      // fall back to any prior DB value when Beatport returned none.
+      seedGenre = t.genre ?? seedGenre;
       continue;
     }
     candidateBpm.set(t.sourceUrl, t.bpm ?? null);

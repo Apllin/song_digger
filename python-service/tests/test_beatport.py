@@ -135,11 +135,12 @@ async def test_enrich_does_not_overwrite_existing_bpm():
     )
     with patch.object(adapter, "_fetch_bpm_key",
                       new_callable=AsyncMock,
-                      return_value=(140.0, "8A")):
+                      return_value=(140.0, "8A", "Techno")):
         result, failed = await adapter.enrich_tracks([track])
     enriched = result["https://x/1"]
     assert enriched.bpm == 137.5
     assert enriched.key == "8A"
+    assert enriched.genre == "Techno"   # genre filled from the matched track
     assert failed == set()
 
 
@@ -152,7 +153,7 @@ async def test_enrich_skips_already_complete_tracks():
         bpm=140.0,
         key="8A",
     )
-    fetch_mock = AsyncMock(return_value=(150.0, "9A"))
+    fetch_mock = AsyncMock(return_value=(150.0, "9A", "House"))
     with patch.object(adapter, "_fetch_bpm_key", new=fetch_mock):
         result, failed = await adapter.enrich_tracks([track])
     fetch_mock.assert_not_called()
@@ -173,7 +174,7 @@ async def test_enrich_does_not_overwrite_existing_key():
     )
     with patch.object(adapter, "_fetch_bpm_key",
                       new_callable=AsyncMock,
-                      return_value=(140.0, "8A")):
+                      return_value=(140.0, "8A", "Techno")):
         result, failed = await adapter.enrich_tracks([track])
     enriched = result["https://x/2"]
     assert enriched.bpm == 140.0

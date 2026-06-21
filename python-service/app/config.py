@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     # Empty by default — adapters no-op when missing. Real values live in .env.
     cosine_club_api_key: str = ""
     discogs_token: str = ""
+    # FlareSolverr endpoint that solves the Cloudflare challenge on the Discogs
+    # www stats page so the collaborative source can read a release's Have/Want
+    # collectors, e.g. "http://flaresolverr:8191/v1". Empty → the collaborative
+    # build soft-degrades to [] (no owner enumeration).
+    discogs_stats_unblocker_url: str = ""
     yandex_music_token: str = ""
     lastfm_api_key: str = ""
     # Postgres connection string — shared with web (Prisma). Empty in test
