@@ -1,5 +1,7 @@
 import { Resend } from "resend";
 
+import { escapeHtml } from "@/lib/escape-html";
+
 // Lazy singleton. Constructing `new Resend(undefined)` throws — we
 // don't want module load to crash during `next build` when the key
 // isn't injected into the build environment (Railway, Vercel preview
@@ -67,7 +69,7 @@ export async function sendLoginAttemptsWarning(email: string, ip: string): Promi
         <p>If this wasn&rsquo;t you, your account is still safe &mdash; the
         attacker couldn&rsquo;t get in. Consider changing your password
         as a precaution.</p>
-        <p style="color: #666; font-size: 12px;">Attempt source IP: ${ip}</p>
+        <p style="color: #666; font-size: 12px;">Attempt source IP: ${escapeHtml(ip)}</p>
       </div>
     `,
   });

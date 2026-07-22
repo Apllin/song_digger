@@ -20,6 +20,7 @@ import asyncio
 import random
 
 from app.adapters._http import fetch_json_with_retry
+from app.adapters._query import split_artist_track as _split_query
 from app.adapters.base import AbstractAdapter
 from app.config import settings
 from app.core.db import (
@@ -370,14 +371,3 @@ def _pick_fallback_tracks(tracks: list[dict]) -> list[dict]:
     extra = random.sample(tracks[1:], LASTFM_FALLBACK_TRACKS_PER_ARTIST - 1)
     return [tracks[0], *extra]
 
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" -> (artist, track). Returns (query, None) when no separator."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    if not track:
-        return artist, None
-    return artist, track

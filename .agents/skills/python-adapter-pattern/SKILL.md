@@ -1,11 +1,11 @@
 ---
 name: python-adapter-pattern
-description: Use this skill when adding a new external data source adapter to python-service/app/adapters/ — examples include adding Last.fm, trackid.net, or any source that exposes find_similar / random_techno_track. Also use when modifying existing adapters or writing tests for them. Encodes the project's adapter conventions: AbstractAdapter conformance with the `find_similar(query, limit)` signature, async httpx patterns, soft-degradation when API keys are missing, exception swallowing with structured logs, and TrackMeta field mapping.
+description: Use this skill when adding a new external data source adapter to python-service/app/adapters/ — examples include adding Last.fm, trackid.net, or any source that exposes find_similar. Also use when modifying existing adapters or writing tests for them. Encodes the project's adapter conventions: AbstractAdapter conformance with the `find_similar(query, limit)` signature, async httpx patterns, soft-degradation when API keys are missing, exception swallowing with structured logs, and TrackMeta field mapping.
 ---
 
 # Python adapter pattern
 
-Adapters in `python-service/app/adapters/` follow a strict pattern. New adapters MUST follow it; modifications MUST preserve it. The pattern exists because the `/similar` and `/random` routes fan out to all adapters via `asyncio.gather(..., return_exceptions=True)` and expect uniform behavior.
+Adapters in `python-service/app/adapters/` follow a strict pattern. New adapters MUST follow it; modifications MUST preserve it. The pattern exists because the `/similar` route fans out to all adapters via `asyncio.gather(..., return_exceptions=True)` and expects uniform behavior.
 
 ## When to use this skill
 
@@ -20,12 +20,14 @@ Every adapter is a class in `python-service/app/adapters/<name>.py` that:
 
 1. Inherits from `AbstractAdapter` (in `app/adapters/base.py`)
 2. Sets `name: str = "<source-name>"` matching the source identifier used in `SourceList(source=...)`
-3. Implements `async def find_similar(self, query: str, limit: int = N) -> list[TrackMeta]` — `query` is `"Artist - Track"` (or just `"Artist"` for artist-only mode); the adapter parses it locally via a private `_split_query` helper (mirror the one in [lastfm.py](../../python-service/app/adapters/lastfm.py))
-4. Implements `async def random_techno_track(self) -> TrackMeta | None` (return `None` if the source has no random capability — Last.fm, trackid all return None here)
+3. Implements `async def find_similar(self, query: str, limit: int = N) -> list[TrackMeta]` — `query` is `"Artist - Track"` (or just `"Artist"` for artist-only mode); parse it with the shared `split_artist_track` from [_query.py](../../python-service/app/adapters/_query.py), imported as `_split_query` (`from app.adapters._query import split_artist_track as _split_query`). Do NOT copy-paste a per-adapter parser.
+
+`AbstractAdapter` only declares `find_similar` abstract — there is no `random_techno_track` and no `/random` route. Don't add one.
 
 ```python
 import httpx
 from app.adapters.base import AbstractAdapter
+from app.adapters._query import split_artist_track as _split_query
 from app.core.models import TrackMeta
 from app.config import settings
 
@@ -82,20 +84,11 @@ class ExampleAdapter(AbstractAdapter):
             ))
 
         return results
-
-    async def random_techno_track(self) -> TrackMeta | None:
-        return None  # explicit, not omitted
-
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" → (artist, track). Returns (query, None)
-    when there is no separator. Adapters needing a track must
-    short-circuit on the (artist, None) shape — see lastfm.py:_split_query."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    return artist.strip(), (track.strip() or None)
 ```
+
+`split_artist_track` returns `(artist, None)` when there is no `" - "` separator
+or the track half is empty; adapters that require a track short-circuit on that
+shape (`if not track: return []`).
 
 ## Critical conventions
 
@@ -180,12 +173,6 @@ source_lists = [
 ```
 
 `source_lists` order does not affect ranking (RRF is order-agnostic). Conventionally append new sources at the end for visual diff clarity in eval JSON output.
-
-### `/random` wiring
-
-Most new adapters do NOT support `/random` (Last.fm, trackid, Cosine.club all return None). For these, do NOT add them to `python-service/app/api/routes/random.py`. The hedged fan-out in random.py only includes adapters that meaningfully implement `random_techno_track`. Adding a None-returning adapter just slows the hedge.
-
-Cosine.club is in this category — its adapter is in `/similar` but NOT in `/random` (no public random endpoint).
 
 ## Testing pattern
 

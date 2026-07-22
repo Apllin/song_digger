@@ -2,6 +2,7 @@ import asyncio
 import re
 import unicodedata
 import httpx
+from app.adapters._query import split_artist_track
 from app.config import settings
 from app.core.db import fetch_external_cache, upsert_external_cache
 from app.core.models import TrackMeta
@@ -135,12 +136,10 @@ def _dedupe_by_title_artist(releases: list[dict]) -> list[dict]:
 
 
 def _split_query(query: str) -> tuple[str, str]:
-    """The /similar route passes "Artist - Track"; artist-only mode passes the
-    bare artist. Returns (artist, track) with track="" when no track is given."""
-    if " - " in query:
-        artist, _, track = query.partition(" - ")
-        return artist.strip(), track.strip()
-    return query.strip(), ""
+    """`_resolve_seed` types `track` as `str`, so coerce the shared parser's
+    `None` (no track) to `""` here."""
+    artist, track = split_artist_track(query)
+    return artist, track or ""
 
 
 def _parse_stats_usernames(html: str) -> dict[str, list[str]]:

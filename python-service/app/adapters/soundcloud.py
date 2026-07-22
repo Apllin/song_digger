@@ -19,6 +19,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.adapters.base import AbstractAdapter
+from app.adapters._query import split_artist_track as _split_query
 from app.core.models import TrackMeta
 from app.core.seed_match import score_candidates, MATCH_NONE
 
@@ -280,16 +281,3 @@ class SoundCloudAdapter(AbstractAdapter):
         tracks = _parse_tracks(resp.text, limit + 1)
         seed_normalized = seed_url.rstrip("/")
         return [t for t in tracks if t.sourceUrl.rstrip("/") != seed_normalized][:limit]
-
-    async def random_techno_track(self) -> TrackMeta | None:
-        return None
-
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" -> (artist, track). Returns (query, None) when no separator."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    return artist, track or None

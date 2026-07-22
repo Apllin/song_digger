@@ -23,9 +23,11 @@
 // tiebreaker, artist diversification), cover enrichment, or saveTracks
 // logic — these only affect layer-1 misses and run fresh every time.
 export const SEARCH_CACHE_SOURCE = "search_response";
-export const SEARCH_CACHE_VERSION = "v18";
+export const SEARCH_CACHE_VERSION = "v19";
 export const SEARCH_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60;
-export const PYTHON_LIMIT_PER_SOURCE = 40;
+// Per-source ceiling sent to Python `/similar`. lastfm_hop is exempt — it runs
+// its own fan-out (HOP_SIMILARS_PER_SEED) and ignores limit_per_source.
+export const PYTHON_LIMIT_PER_SOURCE = 15;
 
 function keyPart(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, " ");

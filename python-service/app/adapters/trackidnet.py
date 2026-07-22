@@ -44,6 +44,7 @@ from typing import Any, Callable
 
 import httpx
 
+from app.adapters._query import split_artist_track as _split_query
 from app.adapters.base import AbstractAdapter
 from app.config import settings
 from app.core.db import fetch_external_cache, upsert_external_cache
@@ -231,19 +232,6 @@ class TrackidnetAdapter(AbstractAdapter):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
-
-def _split_query(query: str) -> tuple[str, str | None]:
-    """Parse "Artist - Track" → (artist, track). Returns (query, None) when
-    no separator. Adapters needing a track must short-circuit on (artist, None)."""
-    if " - " not in query:
-        return query.strip(), None
-    artist, _, track = query.partition(" - ")
-    artist = artist.strip()
-    track = track.strip()
-    if not track:
-        return artist, None
-    return artist, track
-
 
 async def _find_seed_track(
     client: httpx.AsyncClient, artist: str, track: str

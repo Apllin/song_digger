@@ -179,20 +179,6 @@ class YouTubeMusicAdapter(AbstractAdapter):
             print(f"[YouTubeMusic] resolve_seed error: {e}")
             return None
 
-    async def find_similar_by_video_id(self, video_id: str, limit: int = 50) -> list[TrackMeta]:
-        """Start YTM Radio from a known videoId — no search step needed."""
-        try:
-            return await asyncio.to_thread(self._radio_from_video_id_sync, video_id, limit)
-        except Exception as e:
-            print(f"[YouTubeMusic] find_similar_by_video_id error: {e}")
-            return []
-
-    def _radio_from_video_id_sync(self, video_id: str, limit: int) -> list[TrackMeta]:
-        radio_playlist_id = f"RDAMVM{video_id}"
-        watch = _ytm.get_watch_playlist(videoId=video_id, playlistId=radio_playlist_id, limit=limit + 1)
-        tracks_raw = watch.get("tracks", [])
-        return [m for t in tracks_raw[1:limit + 1] if (m := _parse_ytm_track(t))]
-
     async def find_similar_by_artist(self, artist: str, limit: int = 20) -> list[TrackMeta]:
         """
         Artist-only mode: search for the artist, get their channel,
